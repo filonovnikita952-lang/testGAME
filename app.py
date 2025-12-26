@@ -6,6 +6,7 @@ import secrets
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import text
 
 app = Flask(__name__)
 database_url = os.environ.get('DATABASE_URL')
@@ -22,6 +23,8 @@ class characters(db.Model):
     race = db.Column(db.String(30), nullable=False)
     CharImage = db.Column(db.String(255), nullable=True)  # Зберігає шлях до файлу
     char_class = db.Column(db.String(30), nullable=False)
+    hit_points = db.Column(db.Integer, default=10)
+    gold = db.Column(db.Integer, default=0)
     strength = db.Column(db.Integer, default=10)
     dexterity = db.Column(db.Integer, default=10)
     constitution = db.Column(db.Integer, default=10)
@@ -41,6 +44,7 @@ class userid(db.Model):
     nickname = db.Column(db.String(30), nullable=False, unique=True)
     password = db.Column(db.String(30), nullable=False)
     userImage = db.Column(db.String(255), nullable=True)
+    description = db.Column(db.Text, nullable=True)
     is_admin = db.Column(db.Boolean, default=False)
 
     characters = db.relationship('characters', back_populates='user', uselist=False)
@@ -64,7 +68,7 @@ class LobbyMember(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     lobby_id = db.Column(db.Integer, db.ForeignKey('lobby.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False)
-    role = db.Column(db.String(20), default='member')
+    role = db.Column(db.String(20), default='player')
     joined_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     lobby = db.relationship('Lobby', back_populates='members')
@@ -79,6 +83,7 @@ class InventoryItem(db.Model):
     durability = db.Column(db.Integer, default=10)
     max_durability = db.Column(db.Integer, default=10)
     description = db.Column(db.Text, nullable=True)
+    icon_path = db.Column(db.String(255), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False)
@@ -87,6 +92,31 @@ class InventoryItem(db.Model):
 
 with app.app_context():
     db.create_all()
+    def ensure_schema():
+        if db.engine.url.drivername != 'sqlite':
+            return
+
+        def column_exists(table_name, column_name):
+            result = db.session.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
+            return any(row[1] == column_name for row in result)
+
+        migrations = [
+            ("characters", "hit_points", "INTEGER", "10"),
+            ("characters", "gold", "INTEGER", "0"),
+            ("userid", "description", "TEXT", None),
+            ("inventory_item", "icon_path", "VARCHAR(255)", None),
+        ]
+
+        for table_name, column_name, column_type, default_value in migrations:
+            if not column_exists(table_name, column_name):
+                default_clause = f" DEFAULT {default_value}" if default_value is not None else ""
+                db.session.execute(text(
+                    f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}{default_clause}"
+                ))
+
+        db.session.commit()
+
+    ensure_schema()
 
 
 @app.route("/")
@@ -118,6 +148,8 @@ def Character():
                 name=request.form['name'],
                 race=request.form['race'],
                 char_class=request.form['char_class'],
+                hit_points=int(request.form.get('hit_points', 10)),
+                gold=int(request.form.get('gold', 0)),
                 strength=int(request.form['strength']),
                 dexterity=int(request.form['dexterity']),
                 constitution=int(request.form['constitution']),
@@ -132,6 +164,8 @@ def Character():
             char.name = request.form['name']
             char.race = request.form['race']
             char.char_class = request.form['char_class']
+            char.hit_points = int(request.form.get('hit_points', 10))
+            char.gold = int(request.form.get('gold', 0))
             char.strength = int(request.form['strength'])
             char.dexterity = int(request.form['dexterity'])
             char.constitution = int(request.form['constitution'])
@@ -167,6 +201,7 @@ def profile():
     avatar = user.userImage  # Може бути None
 
     if request.method == 'POST':
+        user.description = request.form.get('description', '').strip() or None
         if 'avatar' in request.files:
             file = request.files['avatar']
             if file.filename != '':
@@ -185,6 +220,7 @@ def profile():
                 db.session.commit()
                 flash('Аватар оновлено!', 'success')
 
+        db.session.commit()
         return redirect(url_for('profile'))
 
     return render_template('profile.html', user=user)
@@ -264,7 +300,7 @@ def lobby_page():
                 lobby = Lobby(name=name, access_key=access_key, admin=user)
                 db.session.add(lobby)
                 db.session.flush()
-                db.session.add(LobbyMember(lobby=lobby, user=user, role='admin'))
+                db.session.add(LobbyMember(lobby=lobby, user=user, role='master'))
                 db.session.commit()
                 flash(f'Лобі створено! Ключ доступу: {access_key}', 'success')
         elif action == 'join':
@@ -277,16 +313,36 @@ def lobby_page():
                 if membership:
                     flash('Ви вже в цьому лобі.', 'info')
                 else:
-                    db.session.add(LobbyMember(lobby=lobby, user=user, role='member'))
+                    db.session.add(LobbyMember(lobby=lobby, user=user, role='player'))
                     db.session.commit()
                     flash('Ви приєдналися до лобі!', 'success')
         elif action == 'leave':
             lobby_id = int(request.form.get('lobby_id', 0))
             membership = LobbyMember.query.filter_by(lobby_id=lobby_id, user_id=user.id).first()
-            if membership and membership.role != 'admin':
+            if membership and membership.lobby.admin_id != user.id:
                 db.session.delete(membership)
                 db.session.commit()
                 flash('Ви вийшли з лобі.', 'info')
+        elif action == 'set_role':
+            lobby_id = int(request.form.get('lobby_id', 0))
+            member_id = int(request.form.get('member_id', 0))
+            role = request.form.get('role', 'player')
+            lobby = Lobby.query.get(lobby_id)
+            member = LobbyMember.query.get(member_id)
+            if lobby and member and lobby.admin_id == user.id and member.lobby_id == lobby.id:
+                if member.user_id == lobby.admin_id:
+                    flash('Роль власника лобі змінювати не можна.', 'warning')
+                elif role in {'master', 'player', 'spectator'}:
+                    member.role = role
+                    db.session.commit()
+                    flash('Роль учасника оновлено.', 'success')
+        elif action == 'delete_lobby':
+            lobby_id = int(request.form.get('lobby_id', 0))
+            lobby = Lobby.query.get(lobby_id)
+            if lobby and lobby.admin_id == user.id:
+                db.session.delete(lobby)
+                db.session.commit()
+                flash('Лобі видалено.', 'info')
         return redirect(url_for('lobby_page'))
 
     owned_lobbies = Lobby.query.filter_by(admin_id=user.id).order_by(Lobby.created_at.desc()).all()
@@ -319,6 +375,31 @@ def Inventory():
             max_durability = int(request.form.get('max_durability', 10))
             durability = min(int(request.form.get('durability', max_durability)), max_durability)
             description = request.form.get('description', '').strip()
+            target_user_id = int(request.form.get('target_user_id', user.id))
+            memberships = LobbyMember.query.filter_by(user_id=user.id).all()
+            master_lobby_ids = {
+                membership.lobby_id
+                for membership in memberships
+                if membership.role in {'master', 'admin'}
+            }
+            master_user_ids = set()
+            if master_lobby_ids:
+                lobby_members = LobbyMember.query.filter(LobbyMember.lobby_id.in_(master_lobby_ids)).all()
+                master_user_ids = {member.user_id for member in lobby_members}
+            if target_user_id != user.id and target_user_id not in master_user_ids:
+                flash('Ви не можете видавати предмети цьому гравцю.', 'danger')
+                return redirect(url_for('Inventory'))
+
+            icon_path = None
+            if 'icon' in request.files:
+                icon_file = request.files['icon']
+                if icon_file.filename != '':
+                    upload_folder = "DRAsite/static/images/items/"
+                    if not os.path.exists(upload_folder):
+                        os.makedirs(upload_folder)
+                    icon_path = os.path.join(upload_folder, f"{target_user_id}_{icon_file.filename}")
+                    icon_file.save(icon_path)
+
             if name and item_type:
                 db.session.add(InventoryItem(
                     name=name,
@@ -327,7 +408,8 @@ def Inventory():
                     durability=durability,
                     max_durability=max_durability,
                     description=description,
-                    user=user
+                    icon_path=icon_path,
+                    user_id=target_user_id
                 ))
                 db.session.commit()
                 flash('Предмет додано до інвентаря.', 'success')
@@ -336,9 +418,11 @@ def Inventory():
             item = InventoryItem.query.filter_by(id=item_id, user_id=user.id).first()
             if item:
                 if action == 'use':
-                    item.durability = max(item.durability - 1, 0)
+                    roll = secrets.randbelow(4) + 1
+                    damage = max(roll - 1, 0)
+                    item.durability = max(item.durability - damage, 0)
                     db.session.commit()
-                    flash('Міцність предмета зменшено.', 'info')
+                    flash(f'Кидок 1d4: {roll}. Шкода предмету: {damage}.', 'info')
                 elif action == 'repair':
                     item.durability = item.max_durability
                     db.session.commit()
@@ -350,7 +434,18 @@ def Inventory():
         return redirect(url_for('Inventory'))
 
     items = InventoryItem.query.filter_by(user_id=user.id).order_by(InventoryItem.created_at.desc()).all()
-    return render_template('Inventory.html', user=user, items=items)
+    memberships = LobbyMember.query.filter_by(user_id=user.id).all()
+    master_lobby_ids = {
+        membership.lobby_id
+        for membership in memberships
+        if membership.role in {'master', 'admin'}
+    }
+    master_user_ids = set()
+    if master_lobby_ids:
+        lobby_members = LobbyMember.query.filter(LobbyMember.lobby_id.in_(master_lobby_ids)).all()
+        master_user_ids = {member.user_id for member in lobby_members}
+    recipients = userid.query.filter(userid.id.in_(master_user_ids)).all() if master_user_ids else []
+    return render_template('Inventory.html', user=user, items=items, recipients=recipients, is_master=bool(master_user_ids))
 
 @app.route("/LogIn", methods=['GET', 'POST'])
 def log_in():
