@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="/static/images/logo35.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/style.css">
+    <title>Інвентар DRA</title>
+</head>
+<body>
+    <header class="header">
+        <div class="brand">
+            <img src="/static/images/logo.png" alt="DRA Logo" class="logo">
+            <div>
+                <p class="brand__tag">Inventory Hub</p>
+                <h1 class="brand__title">Інвентар героя</h1>
+            </div>
+        </div>
+        <nav class="navigation">
+            <a href="/">Головна</a>
+            <a href="/Character">Персонаж</a>
+            <a href="/Lobby">Лобі</a>
+            <a href="/News">Новини</a>
+            <div class="user-chip">
+                <span>{{ user.nickname }}</span>
+                {% if user.userImage %}
+                    <a href="/profile"><img src="{{ url_for('static', filename=user.userImage.split('static/')[-1]) }}" alt="avatar" class="avatar"></a>
+                {% else %}
+                    <a href="/profile"><img src="/static/images/default_avatar.png" alt="Аватар" class="avatar"></a>
+                {% endif %}
+            </div>
+        </nav>
+    </header>
+
+    <main class="page">
+        <section class="inventory">
+            <div class="inventory__panel">
+                <h2>Додати предмет</h2>
+                <form method="POST" class="form">
+                    <input type="hidden" name="action" value="add">
+                    <label for="name">Назва</label>
+                    <input type="text" id="name" name="name" placeholder="Ельфійський клинок" required>
+
+                    <label for="item_type">Тип</label>
+                    <input type="text" id="item_type" name="item_type" placeholder="Зброя / Артефакт" required>
+
+                    <label for="rarity">Рідкість</label>
+                    <select id="rarity" name="rarity">
+                        <option>Звичайний</option>
+                        <option>Незвичайний</option>
+                        <option>Рідкісний</option>
+                        <option>Епічний</option>
+                        <option>Легендарний</option>
+                    </select>
+
+                    <div class="form-row">
+                        <div>
+                            <label for="durability">Міцність</label>
+                            <input type="number" id="durability" name="durability" value="10" min="0" max="99" required>
+                        </div>
+                        <div>
+                            <label for="max_durability">Макс. міцність</label>
+                            <input type="number" id="max_durability" name="max_durability" value="10" min="1" max="99" required>
+                        </div>
+                    </div>
+
+                    <label for="description">Опис</label>
+                    <textarea id="description" name="description" rows="3" placeholder="Ефект, бонус, сюжетне значення..."></textarea>
+
+                    <button type="submit" class="button">Додати</button>
+                </form>
+            </div>
+            <div class="inventory__list">
+                <h2>Ваш інвентар</h2>
+                <div class="stack">
+                    {% if items %}
+                        {% for item in items %}
+                            <div class="inventory-card">
+                                <div class="inventory-card__header">
+                                    <div>
+                                        <h3>{{ item.name }}</h3>
+                                        <p class="muted">{{ item.item_type }} • {{ item.rarity }}</p>
+                                    </div>
+                                    <span class="badge">{{ item.durability }}/{{ item.max_durability }}</span>
+                                </div>
+                                <div class="durability">
+                                    <span style="width: {{ (item.durability / item.max_durability * 100) if item.max_durability else 0 }}%"></span>
+                                </div>
+                                {% if item.description %}
+                                    <p class="muted">{{ item.description }}</p>
+                                {% endif %}
+                                <div class="inventory-card__actions">
+                                    <form method="POST">
+                                        <input type="hidden" name="action" value="use">
+                                        <input type="hidden" name="item_id" value="{{ item.id }}">
+                                        <button type="submit" class="button ghost">Використати</button>
+                                    </form>
+                                    <form method="POST">
+                                        <input type="hidden" name="action" value="repair">
+                                        <input type="hidden" name="item_id" value="{{ item.id }}">
+                                        <button type="submit" class="button">Полагодити</button>
+                                    </form>
+                                    <form method="POST">
+                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="item_id" value="{{ item.id }}">
+                                        <button type="submit" class="button danger">Видалити</button>
+                                    </form>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="muted">Інвентар порожній. Додайте перший предмет!</p>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <section class="alerts">
+                    {% for category, message in messages %}
+                        <div class="alert alert--{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </section>
+            {% endif %}
+        {% endwith %}
+    </main>
+</body>
+</html>

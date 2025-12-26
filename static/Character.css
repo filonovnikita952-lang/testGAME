@@ -1,15 +1,16 @@
 body {
     margin: 0;
     padding: 0;
-    background-color: #1f1f2e;
-    font-family: Open Sans,sans-serif;
+    background: radial-gradient(circle at top, rgba(53, 63, 94, 0.45), transparent 55%),
+        linear-gradient(135deg, #0c0f1f 0%, #1a1d2b 45%, #0b0d16 100%);
+    font-family: 'Inter', 'Open Sans', sans-serif;
     color: #ffffff;
 
 }
 
 
 .header {
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(11, 13, 22, 0.85);
     color: #F5E2CD;
     padding: 10px 20px;
     display: flex;
@@ -41,24 +42,40 @@ body {
         }
 
 nav {
-    margin: 20px 0;
-    text-align: center;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
 }
 
 nav a {
     text-decoration: none;
-    margin: 0 15px;
-    font-size: 1.2em;
+    margin: 0;
+    font-size: 0.95em;
+    color: #F5E2CD;
+    padding: 6px 12px;
+    border-radius: 999px;
 }
 
 nav a:hover {
-    text-decoration: underline;
+    background: rgba(255, 255, 255, 0.08);
 }
 
 .navigation p {
     display: flex;
     align-items: center; /* Вирівнює нік і аватар по центру */
     gap: 10px; /* Додає відступ між текстом і аватаром */
+}
+
+.user-chip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .avatar {
@@ -4216,4 +4233,3 @@ select {
             .page {
                 align-items: center
             }
-

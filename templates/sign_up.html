@@ -4,17 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Реєстрація | DRA</title>
-    <link rel="stylesheet" href="static/sign_up.css">
-    <header class="header">
-       <img src="/static/images/logo.png" alt="DRA Logo" class="logo">
-        <nav class="navigation">
-            <a href="/">Головна</a>
-        </nav>
-    </header>
+    <link rel="stylesheet" href="/static/sign_up.css">
 </head>
 <body>
+    <header class="header">
+        <img src="/static/images/logo.png" alt="DRA Logo" class="logo">
+        <nav class="navigation">
+            <a href="/">Головна</a>
+            <a href="/Lobby">Лобі</a>
+        </nav>
+    </header>
     <div class="registration-container">
         <h2>Реєстрація</h2>
+        <p class="muted">Підключіть свій акаунт та збережіть персонажа у DRA.</p>
         <form action="{{ url_for('register') }}" method="POST">
             <label for="email">Email:</label>
             <input type="email" id="email" name="email" required>
@@ -24,6 +26,9 @@
 
             <label for="password">Пароль:</label>
             <input type="password" id="password" name="password" required>
+
+            <label for="admin_code">Адмін-код (опційно)</label>
+            <input type="text" id="admin_code" name="admin_code" placeholder="DRA-ADMIN-2024">
 
             <button type="submit">Зареєструватися</button>
         </form>

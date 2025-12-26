@@ -5,23 +5,25 @@
     <link rel="icon" type="image/png" href="/static/images/logo35.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Вхід на сайт DRA</title>
-    <link rel="stylesheet" href="static/sign_up.css">
+    <link rel="stylesheet" href="/static/sign_up.css">
 </head>
 <body>
    <header class="header">
        <img src="/static/images/logo.png" alt="DRA Logo" class="logo">
         <nav class="navigation">
             <a href="/">Головна</a>
+            <a href="/Lobby">Лобі</a>
         </nav>
     </header>
     <div class="registration-container">
         <h2>Вхід</h2>
+        <p class="muted">Керуйте кампаніями, персонажами та інвентарем в одному акаунті.</p>
         <form method="POST" action="/LogIn">
             <label for="email">Email:</label>
-            <input type="email" name="email" required>
+            <input type="email" id="email" name="email" required>
 
             <label for="password">Пароль:</label>
-            <input type="password" name="password" required>
+            <input type="password" id="password" name="password" required>
 
             <button type="submit">Увійти</button>
         </form>
