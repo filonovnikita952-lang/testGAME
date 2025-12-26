@@ -108,20 +108,54 @@ with app.app_context():
     db.create_all()
     inspector = inspect(db.engine)
     table_names = set(inspector.get_table_names())
-    if 'userid' in table_names:
-        user_columns = {column['name'] for column in inspector.get_columns('userid')}
-        missing_user_columns = {
-            'userImage': 'userImage VARCHAR(255)',
-            'description': 'description TEXT',
-            'is_admin': 'is_admin BOOLEAN'
-        }
-        for column_name, column_ddl in missing_user_columns.items():
-            if column_name not in user_columns:
-                db.session.execute(text(f'ALTER TABLE userid ADD COLUMN {column_ddl}'))
-    if 'characters' in table_names:
-        character_columns = {column['name'] for column in inspector.get_columns('characters')}
-        if 'CharImage' not in character_columns:
-            db.session.execute(text('ALTER TABLE characters ADD COLUMN CharImage VARCHAR(255)'))
+    def ensure_table_columns(table_name, columns):
+        if table_name not in table_names:
+            return
+        existing_columns = {column['name'] for column in inspector.get_columns(table_name)}
+        for column_name, column_ddl in columns.items():
+            if column_name not in existing_columns:
+                db.session.execute(text(f'ALTER TABLE {table_name} ADD COLUMN {column_ddl}'))
+
+    ensure_table_columns('userid', {
+        'userImage': 'userImage VARCHAR(255)',
+        'description': 'description TEXT',
+        'is_admin': 'is_admin BOOLEAN'
+    })
+    ensure_table_columns('characters', {
+        'CharImage': 'CharImage VARCHAR(255)',
+        'hit_points': 'hit_points INTEGER',
+        'gold': 'gold INTEGER',
+        'strength': 'strength INTEGER',
+        'dexterity': 'dexterity INTEGER',
+        'constitution': 'constitution INTEGER',
+        'intelligence': 'intelligence INTEGER',
+        'wisdom': 'wisdom INTEGER',
+        'charisma': 'charisma INTEGER',
+        'char_class': 'char_class VARCHAR(30)'
+    })
+    ensure_table_columns('lobby', {
+        'name': 'name VARCHAR(80)',
+        'access_key': 'access_key VARCHAR(16)',
+        'admin_id': 'admin_id INTEGER',
+        'created_at': 'created_at DATETIME'
+    })
+    ensure_table_columns('lobby_member', {
+        'lobby_id': 'lobby_id INTEGER',
+        'user_id': 'user_id INTEGER',
+        'role': 'role VARCHAR(20)',
+        'joined_at': 'joined_at DATETIME'
+    })
+    ensure_table_columns('inventory_item', {
+        'name': 'name VARCHAR(80)',
+        'item_type': 'item_type VARCHAR(60)',
+        'rarity': 'rarity VARCHAR(30)',
+        'durability': 'durability INTEGER',
+        'max_durability': 'max_durability INTEGER',
+        'description': 'description TEXT',
+        'icon_path': 'icon_path VARCHAR(255)',
+        'created_at': 'created_at DATETIME',
+        'user_id': 'user_id INTEGER'
+    })
     db.session.commit()
 
 
