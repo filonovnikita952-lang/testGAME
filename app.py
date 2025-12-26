@@ -5,8 +5,12 @@ import secrets
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
+ codex/add-lobby-features-and-inventory-system-pjrxnz
 from sqlalchemy import text
+from werkzeug.utils import secure_filename
+ main
 
 app = Flask(__name__)
 database_url = os.environ.get('DATABASE_URL')
@@ -14,6 +18,19 @@ app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///dra.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'supersecretkey'
 db = SQLAlchemy(app)
+
+def save_upload(file, subdir, filename_prefix):
+    if not file or file.filename == '':
+        return None
+    filename = secure_filename(file.filename)
+    if not filename:
+        return None
+    upload_folder = os.path.join(app.static_folder, subdir)
+    os.makedirs(upload_folder, exist_ok=True)
+    saved_filename = f"{filename_prefix}_{filename}"
+    file_path = os.path.join(upload_folder, saved_filename)
+    file.save(file_path)
+    return os.path.join(subdir, saved_filename).replace(os.path.sep, "/")
 
 
 # Спочатку визначаємо Character
@@ -92,6 +109,7 @@ class InventoryItem(db.Model):
 
 with app.app_context():
     db.create_all()
+ codex/add-lobby-features-and-inventory-system-pjrxnz
     def ensure_schema():
         if db.engine.url.drivername != 'sqlite':
             return
@@ -117,6 +135,59 @@ with app.app_context():
         db.session.commit()
 
     ensure_schema()
+
+    inspector = inspect(db.engine)
+    table_names = set(inspector.get_table_names())
+    def ensure_table_columns(table_name, columns):
+        if table_name not in table_names:
+            return
+        existing_columns = {column['name'] for column in inspector.get_columns(table_name)}
+        for column_name, column_ddl in columns.items():
+            if column_name not in existing_columns:
+                db.session.execute(text(f'ALTER TABLE {table_name} ADD COLUMN {column_ddl}'))
+
+    ensure_table_columns('userid', {
+        'userImage': 'userImage VARCHAR(255)',
+        'description': 'description TEXT',
+        'is_admin': 'is_admin BOOLEAN'
+    })
+    ensure_table_columns('characters', {
+        'CharImage': 'CharImage VARCHAR(255)',
+        'hit_points': 'hit_points INTEGER',
+        'gold': 'gold INTEGER',
+        'strength': 'strength INTEGER',
+        'dexterity': 'dexterity INTEGER',
+        'constitution': 'constitution INTEGER',
+        'intelligence': 'intelligence INTEGER',
+        'wisdom': 'wisdom INTEGER',
+        'charisma': 'charisma INTEGER',
+        'char_class': 'char_class VARCHAR(30)'
+    })
+    ensure_table_columns('lobby', {
+        'name': 'name VARCHAR(80)',
+        'access_key': 'access_key VARCHAR(16)',
+        'admin_id': 'admin_id INTEGER',
+        'created_at': 'created_at DATETIME'
+    })
+    ensure_table_columns('lobby_member', {
+        'lobby_id': 'lobby_id INTEGER',
+        'user_id': 'user_id INTEGER',
+        'role': 'role VARCHAR(20)',
+        'joined_at': 'joined_at DATETIME'
+    })
+    ensure_table_columns('inventory_item', {
+        'name': 'name VARCHAR(80)',
+        'item_type': 'item_type VARCHAR(60)',
+        'rarity': 'rarity VARCHAR(30)',
+        'durability': 'durability INTEGER',
+        'max_durability': 'max_durability INTEGER',
+        'description': 'description TEXT',
+        'icon_path': 'icon_path VARCHAR(255)',
+        'created_at': 'created_at DATETIME',
+        'user_id': 'user_id INTEGER'
+    })
+    db.session.commit()
+main
 
 
 @app.route("/")
@@ -204,19 +275,9 @@ def profile():
         user.description = request.form.get('description', '').strip() or None
         if 'avatar' in request.files:
             file = request.files['avatar']
-            if file.filename != '':
-                upload_folder = "DRAsite/static/images/"
-                if not os.path.exists(upload_folder):
-                    os.makedirs(upload_folder)
-
-                avatar_path = os.path.join(upload_folder, f"{user.id}_{file.filename}")
-                file.save(avatar_path)
-
-                if avatar is None:
-                    user.userImage = avatar_path
-                else:
-                    user.userImage = avatar_path  # Оновлюємо фото
-
+            avatar_path = save_upload(file, "images", user.id)
+            if avatar_path:
+                user.userImage = avatar_path
                 db.session.commit()
                 flash('Аватар оновлено!', 'success')
 
@@ -276,7 +337,7 @@ def News():
 
 @app.route("/Char")
 def Char():
-    return render_template('Char.html')
+    return redirect(url_for('Character'))
 
 @app.route("/Lobby", methods=['GET', 'POST'])
 def lobby_page():
@@ -377,11 +438,15 @@ def Inventory():
             description = request.form.get('description', '').strip()
             target_user_id = int(request.form.get('target_user_id', user.id))
             memberships = LobbyMember.query.filter_by(user_id=user.id).all()
+ codex/add-lobby-features-and-inventory-system-pjrxnz
             master_lobby_ids = {
                 membership.lobby_id
                 for membership in memberships
                 if membership.role in {'master', 'admin'}
             }
+
+            master_lobby_ids = {membership.lobby_id for membership in memberships if membership.role == 'master'}
+ main
             master_user_ids = set()
             if master_lobby_ids:
                 lobby_members = LobbyMember.query.filter(LobbyMember.lobby_id.in_(master_lobby_ids)).all()
@@ -393,12 +458,16 @@ def Inventory():
             icon_path = None
             if 'icon' in request.files:
                 icon_file = request.files['icon']
+ codex/add-lobby-features-and-inventory-system-pjrxnz
                 if icon_file.filename != '':
                     upload_folder = "DRAsite/static/images/items/"
                     if not os.path.exists(upload_folder):
                         os.makedirs(upload_folder)
                     icon_path = os.path.join(upload_folder, f"{target_user_id}_{icon_file.filename}")
                     icon_file.save(icon_path)
+
+                icon_path = save_upload(icon_file, os.path.join("images", "items"), target_user_id)
+main
 
             if name and item_type:
                 db.session.add(InventoryItem(
@@ -435,11 +504,15 @@ def Inventory():
 
     items = InventoryItem.query.filter_by(user_id=user.id).order_by(InventoryItem.created_at.desc()).all()
     memberships = LobbyMember.query.filter_by(user_id=user.id).all()
+codex/add-lobby-features-and-inventory-system-pjrxnz
     master_lobby_ids = {
         membership.lobby_id
         for membership in memberships
         if membership.role in {'master', 'admin'}
     }
+
+    master_lobby_ids = {membership.lobby_id for membership in memberships if membership.role == 'master'}
+main
     master_user_ids = set()
     if master_lobby_ids:
         lobby_members = LobbyMember.query.filter(LobbyMember.lobby_id.in_(master_lobby_ids)).all()
