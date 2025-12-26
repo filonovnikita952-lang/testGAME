@@ -7,7 +7,10 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
+ codex/add-lobby-features-and-inventory-system-pjrxnz
+from sqlalchemy import text
 from werkzeug.utils import secure_filename
+ main
 
 app = Flask(__name__)
 database_url = os.environ.get('DATABASE_URL')
@@ -106,6 +109,33 @@ class InventoryItem(db.Model):
 
 with app.app_context():
     db.create_all()
+ codex/add-lobby-features-and-inventory-system-pjrxnz
+    def ensure_schema():
+        if db.engine.url.drivername != 'sqlite':
+            return
+
+        def column_exists(table_name, column_name):
+            result = db.session.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
+            return any(row[1] == column_name for row in result)
+
+        migrations = [
+            ("characters", "hit_points", "INTEGER", "10"),
+            ("characters", "gold", "INTEGER", "0"),
+            ("userid", "description", "TEXT", None),
+            ("inventory_item", "icon_path", "VARCHAR(255)", None),
+        ]
+
+        for table_name, column_name, column_type, default_value in migrations:
+            if not column_exists(table_name, column_name):
+                default_clause = f" DEFAULT {default_value}" if default_value is not None else ""
+                db.session.execute(text(
+                    f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}{default_clause}"
+                ))
+
+        db.session.commit()
+
+    ensure_schema()
+
     inspector = inspect(db.engine)
     table_names = set(inspector.get_table_names())
     def ensure_table_columns(table_name, columns):
@@ -157,6 +187,7 @@ with app.app_context():
         'user_id': 'user_id INTEGER'
     })
     db.session.commit()
+main
 
 
 @app.route("/")
@@ -407,7 +438,15 @@ def Inventory():
             description = request.form.get('description', '').strip()
             target_user_id = int(request.form.get('target_user_id', user.id))
             memberships = LobbyMember.query.filter_by(user_id=user.id).all()
+ codex/add-lobby-features-and-inventory-system-pjrxnz
+            master_lobby_ids = {
+                membership.lobby_id
+                for membership in memberships
+                if membership.role in {'master', 'admin'}
+            }
+
             master_lobby_ids = {membership.lobby_id for membership in memberships if membership.role == 'master'}
+ main
             master_user_ids = set()
             if master_lobby_ids:
                 lobby_members = LobbyMember.query.filter(LobbyMember.lobby_id.in_(master_lobby_ids)).all()
@@ -419,7 +458,16 @@ def Inventory():
             icon_path = None
             if 'icon' in request.files:
                 icon_file = request.files['icon']
+ codex/add-lobby-features-and-inventory-system-pjrxnz
+                if icon_file.filename != '':
+                    upload_folder = "DRAsite/static/images/items/"
+                    if not os.path.exists(upload_folder):
+                        os.makedirs(upload_folder)
+                    icon_path = os.path.join(upload_folder, f"{target_user_id}_{icon_file.filename}")
+                    icon_file.save(icon_path)
+
                 icon_path = save_upload(icon_file, os.path.join("images", "items"), target_user_id)
+main
 
             if name and item_type:
                 db.session.add(InventoryItem(
@@ -456,7 +504,15 @@ def Inventory():
 
     items = InventoryItem.query.filter_by(user_id=user.id).order_by(InventoryItem.created_at.desc()).all()
     memberships = LobbyMember.query.filter_by(user_id=user.id).all()
+codex/add-lobby-features-and-inventory-system-pjrxnz
+    master_lobby_ids = {
+        membership.lobby_id
+        for membership in memberships
+        if membership.role in {'master', 'admin'}
+    }
+
     master_lobby_ids = {membership.lobby_id for membership in memberships if membership.role == 'master'}
+main
     master_user_ids = set()
     if master_lobby_ids:
         lobby_members = LobbyMember.query.filter(LobbyMember.lobby_id.in_(master_lobby_ids)).all()

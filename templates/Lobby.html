@@ -60,7 +60,11 @@
                 <h3>Ваші лобі</h3>
                 <div class="stack">
                     {% if member_lobbies %}
+codex/add-lobby-features-and-inventory-system-pjrxnz
+                        {% set role_labels = {'master': 'Мастер', 'player': 'Гравець', 'spectator': 'Глядач', 'admin': 'Адмін'} %}
+
                         {% set role_labels = {'master': 'Мастер', 'player': 'Гравець', 'spectator': 'Глядач'} %}
+main
                         {% for membership in member_lobbies %}
                             {% set viewer_role = membership.role %}
                             <div class="lobby-card">
@@ -94,7 +98,11 @@
                                                 <div class="chip-grid">
                                                     <span class="chip">{{ role_labels.get(member.role, member.role) }}</span>
                                                     {% if member.user.characters %}
+codex/add-lobby-features-and-inventory-system-pjrxnz
+                                                        {% if viewer_role in ['master', 'spectator', 'admin'] or member.user_id == user.id %}
+
                                                         {% if viewer_role in ['master', 'spectator'] or member.user_id == user.id %}
+main
                                                             <span class="chip">HP: {{ member.user.characters.hit_points }}</span>
                                                             <span class="chip">Золото: {{ member.user.characters.gold }}</span>
                                                         {% endif %}
