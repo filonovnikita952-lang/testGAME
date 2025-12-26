@@ -80,6 +80,41 @@ form {
     gap: 12px;
 }
 
+.alerts {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 12px 0;
+}
+
+.alert {
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.06);
+    font-size: 0.9rem;
+}
+
+.alert--success {
+    border-color: rgba(77, 209, 155, 0.5);
+    color: #4dd19b;
+}
+
+.alert--danger {
+    border-color: rgba(255, 107, 107, 0.5);
+    color: #ff6b6b;
+}
+
+.alert--warning {
+    border-color: rgba(245, 184, 107, 0.5);
+    color: #f5b86b;
+}
+
+.alert--info {
+    border-color: rgba(109, 211, 255, 0.5);
+    color: #6dd3ff;
+}
+
 label {
     font-weight: 600;
 }
@@ -119,5 +154,25 @@ a {
     .header {
         flex-direction: column;
         gap: 12px;
+    }
+
+    body {
+        padding: 110px 16px 32px;
+    }
+
+    .logo {
+        width: 96px;
+    }
+
+    .navigation {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .registration-container {
+        padding: 22px;
+        border-radius: 18px;
     }
 }

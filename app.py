@@ -1,12 +1,16 @@
 #!C:\Users\oleks\AppData\Local\Programs\Python\Python313\python.exe
 from datetime import datetime
+import os
 import secrets
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.exc import IntegrityError
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+mysqlconnector://Sanya1825:S0987654321s@Sanya1825.mysql.pythonanywhere-services.com/Sanya1825$default'
+database_url = os.environ.get('DATABASE_URL')
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///dra.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'supersecretkey'
 db = SQLAlchemy(app)
 
@@ -81,6 +85,10 @@ class InventoryItem(db.Model):
     user = db.relationship('userid', back_populates='inventory_items')
 
 
+with app.app_context():
+    db.create_all()
+
+
 @app.route("/")
 @app.route("/index")
 def index():
@@ -144,8 +152,6 @@ def Regulations():
     return "<h1>Hello World</h1>"
 
 
-import os
-
 @app.route("/profile", methods=['GET', 'POST'])
 def profile():
     if 'user_id' not in session:
@@ -204,6 +210,11 @@ def register():
             flash('Цей email вже зареєстрований!', 'danger')
             return redirect(url_for('register'))
 
+        existing_nickname = userid.query.filter_by(nickname=nickname).first()
+        if existing_nickname:
+            flash('Цей нікнейм вже зайнятий!', 'danger')
+            return redirect(url_for('register'))
+
         new_user = userid(
             email=email,
             nickname=nickname,
@@ -211,7 +222,12 @@ def register():
             is_admin=admin_code == 'DRA-ADMIN-2024'
         )
         db.session.add(new_user)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash('Не вдалося створити акаунт. Спробуйте інший email або нікнейм.', 'danger')
+            return redirect(url_for('register'))
 
         flash('Реєстрація успішна! Тепер ви можете увійти.', 'success')
         return redirect(url_for('log_in'))

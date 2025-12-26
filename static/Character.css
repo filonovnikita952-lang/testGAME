@@ -115,6 +115,14 @@ select {
     font-size: 16px;
 }
 
+.content input[type="text"] {
+    width: min(100%, 320px);
+}
+
+.content select {
+    width: min(100%, 240px);
+}
+
     .hidden {
         position: absolute;
         top: 0;
@@ -308,6 +316,41 @@ select {
     to {
         opacity: 1;
         transform: translate(-50%,-50%)
+    }
+}
+
+@media (max-width: 900px) {
+    .header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .logo {
+        width: 150px;
+        margin-right: 0;
+    }
+
+    .content {
+        text-align: left;
+        margin: 16px;
+        padding: 16px;
+    }
+}
+
+@media (max-width: 600px) {
+    nav a {
+        font-size: 0.9rem;
+    }
+
+    .content {
+        margin: 12px;
+        padding: 14px;
+    }
+
+    .user-chip {
+        width: 100%;
+        justify-content: space-between;
     }
 }
 
