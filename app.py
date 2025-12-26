@@ -6,6 +6,7 @@ import secrets
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import IntegrityError
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 database_url = os.environ.get('DATABASE_URL')
@@ -13,6 +14,19 @@ app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///dra.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'supersecretkey'
 db = SQLAlchemy(app)
+
+def save_upload(file, subdir, filename_prefix):
+    if not file or file.filename == '':
+        return None
+    filename = secure_filename(file.filename)
+    if not filename:
+        return None
+    upload_folder = os.path.join(app.static_folder, subdir)
+    os.makedirs(upload_folder, exist_ok=True)
+    saved_filename = f"{filename_prefix}_{filename}"
+    file_path = os.path.join(upload_folder, saved_filename)
+    file.save(file_path)
+    return os.path.join(subdir, saved_filename).replace(os.path.sep, "/")
 
 
 # Спочатку визначаємо Character
@@ -178,19 +192,9 @@ def profile():
         user.description = request.form.get('description', '').strip() or None
         if 'avatar' in request.files:
             file = request.files['avatar']
-            if file.filename != '':
-                upload_folder = "DRAsite/static/images/"
-                if not os.path.exists(upload_folder):
-                    os.makedirs(upload_folder)
-
-                avatar_path = os.path.join(upload_folder, f"{user.id}_{file.filename}")
-                file.save(avatar_path)
-
-                if avatar is None:
-                    user.userImage = avatar_path
-                else:
-                    user.userImage = avatar_path  # Оновлюємо фото
-
+            avatar_path = save_upload(file, "images", user.id)
+            if avatar_path:
+                user.userImage = avatar_path
                 db.session.commit()
                 flash('Аватар оновлено!', 'success')
 
@@ -250,7 +254,7 @@ def News():
 
 @app.route("/Char")
 def Char():
-    return render_template('Char.html')
+    return redirect(url_for('Character'))
 
 @app.route("/Lobby", methods=['GET', 'POST'])
 def lobby_page():
@@ -363,12 +367,7 @@ def Inventory():
             icon_path = None
             if 'icon' in request.files:
                 icon_file = request.files['icon']
-                if icon_file.filename != '':
-                    upload_folder = "DRAsite/static/images/items/"
-                    if not os.path.exists(upload_folder):
-                        os.makedirs(upload_folder)
-                    icon_path = os.path.join(upload_folder, f"{target_user_id}_{icon_file.filename}")
-                    icon_file.save(icon_path)
+                icon_path = save_upload(icon_file, os.path.join("images", "items"), target_user_id)
 
             if name and item_type:
                 db.session.add(InventoryItem(
