@@ -5,6 +5,7 @@ import secrets
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 
@@ -105,6 +106,23 @@ class InventoryItem(db.Model):
 
 with app.app_context():
     db.create_all()
+    inspector = inspect(db.engine)
+    table_names = set(inspector.get_table_names())
+    if 'userid' in table_names:
+        user_columns = {column['name'] for column in inspector.get_columns('userid')}
+        missing_user_columns = {
+            'userImage': 'userImage VARCHAR(255)',
+            'description': 'description TEXT',
+            'is_admin': 'is_admin BOOLEAN'
+        }
+        for column_name, column_ddl in missing_user_columns.items():
+            if column_name not in user_columns:
+                db.session.execute(text(f'ALTER TABLE userid ADD COLUMN {column_ddl}'))
+    if 'characters' in table_names:
+        character_columns = {column['name'] for column in inspector.get_columns('characters')}
+        if 'CharImage' not in character_columns:
+            db.session.execute(text('ALTER TABLE characters ADD COLUMN CharImage VARCHAR(255)'))
+    db.session.commit()
 
 
 @app.route("/")
