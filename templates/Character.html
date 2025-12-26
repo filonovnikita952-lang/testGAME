@@ -54,6 +54,11 @@
             <option value="Психік" {% if characters and characters.char_class=="Психік" %}selected{% endif %}>Психік
             </option>
         </select>
+        <label>HP:</label>
+        <input type="number" name="hit_points" value="{{ characters.hit_points if characters else 10 }}" min="0" required>
+
+        <label>Золото:</label>
+        <input type="number" name="gold" value="{{ characters.gold if characters else 0 }}" min="0" required>
     </div>
     <div class="digital__content digital__width-wrapper">
         <div class="digital__slide-container digital__slide-abilities default">

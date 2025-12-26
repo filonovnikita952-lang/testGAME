@@ -36,8 +36,19 @@
         <section class="inventory">
             <div class="inventory__panel">
                 <h2>Додати предмет</h2>
-                <form method="POST" class="form">
+                <form method="POST" class="form" enctype="multipart/form-data">
                     <input type="hidden" name="action" value="add">
+                    {% if is_master %}
+                        <label for="target_user_id">Кому видати</label>
+                        <select id="target_user_id" name="target_user_id">
+                            <option value="{{ user.id }}">Собі</option>
+                            {% for recipient in recipients %}
+                                {% if recipient.id != user.id %}
+                                    <option value="{{ recipient.id }}">{{ recipient.nickname }}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    {% endif %}
                     <label for="name">Назва</label>
                     <input type="text" id="name" name="name" placeholder="Ельфійський клинок" required>
 
@@ -67,20 +78,30 @@
                     <label for="description">Опис</label>
                     <textarea id="description" name="description" rows="3" placeholder="Ефект, бонус, сюжетне значення..."></textarea>
 
+                    {% if is_master %}
+                        <label for="icon">Іконка предмету</label>
+                        <input type="file" id="icon" name="icon" accept="image/*">
+                    {% endif %}
+
                     <button type="submit" class="button">Додати</button>
                 </form>
             </div>
             <div class="inventory__list">
                 <h2>Ваш інвентар</h2>
-                <div class="stack">
+                <div class="inventory-grid">
                     {% if items %}
                         {% for item in items %}
-                            <div class="inventory-card">
-                                <div class="inventory-card__header">
-                                    <div>
-                                        <h3>{{ item.name }}</h3>
-                                        <p class="muted">{{ item.item_type }} • {{ item.rarity }}</p>
-                                    </div>
+                            <div class="inventory-slot {% if item.durability == 0 %}inventory-slot--broken{% endif %}">
+                                <div class="inventory-slot__icon">
+                                    {% if item.icon_path %}
+                                        <img src="{{ url_for('static', filename=item.icon_path.split('static/')[-1]) }}" alt="{{ item.name }}">
+                                    {% else %}
+                                        <span class="inventory-slot__placeholder">+</span>
+                                    {% endif %}
+                                </div>
+                                <div class="inventory-slot__meta">
+                                    <h3>{{ item.name }}</h3>
+                                    <p class="muted">{{ item.item_type }} • {{ item.rarity }}</p>
                                     <span class="badge">{{ item.durability }}/{{ item.max_durability }}</span>
                                 </div>
                                 <div class="durability">
