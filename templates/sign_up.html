@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Реєстрація | DRA</title>
+    <link rel="stylesheet" href="static/sign_up.css">
+    <header class="header">
+       <img src="/static/images/logo.png" alt="DRA Logo" class="logo">
+        <nav class="navigation">
+            <a href="/">Головна</a>
+        </nav>
+    </header>
+</head>
+<body>
+    <div class="registration-container">
+        <h2>Реєстрація</h2>
+        <form action="{{ url_for('register') }}" method="POST">
+            <label for="email">Email:</label>
+            <input type="email" id="email" name="email" required>
+
+            <label for="nickname">Нікнейм:</label>
+            <input type="text" id="nickname" name="nickname" required>
+
+            <label for="password">Пароль:</label>
+            <input type="password" id="password" name="password" required>
+
+            <button type="submit">Зареєструватися</button>
+        </form>
+        <p>Вже маєте акаунт? <a href="/LogIn">Увійдіть тут</a></p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="/static/images/logo35.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вхід на сайт DRA</title>
+    <link rel="stylesheet" href="static/sign_up.css">
+</head>
+<body>
+   <header class="header">
+       <img src="/static/images/logo.png" alt="DRA Logo" class="logo">
+        <nav class="navigation">
+            <a href="/">Головна</a>
+        </nav>
+    </header>
+    <div class="registration-container">
+        <h2>Вхід</h2>
+        <form method="POST" action="/LogIn">
+            <label for="email">Email:</label>
+            <input type="email" name="email" required>
+
+            <label for="password">Пароль:</label>
+            <input type="password" name="password" required>
+
+            <button type="submit">Увійти</button>
+        </form>
+        <p>Ще не маєте акаунту? <a href="/SignUp">Зареєструйтеся</a></p>
+    </div>
+</body>
+</html>

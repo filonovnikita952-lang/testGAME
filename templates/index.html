@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="/static/images/logo35.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="static/style.css">
+    <title>DRA Site</title>
+</head>
+<body>
+    <header class="header">
+
+       <img src="/static/images/logo.png" alt="DRA Logo" class="logo">
+        <nav class="navigation">
+            {% if user %}
+            <p>
+                {{ user.nickname }}
+                {% if user.userImage %}
+                    <a href="/profile"><img src="{{ url_for('static', filename=user.userImage.split('static/')[-1]) }}" alt="avatar" class="avatar"></a>
+                {% else %}
+                    <a href="/profile"><img src="/static/images/default_avatar.png" alt="Аватар" class="avatar"></a>
+                {% endif %}
+            </p>
+            {% else %}
+            <p>Ви не увійшли в акаунт.</p>
+            <a href="/LogIn">Log In</a>
+            <a href="/SignUp">Sign Up</a>
+            {% endif %}
+        </nav>
+    </header>
+    <div class="url">
+        <img src="/static/images/background1left.jpg" class="backgroundleft">
+        <a href="/Character">   <font  face="Arial" size="3" color ="#F5E2CD"> Мій Персонаж 🦸 </font> </a>
+        <a href="/Regulations">  <font  face="Arial" size="3" color ="#F5E2CD"> Правила 📔 </font> </a>
+        <a href="/Mechanics">   <font  face="Arial" size="3" color ="#F5E2CD"> Механіки ⚙️ </font> </a>
+        <a href="/News">    <font  face="Arial" size="3" color ="#F5E2CD"> Новини 📺 </font> </a>
+    </div>
+    <div class="content">
+        <h1><font  face="Cursive" size="9" color ="#F5E2CD"> Official DRA Site </font> </h1>
+        <p><font  face="Cursive" size="3" color ="#F5E2CD"> Сайт Створений Саньою </font></p>
+    </div>
+    <div class="banner-container" id="banner">
+    <button class="arrow left">&#10094;</button> <!-- ← -->
+    <button class="arrow right">&#10095;</button> <!-- → -->
+
+    <img src="/static/banners/banner1.jpg" class="banner active">
+    <img src="/static/banners/banner2.jpg" class="banner">
+    <img src="/static/banners/banner3.jpg" class="banner">
+  </div>
+
+  <script>
+    const banners = document.querySelectorAll('.banner');
+      let current = 0;
+
+      function showBanner(index) {
+        banners[current].classList.remove('active');
+        current = (index + banners.length) % banners.length;
+        banners[current].classList.add('active');
+      }
+
+      document.querySelector('.arrow.left').addEventListener('click', () => {
+        showBanner(current - 1);
+      });
+
+      document.querySelector('.arrow.right').addEventListener('click', () => {
+        showBanner(current + 1);
+      });
+
+      setInterval(() => showBanner(current + 1), 16000);
+  </script>
+    <footer>
+        <p>&copy; 2025 DRA Sanya Corporation. Всі права захищені.</p>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <link rel="stylesheet" href="static/style.css">
+    <link rel="icon" type="image/png" href="/static/images/logo35.png">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Профіль користувача</title>
+    <style>
+        .profile-container {
+            max-width: 400px;
+            margin: auto;
+            text-align: center;
+        }
+        .avatar {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #333;
+        }
+        .upload-btn {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+       <img src="/static/images/logo.png" alt="DRA Logo" class="logo">
+    </header>
+    <nav>
+        <a href="/">   <font  face="Arial" size="3" color ="#F5E2CD"> Головна </font> </a>
+        <a href="/Character">   <font  face="Arial" size="3" color ="#F5E2CD"> Мій Персонаж 🦸 </font> </a>
+        <a href="/Regulations">  <font  face="Arial" size="3" color ="#F5E2CD"> Правила 📔 </font> </a>
+        <a href="/Mechanics">   <font  face="Arial" size="3" color ="#F5E2CD"> Механіки ⚙️ </font> </a>
+        <a href="/News">    <font  face="Arial" size="3" color ="#F5E2CD"> Новини 📺 </font> </a>
+    </nav>
+<div class="content">
+<div class="profile-container">
+    <h2>Профіль користувача</h2>
+    {% if user.userImage %}
+    <img src="{{ url_for('static', filename=user.userImage.split('static/')[-1]) }}" alt="Avatar" class="avatar">
+    {% else %}
+    <img src="/static/images/default_avatar.png" alt="Аватар" class="avatar">
+    {% endif %}
+
+
+
+    <form action="{{ url_for('profile') }}" method="post" enctype="multipart/form-data" class="upload-btn">
+        <input type="file" name="avatar" accept="image/*" required>
+        <button type="submit">Оновити аватар</button>
+    </form>
+
+    <h3>Інформація</h3>
+    <p><strong>Нікнейм:</strong> {{ user.nickname }}</p>
+    <p><strong>Email:</strong> {{ user.email }}</p>
+</div>
+</div>
+</body>
+</html>
