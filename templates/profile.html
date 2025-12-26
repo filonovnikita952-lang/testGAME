@@ -53,7 +53,9 @@
                 <p class="muted">{{ user.email }}</p>
                 <form action="{{ url_for('profile') }}" method="post" enctype="multipart/form-data" class="form">
                     <label for="avatar">Оновити аватар</label>
-                    <input type="file" id="avatar" name="avatar" accept="image/*" required>
+                    <input type="file" id="avatar" name="avatar" accept="image/*">
+                    <label for="description">Опис акаунту</label>
+                    <textarea id="description" name="description" rows="4" placeholder="Короткий опис про себе...">{{ user.description or '' }}</textarea>
                     <button type="submit" class="button">Зберегти</button>
                 </form>
             </div>
