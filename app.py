@@ -7,10 +7,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
- codex/add-lobby-features-and-inventory-system-pjrxnz
-from sqlalchemy import text
 from werkzeug.utils import secure_filename
- main
 
 app = Flask(__name__)
 database_url = os.environ.get('DATABASE_URL')
@@ -109,7 +106,7 @@ class InventoryItem(db.Model):
 
 with app.app_context():
     db.create_all()
- codex/add-lobby-features-and-inventory-system-pjrxnz
+
     def ensure_schema():
         if db.engine.url.drivername != 'sqlite':
             return
@@ -138,6 +135,7 @@ with app.app_context():
 
     inspector = inspect(db.engine)
     table_names = set(inspector.get_table_names())
+
     def ensure_table_columns(table_name, columns):
         if table_name not in table_names:
             return
@@ -187,7 +185,6 @@ with app.app_context():
         'user_id': 'user_id INTEGER'
     })
     db.session.commit()
-main
 
 
 @app.route("/")
@@ -438,15 +435,11 @@ def Inventory():
             description = request.form.get('description', '').strip()
             target_user_id = int(request.form.get('target_user_id', user.id))
             memberships = LobbyMember.query.filter_by(user_id=user.id).all()
- codex/add-lobby-features-and-inventory-system-pjrxnz
             master_lobby_ids = {
                 membership.lobby_id
                 for membership in memberships
-                if membership.role in {'master', 'admin'}
+                if membership.role == 'master'
             }
-
-            master_lobby_ids = {membership.lobby_id for membership in memberships if membership.role == 'master'}
- main
             master_user_ids = set()
             if master_lobby_ids:
                 lobby_members = LobbyMember.query.filter(LobbyMember.lobby_id.in_(master_lobby_ids)).all()
@@ -458,16 +451,7 @@ def Inventory():
             icon_path = None
             if 'icon' in request.files:
                 icon_file = request.files['icon']
- codex/add-lobby-features-and-inventory-system-pjrxnz
-                if icon_file.filename != '':
-                    upload_folder = "DRAsite/static/images/items/"
-                    if not os.path.exists(upload_folder):
-                        os.makedirs(upload_folder)
-                    icon_path = os.path.join(upload_folder, f"{target_user_id}_{icon_file.filename}")
-                    icon_file.save(icon_path)
-
                 icon_path = save_upload(icon_file, os.path.join("images", "items"), target_user_id)
-main
 
             if name and item_type:
                 db.session.add(InventoryItem(
@@ -504,15 +488,11 @@ main
 
     items = InventoryItem.query.filter_by(user_id=user.id).order_by(InventoryItem.created_at.desc()).all()
     memberships = LobbyMember.query.filter_by(user_id=user.id).all()
-codex/add-lobby-features-and-inventory-system-pjrxnz
     master_lobby_ids = {
         membership.lobby_id
         for membership in memberships
-        if membership.role in {'master', 'admin'}
+        if membership.role == 'master'
     }
-
-    master_lobby_ids = {membership.lobby_id for membership in memberships if membership.role == 'master'}
-main
     master_user_ids = set()
     if master_lobby_ids:
         lobby_members = LobbyMember.query.filter(LobbyMember.lobby_id.in_(master_lobby_ids)).all()
@@ -539,6 +519,6 @@ def log_in():
 
 
 if __name__ == '__main__':
-        with app.app_context():
-            db.create_all()
-        app.run(debug=True)
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True)
