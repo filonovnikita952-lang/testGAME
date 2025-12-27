@@ -7,14 +7,14 @@
 <section class="hero">
     <div class="hero__content">
         <p class="hero__eyebrow">DRA | Advanced tabletop management</p>
-        <h2>Керуйте кампанією, персонажами та пригодами на одному порталі</h2>
+        <h2>Керуйте кампанією, командою та пригодами на одному порталі</h2>
         <p class="hero__subtitle">
-            DRA обʼєднує ключові інструменти майстра та гравців: лобі з ключем доступу, дизайн інвентаря в стилі
-            BG3 та профіль з аватаром.
+            DRA обʼєднує ключові інструменти майстра та гравців: лобі з ключем доступу, профілі учасників та
+            швидку взаємодію між усіма ролями.
         </p>
         <div class="hero__actions">
             <a class="button" href="{{ url_for('lobby_page') }}">Створити лобі</a>
-            <a class="button ghost" href="{{ url_for('inventory') }}">Відкрити інвентар</a>
+            <a class="button ghost" href="{{ url_for('profile') }}">Переглянути профіль</a>
         </div>
         <div class="hero__stats">
             <div class="stat">
@@ -23,11 +23,11 @@
             </div>
             <div class="stat">
                 <span class="stat__value">24/7</span>
-                <span class="stat__label">Доступ до персонажа</span>
+                <span class="stat__label">Оновлення профілю</span>
             </div>
             <div class="stat">
-                <span class="stat__value">BG3</span>
-                <span class="stat__label">Дизайн інвентаря</span>
+                <span class="stat__value">Live</span>
+                <span class="stat__label">Синхронізація ролей</span>
             </div>
         </div>
     </div>
@@ -60,14 +60,14 @@
         <a class="link" href="{{ url_for('lobby_page') }}">Перейти до лобі →</a>
     </article>
     <article class="card">
-        <h3>Інвентар у стилі Baldur's Gate 3</h3>
-        <p>Підігнаний під DRA інтерфейс із міцністю предметів та швидким ремонтом.</p>
-        <a class="link" href="{{ url_for('inventory') }}">Переглянути інвентар →</a>
+        <h3>Профілі учасників</h3>
+        <p>Зберігайте аватари, контакти та короткі описи всіх учасників кампанії.</p>
+        <a class="link" href="{{ url_for('profile') }}">Відкрити профіль →</a>
     </article>
     <article class="card">
-        <h3>Акаунти і персонажі</h3>
-        <p>Персонаж зберігається за вашим акаунтом, а доступ привʼязаний до email.</p>
-        <a class="link" href="{{ url_for('character') }}">Налаштувати героя →</a>
+        <h3>Новини і оновлення</h3>
+        <p>Слідкуйте за анонсами та змінами в інструментах DRA.</p>
+        <a class="link" href="{{ url_for('news') }}">Читати новини →</a>
     </article>
 </section>
 
@@ -77,8 +77,8 @@
         <p>Ми підготували три ключові модулі для сучасного ведення настільних ігор:</p>
         <ul class="list">
             <li>Лобі тільки для адмінів, де учасники заходять по ключу.</li>
-            <li>Інвентар зі стилем BG3, міцністю та швидким ремонтом.</li>
-            <li>Профіль з привʼязкою акаунта, персонажа та аватара.</li>
+            <li>Профілі гравців з аватарами та короткими описами.</li>
+            <li>Окремий простір для новин та оновлень кампаній.</li>
         </ul>
     </div>
     <div class="glass-panel">
@@ -89,8 +89,8 @@
             <div class="progress__bar"><span style="width: 78%"></span></div>
         </div>
         <div class="progress">
-            <div class="progress__label">Заповнений інвентар</div>
-            <div class="progress__bar"><span style="width: 52%"></span></div>
+            <div class="progress__label">Оновлені профілі</div>
+            <div class="progress__bar"><span style="width: 64%"></span></div>
         </div>
     </div>
 </section>

@@ -64,11 +64,10 @@
                                 <p class="muted">{{ member.user.description or 'Опис ще не додано.' }}</p>
                                 <div class="chip-grid">
                                     <span class="chip">{{ role_labels.get(member.role, member.role) }}</span>
-                                    {% if member.user.character %}
-                                        <span class="chip">HP: {{ member.user.character.hit_points }}</span>
-                                        <span class="chip">Золото: {{ member.user.character.gold }}</span>
+                                    {% if member.user.description %}
+                                        <span class="chip">Профіль: оновлено</span>
                                     {% else %}
-                                        <span class="chip">Персонаж не створено</span>
+                                        <span class="chip">Профіль: без опису</span>
                                     {% endif %}
                                 </div>
                             </div>
