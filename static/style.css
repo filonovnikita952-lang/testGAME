@@ -137,6 +137,11 @@ a {
     gap: 32px;
 }
 
+.page--lobby {
+    padding-left: 24px;
+    padding-right: 4vw;
+}
+
 .footer {
     padding: 24px 6vw 40px;
     text-align: center;
@@ -464,8 +469,25 @@ textarea {
     gap: 16px;
     border: 1px solid var(--border);
     border-radius: 16px;
-    padding: 16px;
+    padding: 10px 12px;
     margin-bottom: 12px;
+ codex/fix-participant-panel-alignment-and-statuses-jc5xco
+    width: min(220px, 100%);
+    align-self: flex-start;
+}
+
+.lobby-card h1 {
+    font-size: 1.1rem;
+}
+
+.lobby-card strong {
+    font-size: 0.95rem;
+}
+
+.lobby-card__content {
+    display: grid;
+    gap: 4px;
+
     width: min(260px, 100%);
     align-self: flex-start;
 }
@@ -473,6 +495,7 @@ textarea {
 .lobby-card__content {
     display: grid;
     gap: 6px;
+ main
 }
 
 .lobby-card__action {
@@ -561,8 +584,13 @@ textarea {
     display: grid;
     grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
     gap: 24px;
-    align-items: start;
+    align-items: stretch;
     margin: 12px 0 24px;
+    min-height: 70vh;
+}
+
+.lobby-side {
+    justify-self: start;
 }
 
 .lobby-side {
@@ -570,7 +598,7 @@ textarea {
 }
 
 .lobby-workspace {
-    min-height: 260px;
+    min-height: 100%;
 }
 
 .header__toggle {
