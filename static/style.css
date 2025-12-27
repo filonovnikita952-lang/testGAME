@@ -400,6 +400,12 @@ textarea {
     gap: 12px;
 }
 
+.stack {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
 .alert {
     padding: 12px 16px;
     border-radius: 12px;
@@ -435,41 +441,6 @@ textarea {
 
 .profile__avatar {
     text-align: center;
-}
-
-.inventory-grid {
-    display: grid;
-    gap: 16px;
-}
-
-.inventory-item {
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 16px;
-    background: rgba(0, 0, 0, 0.2);
-}
-
-.inventory-item__header {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-}
-
-.item-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    object-fit: cover;
-    border: 1px solid var(--border);
-}
-
-.item-icon--placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--muted);
-    font-weight: 700;
 }
 
 .lobby-card {
@@ -515,5 +486,64 @@ textarea {
 
     .profile {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 680px) {
+    .header {
+        padding: 16px 5vw;
+    }
+
+    .logo {
+        width: 88px;
+    }
+
+    .navigation {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .navigation a {
+        text-align: center;
+    }
+
+    .user-chip {
+        justify-content: center;
+    }
+
+    .page {
+        padding: 32px 5vw 64px;
+    }
+
+    .hero__actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .hero__actions .button {
+        justify-content: center;
+    }
+
+    .banner {
+        height: 200px;
+    }
+
+    .card {
+        padding: 20px;
+    }
+
+    .form.inline {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .lobby-card {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .member-card__main {
+        flex-direction: column;
     }
 }
