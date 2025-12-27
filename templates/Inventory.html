@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+
+{% block title %}Інвентар{% endblock %}
+{% block header_title %}Інвентар{% endblock %}
+{% block page_class %}page--inventory{% endblock %}
+
+{% block content %}
+<section class="inventory">
+    <div class="inventory-panel">
+        <div class="inventory-tabs" role="tablist" aria-label="Режими інвентаря">
+            <button class="tab-button is-active" data-tab="equipment" type="button" role="tab">Екіпировка</button>
+            <button class="tab-button" data-tab="stats" type="button" role="tab">Stats</button>
+        </div>
+
+        <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
+            <div class="paper-doll">
+                <img src="/static/images/default_avatar.png" alt="Персонаж" class="paper-doll__image">
+                <div class="paper-doll__slot slot-head" data-slot="head">Голова</div>
+                <div class="paper-doll__slot slot-body" data-slot="body">Тіло</div>
+                <div class="paper-doll__slot slot-hands" data-slot="hands">Руки</div>
+                <div class="paper-doll__slot slot-legs" data-slot="legs">Ноги</div>
+                <div class="paper-doll__slot slot-weapon" data-slot="weapon">Зброя</div>
+                <div class="paper-doll__slot slot-shield" data-slot="offhand">Щит</div>
+                <div class="paper-doll__slot slot-amulet" data-slot="amulet">Амулет</div>
+                <div class="paper-doll__slot slot-ring" data-slot="ring">Кільце</div>
+            </div>
+        </div>
+
+        <div class="tab-content" data-panel="stats" role="tabpanel">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-card__label">STR</span>
+                    <strong>14</strong>
+                    <span class="stat-card__mod">+2</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-card__label">DEX</span>
+                    <strong>12</strong>
+                    <span class="stat-card__mod">+1</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-card__label">CON</span>
+                    <strong>13</strong>
+                    <span class="stat-card__mod">+1</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-card__label">INT</span>
+                    <strong>10</strong>
+                    <span class="stat-card__mod">+0</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-card__label">WIS</span>
+                    <strong>11</strong>
+                    <span class="stat-card__mod">+0</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-card__label">CHA</span>
+                    <strong>16</strong>
+                    <span class="stat-card__mod">+3</span>
+                </div>
+            </div>
+
+            <div class="stats-extra">
+                <div class="stat-pill">HP: 38</div>
+                <div class="stat-pill">Stamina: 22</div>
+                <div class="stat-pill">Mana: 18</div>
+                <div class="stat-pill">Armor Class: 15</div>
+                <div class="stat-pill">Resistances: fire, poison</div>
+                <div class="stat-pill">Carry Capacity: 80</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="inventory-grid-panel">
+        <div class="inventory-actions">
+            <button class="button ghost" type="button" id="auto-pack">Auto-pack</button>
+            <button class="button" type="button" id="rotate-item">Rotate (R)</button>
+        </div>
+        <div class="tetris-grid" id="tetris-grid" aria-label="Рюкзак"></div>
+        <p class="muted inventory-hint">Перетягуйте предмети, натискайте R для повороту та ПКМ для контекстного меню.</p>
+    </div>
+</section>
+
+<div class="context-menu" id="context-menu" aria-hidden="true">
+    <div class="context-menu__header">
+        <strong id="context-name">Item</strong>
+        <span class="chip" id="context-type">type</span>
+        <span class="chip chip--quality" id="context-quality">quality</span>
+    </div>
+    <p class="context-menu__meta" id="context-size">Розмір: 1×1</p>
+    <p class="context-menu__meta" id="context-weight">Вага: 0</p>
+    <p class="context-menu__description" id="context-description"></p>
+    <div class="context-menu__actions">
+        <button class="button ghost" type="button" data-action="use">Use</button>
+        <button class="button ghost" type="button" data-action="equip">Equip</button>
+        <button class="button ghost" type="button" data-action="rotate">Rotate</button>
+        <button class="button ghost" type="button" data-action="split">Split</button>
+        <button class="button ghost" type="button" data-action="drop">Drop</button>
+        <button class="button" type="button" data-action="transfer">Transfer to…</button>
+    </div>
+</div>
+
+<div class="transfer-modal" id="transfer-modal" aria-hidden="true">
+    <div class="transfer-modal__content">
+        <h3>Передати предмет</h3>
+        <div class="transfer-modal__players" id="transfer-players"></div>
+        <button class="button ghost" type="button" id="transfer-close">Скасувати</button>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='inventory.js') }}" defer></script>
+{% endblock %}

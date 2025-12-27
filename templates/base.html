@@ -24,6 +24,7 @@
     <nav class="navigation">
         <a href="{{ url_for('index') }}">Головна</a>
         <a href="{{ url_for('lobby_page') }}">Лобі</a>
+        <a href="{{ url_for('inventory') }}">Інвентар</a>
         <a href="{{ url_for('news') }}">Новини</a>
         {% if user %}
             <a href="{{ url_for('profile') }}">Профіль</a>
@@ -44,7 +45,7 @@
     </nav>
 </header>
 
-<main class="page">
+<main class="page {% block page_class %}{% endblock %}">
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             <section class="alerts">
