@@ -32,12 +32,12 @@
 {% endif %}
 
 <section class="stack">
-    <h2>Ваші лобі</h2>
     {% if member_lobbies %}
         {% set role_labels = {'master': 'Майстер', 'player': 'Гравець', 'spectator': 'Глядач'} %}
         {% for membership in member_lobbies %}
             <div class="lobby-card">
                 <div>
+                    <h1>Ваше лобі</h1>
                     <strong>{{ membership.lobby.name }}</strong>
                     <p class="muted">Ключ: {{ membership.lobby.access_key }}</p>
                     <p class="muted">Учасників: {{ membership.lobby.members | length }}</p>

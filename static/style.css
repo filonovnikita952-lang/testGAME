@@ -39,7 +39,7 @@ a {
     backdrop-filter: blur(14px);
     background: rgba(11, 13, 22, 0.85);
     border-bottom: 1px solid var(--border);
-    padding: 20px 6vw;
+    padding: 5px 1vw;
     display: flex;
     align-items: center;
     justify-content: space-between;
