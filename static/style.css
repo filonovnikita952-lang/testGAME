@@ -138,6 +138,7 @@ a {
 }
 
 .page--lobby {
+odex/fix-participant-panel-alignment-and-statuses-8tbi9n
     padding-left: 16px;
     padding-right: 4vw;
 }
@@ -145,6 +146,13 @@ a {
 .page--inventory {
     padding-left: 24px;
     padding-right: 24px;
+codex/fix-participant-panel-alignment-and-statuses-0vnoa8
+    padding-left: 16px;
+
+    padding-left: 24px;
+main
+    padding-right: 4vw;
+main
 }
 
 .footer {
@@ -475,6 +483,9 @@ textarea {
     border: 1px solid var(--border);
     border-radius: 16px;
     padding: 10px 12px;
+codex/fix-participant-panel-alignment-and-statuses-8tbi9n
+odex/fix-participant-panel-alignment-and-statuses-0vnoa8
+main
     width: min(200px, 100%);
     align-self: flex-start;
     background: rgba(255, 255, 255, 0.03);
@@ -489,11 +500,40 @@ textarea {
 
 .lobby-card strong {
     font-size: 0.9rem;
+odex/fix-participant-panel-alignment-and-statuses-8tbi9n
+    margin-bottom: 12px;
+ codex/fix-participant-panel-alignment-and-statuses-jc5xco
+    width: min(220px, 100%);
+    align-self: flex-start;
+}
+
+.lobby-card h1 {
+    font-size: 1.1rem;
+}
+
+.lobby-card strong {
+    font-size: 0.95rem;
+main
+main
 }
 
 .lobby-card__content {
     display: grid;
     gap: 4px;
+codex/fix-participant-panel-alignment-and-statuses-8tbi9n
+
+codex/fix-participant-panel-alignment-and-statuses-0vnoa8
+
+    width: min(260px, 100%);
+    align-self: flex-start;
+}
+
+.lobby-card__content {
+    display: grid;
+    gap: 6px;
+ main
+main
+main
 }
 
 .lobby-card__action {
@@ -506,6 +546,24 @@ textarea {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
+}
+
+.member-status {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    text-transform: lowercase;
+}
+
+.member-status--online {
+    color: #7dff9a;
+    border-color: rgba(125, 255, 154, 0.6);
+}
+
+.member-status--offline {
+    color: rgba(255, 255, 255, 0.6);
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 .member-card {
@@ -562,8 +620,16 @@ textarea {
 
 .lobby-layout {
     display: grid;
+codex/fix-participant-panel-alignment-and-statuses-8tbi9n
     grid-template-columns: minmax(180px, 210px) minmax(0, 1fr);
     gap: 20px;
+
+ odex/fix-participant-panel-alignment-and-statuses-0vnoa8
+    grid-template-columns: minmax(180px, 210px) minmax(0, 1fr);
+    gap: 20px;
+    grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+    gap: 24px;
+    main
     align-items: stretch;
     margin: 12px 0 24px;
     min-height: 70vh;
@@ -571,14 +637,34 @@ textarea {
 
 .lobby-side {
     justify-self: start;
+odex/fix-participant-panel-alignment-and-statuses-8tbi9n
     display: flex;
     flex-direction: column;
     gap: 12px;
+=======
+odex/fix-participant-panel-alignment-and-statuses-0vnoa8
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+
+}
+
+.lobby-side {
+    justify-self: start;
+main
+
 }
 
 .lobby-workspace {
     min-height: 100%;
+odex/fix-participant-panel-alignment-and-statuses-8tbi9n
     align-self: start;
+=======
+codex/fix-participant-panel-alignment-and-statuses-0vnoa8
+    align-self: start;
+
+main
+
 }
 
 .header__toggle {

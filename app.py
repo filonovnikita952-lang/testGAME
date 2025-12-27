@@ -144,6 +144,9 @@ def require_user() -> User:
     user = current_user()
     if not user:
         raise AuthError
+    if not user.is_online:
+        user.is_online = True
+        db.session.commit()
     return user
 
 
