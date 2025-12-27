@@ -1,34 +1,24 @@
-<!DOCTYPE html>
-<html lang="uk">
-<head>
-    <meta charset="UTF-8">
-    <link rel="icon" type="image/png" href="/static/images/logo35.png">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/static/style.css">
-    <title>Новини DRA</title>
-</head>
-<body>
-    <header class="header">
-        <div class="brand">
-            <img src="/static/images/logo.png" alt="DRA Logo" class="logo">
-            <div>
-                <p class="brand__tag">Digital RPG Assistant</p>
-                <h1 class="brand__title">Новини</h1>
-            </div>
-        </div>
-        <nav class="navigation">
-            <a href="/">Головна</a>
-            <a href="/Character">Персонаж</a>
-            <a href="/Inventory">Інвентар</a>
-            <a href="/Lobby">Лобі</a>
-        </nav>
-    </header>
+{% extends 'base.html' %}
 
-    <main class="page">
-        <section class="glass-panel">
-            <h2>Останні оновлення</h2>
-            <p class="muted">Сторінка новин готується. Повертайтеся пізніше, щоб дізнатися про нові можливості!</p>
-        </section>
-    </main>
-</body>
-</html>
+{% block title %}Новини DRA{% endblock %}
+{% block header_title %}Новини{% endblock %}
+
+{% block content %}
+<section class="grid">
+    <article class="card">
+        <h2>Оновлення лобі</h2>
+        <p>Майстри отримали нову рольову панель: швидка зміна статусів учасників без перезавантаження сторінки.</p>
+        <span class="chip">Лобі</span>
+    </article>
+    <article class="card">
+        <h2>Інвентар BG3</h2>
+        <p>Додано відстеження міцності, швидкі дії «Використати» та «Полагодити».</p>
+        <span class="chip">Інвентар</span>
+    </article>
+    <article class="card">
+        <h2>Профіль гравця</h2>
+        <p>Підтримуються аватари, опис і позначка ролі в лобі.</p>
+        <span class="chip">Профіль</span>
+    </article>
+</section>
+{% endblock %}

@@ -1,47 +1,26 @@
-<!DOCTYPE html>
-<html lang="uk">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Реєстрація | DRA</title>
-    <link rel="stylesheet" href="/static/sign_up.css">
-</head>
-<body>
-    <header class="header">
-        <img src="/static/images/logo.png" alt="DRA Logo" class="logo">
-        <nav class="navigation">
-            <a href="/">Головна</a>
-            <a href="/Lobby">Лобі</a>
-        </nav>
-    </header>
-    <div class="registration-container">
-        <h2>Реєстрація</h2>
-        <p class="muted">Підключіть свій акаунт та збережіть персонажа у DRA.</p>
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="alerts">
-                    {% for category, message in messages %}
-                        <div class="alert alert--{{ category }}">{{ message }}</div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
-        <form action="{{ url_for('register') }}" method="POST">
-            <label for="email">Email:</label>
-            <input type="email" id="email" name="email" required>
+{% extends 'base.html' %}
 
-            <label for="nickname">Нікнейм:</label>
-            <input type="text" id="nickname" name="nickname" required>
+{% block title %}Реєстрація DRA{% endblock %}
+{% block header_title %}Реєстрація{% endblock %}
 
-            <label for="password">Пароль:</label>
-            <input type="password" id="password" name="password" required>
+{% block content %}
+<section class="card narrow">
+    <h2>Створити акаунт</h2>
+    <form method="post" class="form">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" required>
 
-            <label for="admin_code">Адмін-код (опційно)</label>
-            <input type="text" id="admin_code" name="admin_code" placeholder="DRA-ADMIN-2024">
+        <label for="nickname">Нікнейм</label>
+        <input id="nickname" name="nickname" type="text" required>
 
-            <button type="submit">Зареєструватися</button>
-        </form>
-        <p>Вже маєте акаунт? <a href="/LogIn">Увійдіть тут</a></p>
-    </div>
-</body>
-</html>
+        <label for="password">Пароль</label>
+        <input id="password" name="password" type="password" required>
+
+        <label for="admin_code">Адмін-код (опційно)</label>
+        <input id="admin_code" name="admin_code" type="text" placeholder="DRA-ADMIN-2024">
+
+        <button type="submit" class="button">Зареєструватись</button>
+    </form>
+    <p class="muted">Вже маєте акаунт? <a href="{{ url_for('log_in') }}" class="link">Увійти</a>.</p>
+</section>
+{% endblock %}

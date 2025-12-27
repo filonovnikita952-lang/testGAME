@@ -1,41 +1,33 @@
-#!C:\Users\oleks\AppData\Local\Programs\Python\Python313\python.exe
+from __future__ import annotations
+
+from dataclasses import dataclass
 from datetime import datetime
 import os
 import secrets
+from typing import Optional
 
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, flash, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-database_url = os.environ.get('DATABASE_URL')
-app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///dra.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///dra.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'supersecretkey'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'supersecretkey')
+
+UPLOAD_SUBDIR = 'uploads'
+
+
 db = SQLAlchemy(app)
 
-def save_upload(file, subdir, filename_prefix):
-    if not file or file.filename == '':
-        return None
-    filename = secure_filename(file.filename)
-    if not filename:
-        return None
-    upload_folder = os.path.join(app.static_folder, subdir)
-    os.makedirs(upload_folder, exist_ok=True)
-    saved_filename = f"{filename_prefix}_{filename}"
-    file_path = os.path.join(upload_folder, saved_filename)
-    file.save(file_path)
-    return os.path.join(subdir, saved_filename).replace(os.path.sep, "/")
 
+class Character(db.Model):
+    __tablename__ = 'characters'
 
-# Спочатку визначаємо Character
-class characters(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), nullable=False)
     race = db.Column(db.String(30), nullable=False)
-    CharImage = db.Column(db.String(255), nullable=True)  # Зберігає шлях до файлу
     char_class = db.Column(db.String(30), nullable=False)
     hit_points = db.Column(db.Integer, default=10)
     gold = db.Column(db.Integer, default=0)
@@ -45,40 +37,45 @@ class characters(db.Model):
     intelligence = db.Column(db.Integer, default=10)
     wisdom = db.Column(db.Integer, default=10)
     charisma = db.Column(db.Integer, default=10)
+    image_path = db.Column('CharImage', db.String(255), nullable=True)
 
     user_id = db.Column(db.Integer, db.ForeignKey('userid.id'), unique=True)
-    user = db.relationship('userid', back_populates='characters')
+    user = db.relationship('User', back_populates='character')
 
 
+class User(db.Model):
+    __tablename__ = 'userid'
 
-# Потім UserID
-class userid(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), nullable=False, unique=True)
     nickname = db.Column(db.String(30), nullable=False, unique=True)
-    password = db.Column(db.String(30), nullable=False)
+    password = db.Column(db.String(128), nullable=False)
     userImage = db.Column(db.String(255), nullable=True)
     description = db.Column(db.Text, nullable=True)
     is_admin = db.Column(db.Boolean, default=False)
 
-    characters = db.relationship('characters', back_populates='user', uselist=False)
-    owned_lobbies = db.relationship('Lobby', back_populates='admin')
-    lobby_memberships = db.relationship('LobbyMember', back_populates='user')
-    inventory_items = db.relationship('InventoryItem', back_populates='user')
+    character = db.relationship('Character', back_populates='user', uselist=False)
+    owned_lobbies = db.relationship('Lobby', back_populates='admin', cascade='all, delete-orphan')
+    lobby_memberships = db.relationship('LobbyMember', back_populates='user', cascade='all, delete-orphan')
+    inventory_items = db.relationship('InventoryItem', back_populates='user', cascade='all, delete-orphan')
 
 
 class Lobby(db.Model):
+    __tablename__ = 'lobby'
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), nullable=False)
     access_key = db.Column(db.String(16), unique=True, nullable=False)
     admin_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    admin = db.relationship('userid', back_populates='owned_lobbies')
+    admin = db.relationship('User', back_populates='owned_lobbies')
     members = db.relationship('LobbyMember', back_populates='lobby', cascade='all, delete-orphan')
 
 
 class LobbyMember(db.Model):
+    __tablename__ = 'lobby_member'
+
     id = db.Column(db.Integer, primary_key=True)
     lobby_id = db.Column(db.Integer, db.ForeignKey('lobby.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False)
@@ -86,10 +83,12 @@ class LobbyMember(db.Model):
     joined_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     lobby = db.relationship('Lobby', back_populates='members')
-    user = db.relationship('userid', back_populates='lobby_memberships')
+    user = db.relationship('User', back_populates='lobby_memberships')
 
 
 class InventoryItem(db.Model):
+    __tablename__ = 'inventory_item'
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), nullable=False)
     item_type = db.Column(db.String(60), nullable=False)
@@ -101,251 +100,228 @@ class InventoryItem(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False)
-    user = db.relationship('userid', back_populates='inventory_items')
+    user = db.relationship('User', back_populates='inventory_items')
 
 
 with app.app_context():
     db.create_all()
 
-    def ensure_schema():
-        if db.engine.url.drivername != 'sqlite':
-            return
 
-        def column_exists(table_name, column_name):
-            result = db.session.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
-            return any(row[1] == column_name for row in result)
-
-        migrations = [
-            ("characters", "hit_points", "INTEGER", "10"),
-            ("characters", "gold", "INTEGER", "0"),
-            ("userid", "description", "TEXT", None),
-            ("inventory_item", "icon_path", "VARCHAR(255)", None),
-        ]
-
-        for table_name, column_name, column_type, default_value in migrations:
-            if not column_exists(table_name, column_name):
-                default_clause = f" DEFAULT {default_value}" if default_value is not None else ""
-                db.session.execute(text(
-                    f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}{default_clause}"
-                ))
-
-        db.session.commit()
-
-    ensure_schema()
-
-    inspector = inspect(db.engine)
-    table_names = set(inspector.get_table_names())
-
-    def ensure_table_columns(table_name, columns):
-        if table_name not in table_names:
-            return
-        existing_columns = {column['name'] for column in inspector.get_columns(table_name)}
-        for column_name, column_ddl in columns.items():
-            if column_name not in existing_columns:
-                db.session.execute(text(f'ALTER TABLE {table_name} ADD COLUMN {column_ddl}'))
-
-    ensure_table_columns('userid', {
-        'userImage': 'userImage VARCHAR(255)',
-        'description': 'description TEXT',
-        'is_admin': 'is_admin BOOLEAN'
-    })
-    ensure_table_columns('characters', {
-        'CharImage': 'CharImage VARCHAR(255)',
-        'hit_points': 'hit_points INTEGER',
-        'gold': 'gold INTEGER',
-        'strength': 'strength INTEGER',
-        'dexterity': 'dexterity INTEGER',
-        'constitution': 'constitution INTEGER',
-        'intelligence': 'intelligence INTEGER',
-        'wisdom': 'wisdom INTEGER',
-        'charisma': 'charisma INTEGER',
-        'char_class': 'char_class VARCHAR(30)'
-    })
-    ensure_table_columns('lobby', {
-        'name': 'name VARCHAR(80)',
-        'access_key': 'access_key VARCHAR(16)',
-        'admin_id': 'admin_id INTEGER',
-        'created_at': 'created_at DATETIME'
-    })
-    ensure_table_columns('lobby_member', {
-        'lobby_id': 'lobby_id INTEGER',
-        'user_id': 'user_id INTEGER',
-        'role': 'role VARCHAR(20)',
-        'joined_at': 'joined_at DATETIME'
-    })
-    ensure_table_columns('inventory_item', {
-        'name': 'name VARCHAR(80)',
-        'item_type': 'item_type VARCHAR(60)',
-        'rarity': 'rarity VARCHAR(30)',
-        'durability': 'durability INTEGER',
-        'max_durability': 'max_durability INTEGER',
-        'description': 'description TEXT',
-        'icon_path': 'icon_path VARCHAR(255)',
-        'created_at': 'created_at DATETIME',
-        'user_id': 'user_id INTEGER'
-    })
-    db.session.commit()
+@dataclass
+class CurrentUser:
+    user: User
 
 
-@app.route("/")
-@app.route("/index")
-def index():
-    user = None
-    if 'user_id' in session:
-        user = userid.query.get(session['user_id'])
-    return render_template('index.html', user=user)
+class AuthError(Exception):
+    pass
 
 
-@app.route("/Character", methods=['GET', 'POST'])
-def Character():
-    if 'user_id' not in session:
-        flash('Будь ласка, увійдіть у свій акаунт.', 'warning')
-        return redirect(url_for('log_in'))
+def normalize_static_path(path: Optional[str]) -> Optional[str]:
+    if not path:
+        return None
+    if path.startswith('static/'):
+        return path[len('static/'):]
+    return path
 
-    user = userid.query.get(session['user_id'])
 
+@app.context_processor
+def inject_helpers():
+    return {
+        'static_path': normalize_static_path,
+    }
+
+
+def save_upload(file, subdir: str, filename_prefix: str) -> Optional[str]:
+    if not file or not file.filename:
+        return None
+    filename = secure_filename(file.filename)
+    if not filename:
+        return None
+    upload_folder = os.path.join(app.static_folder, UPLOAD_SUBDIR, subdir)
+    os.makedirs(upload_folder, exist_ok=True)
+    saved_filename = f"{filename_prefix}_{filename}"
+    file_path = os.path.join(upload_folder, saved_filename)
+    file.save(file_path)
+    return os.path.join(UPLOAD_SUBDIR, subdir, saved_filename).replace(os.path.sep, "/")
+
+
+def current_user() -> Optional[User]:
+    user_id = session.get('user_id')
+    if not user_id:
+        return None
+    return User.query.get(user_id)
+
+
+def require_user() -> User:
+    user = current_user()
     if not user:
-        flash('Користувача не знайдено. Будь ласка, увійдіть знову.', 'danger')
-        return redirect(url_for('log_in'))
+        raise AuthError
+    return user
 
-    char = user.characters  # Може бути None
+
+def parse_int(value: Optional[str], default: int, minimum: int = 0) -> int:
+    try:
+        parsed = int(value) if value is not None else default
+    except (TypeError, ValueError):
+        return default
+    return max(parsed, minimum)
+
+
+@app.errorhandler(AuthError)
+def handle_auth_error(_error):
+    flash('Будь ласка, увійдіть у свій акаунт.', 'warning')
+    return redirect(url_for('log_in'))
+
+
+@app.route('/')
+@app.route('/index')
+def index():
+    return render_template('index.html', user=current_user())
+
+
+@app.route('/Character', methods=['GET', 'POST'])
+def character():
+    user = require_user()
+    char = user.character
 
     if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        race = request.form.get('race', '').strip()
+        char_class = request.form.get('char_class', '').strip()
+
+        if not name or not race or not char_class:
+            flash('Будь ласка, заповніть усі обовʼязкові поля.', 'danger')
+            return redirect(url_for('character'))
+
+        hit_points = parse_int(request.form.get('hit_points'), 10)
+        gold = parse_int(request.form.get('gold'), 0)
+
         if char is None:
-            char = characters(
-                name=request.form['name'],
-                race=request.form['race'],
-                char_class=request.form['char_class'],
-                hit_points=int(request.form.get('hit_points', 10)),
-                gold=int(request.form.get('gold', 0)),
-                strength=int(request.form['strength']),
-                dexterity=int(request.form['dexterity']),
-                constitution=int(request.form['constitution']),
-                intelligence=int(request.form['intelligence']),
-                wisdom=int(request.form['wisdom']),
-                charisma=int(request.form['charisma']),
-                user=user
+            char = Character(
+                name=name,
+                race=race,
+                char_class=char_class,
+                hit_points=hit_points,
+                gold=gold,
+                strength=parse_int(request.form.get('strength'), 10, 1),
+                dexterity=parse_int(request.form.get('dexterity'), 10, 1),
+                constitution=parse_int(request.form.get('constitution'), 10, 1),
+                intelligence=parse_int(request.form.get('intelligence'), 10, 1),
+                wisdom=parse_int(request.form.get('wisdom'), 10, 1),
+                charisma=parse_int(request.form.get('charisma'), 10, 1),
+                user=user,
             )
             db.session.add(char)
-            user.characters = char
         else:
-            char.name = request.form['name']
-            char.race = request.form['race']
-            char.char_class = request.form['char_class']
-            char.hit_points = int(request.form.get('hit_points', 10))
-            char.gold = int(request.form.get('gold', 0))
-            char.strength = int(request.form['strength'])
-            char.dexterity = int(request.form['dexterity'])
-            char.constitution = int(request.form['constitution'])
-            char.intelligence = int(request.form['intelligence'])
-            char.wisdom = int(request.form['wisdom'])
-            char.charisma = int(request.form['charisma'])
+            char.name = name
+            char.race = race
+            char.char_class = char_class
+            char.hit_points = hit_points
+            char.gold = gold
+            char.strength = parse_int(request.form.get('strength'), char.strength, 1)
+            char.dexterity = parse_int(request.form.get('dexterity'), char.dexterity, 1)
+            char.constitution = parse_int(request.form.get('constitution'), char.constitution, 1)
+            char.intelligence = parse_int(request.form.get('intelligence'), char.intelligence, 1)
+            char.wisdom = parse_int(request.form.get('wisdom'), char.wisdom, 1)
+            char.charisma = parse_int(request.form.get('charisma'), char.charisma, 1)
 
         db.session.commit()
-        flash('Дані збережено!', 'success')
-        return redirect(url_for('Character'))
+        flash('Дані персонажа збережено.', 'success')
+        return redirect(url_for('character'))
 
-    # Передаємо user у шаблон
-    return render_template('Character.html', characters=char, user=user)
-
-
-@app.route("/Regulations")
-def Regulations():
-    return "<h1>Hello World</h1>"
+    return render_template('Character.html', user=user, character=char)
 
 
-@app.route("/profile", methods=['GET', 'POST'])
+@app.route('/profile', methods=['GET', 'POST'])
 def profile():
-    if 'user_id' not in session:
-        flash('Будь ласка, увійдіть у свій акаунт.', 'warning')
-        return redirect(url_for('log_in'))
-
-    user = userid.query.get(session['user_id'])
-
-    if not user:
-        flash('Користувача не знайдено. Будь ласка, увійдіть знову.', 'danger')
-        return redirect(url_for('log_in'))
-
-    avatar = user.userImage  # Може бути None
+    user = require_user()
 
     if request.method == 'POST':
         user.description = request.form.get('description', '').strip() or None
+        avatar_path = None
         if 'avatar' in request.files:
-            file = request.files['avatar']
-            avatar_path = save_upload(file, "images", user.id)
-            if avatar_path:
-                user.userImage = avatar_path
-                db.session.commit()
-                flash('Аватар оновлено!', 'success')
-
+            avatar_path = save_upload(request.files['avatar'], 'avatars', f'user{user.id}')
+        if avatar_path:
+            user.userImage = avatar_path
         db.session.commit()
+        flash('Профіль оновлено.', 'success')
         return redirect(url_for('profile'))
 
     return render_template('profile.html', user=user)
 
 
-
-
-
-@app.route("/Mechanics")
-def Mechanics():
-    return "<h1>Hello World</h1>"
-
-@app.route("/SignUp", methods=['GET', 'POST'])
+@app.route('/SignUp', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        email = request.form['email']
-        nickname = request.form['nickname']
-        password = request.form['password']
+        email = request.form.get('email', '').strip().lower()
+        nickname = request.form.get('nickname', '').strip()
+        password = request.form.get('password', '')
         admin_code = request.form.get('admin_code', '').strip()
 
-        existing_user = userid.query.filter_by(email=email).first()
-        if existing_user:
-            flash('Цей email вже зареєстрований!', 'danger')
+        if not email or not nickname or not password:
+            flash('Заповніть усі поля для реєстрації.', 'danger')
             return redirect(url_for('register'))
 
-        existing_nickname = userid.query.filter_by(nickname=nickname).first()
-        if existing_nickname:
-            flash('Цей нікнейм вже зайнятий!', 'danger')
+        if User.query.filter_by(email=email).first():
+            flash('Цей email вже зареєстрований.', 'danger')
             return redirect(url_for('register'))
 
-        new_user = userid(
+        if User.query.filter_by(nickname=nickname).first():
+            flash('Цей нікнейм вже зайнятий.', 'danger')
+            return redirect(url_for('register'))
+
+        new_user = User(
             email=email,
             nickname=nickname,
             password=password,
-            is_admin=admin_code == 'DRA-ADMIN-2024'
+            is_admin=admin_code == 'DRA-ADMIN-2024',
         )
         db.session.add(new_user)
         try:
             db.session.commit()
         except IntegrityError:
             db.session.rollback()
-            flash('Не вдалося створити акаунт. Спробуйте інший email або нікнейм.', 'danger')
+            flash('Не вдалося створити акаунт. Спробуйте інші дані.', 'danger')
             return redirect(url_for('register'))
 
-        flash('Реєстрація успішна! Тепер ви можете увійти.', 'success')
+        flash('Реєстрація успішна! Увійдіть у свій акаунт.', 'success')
         return redirect(url_for('log_in'))
 
-    return render_template('sign_up.html')
+    return render_template('sign_up.html', user=current_user())
 
-@app.route("/News")
-def News():
-    return render_template('News.html')
 
-@app.route("/Char")
-def Char():
-    return redirect(url_for('Character'))
+@app.route('/LogIn', methods=['GET', 'POST'])
+def log_in():
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
 
-@app.route("/Lobby", methods=['GET', 'POST'])
+        user = User.query.filter_by(email=email).first()
+        if user and user.password == password:
+            session['user_id'] = user.id
+            flash('Вхід успішний!', 'success')
+            return redirect(url_for('character'))
+
+        flash('Неправильний email або пароль!', 'danger')
+
+    return render_template('log_in.html', user=current_user())
+
+
+@app.route('/LogOut')
+def log_out():
+    session.pop('user_id', None)
+    flash('Ви вийшли з акаунту.', 'info')
+    return redirect(url_for('index'))
+
+
+@app.route('/News')
+def news():
+    return render_template('News.html', user=current_user())
+
+
+@app.route('/Lobby', methods=['GET', 'POST'])
 def lobby_page():
-    if 'user_id' not in session:
-        flash('Будь ласка, увійдіть у свій акаунт.', 'warning')
-        return redirect(url_for('log_in'))
-
-    user = userid.query.get(session['user_id'])
-    if not user:
-        flash('Користувача не знайдено. Будь ласка, увійдіть знову.', 'danger')
-        return redirect(url_for('log_in'))
+    user = require_user()
 
     if request.method == 'POST':
         action = request.form.get('action')
@@ -361,6 +337,7 @@ def lobby_page():
                 db.session.add(LobbyMember(lobby=lobby, user=user, role='master'))
                 db.session.commit()
                 flash(f'Лобі створено! Ключ доступу: {access_key}', 'success')
+
         elif action == 'join':
             access_key = request.form.get('access_key', '').strip().upper()
             lobby = Lobby.query.filter_by(access_key=access_key).first()
@@ -374,16 +351,18 @@ def lobby_page():
                     db.session.add(LobbyMember(lobby=lobby, user=user, role='player'))
                     db.session.commit()
                     flash('Ви приєдналися до лобі!', 'success')
+
         elif action == 'leave':
-            lobby_id = int(request.form.get('lobby_id', 0))
+            lobby_id = parse_int(request.form.get('lobby_id'), 0)
             membership = LobbyMember.query.filter_by(lobby_id=lobby_id, user_id=user.id).first()
             if membership and membership.lobby.admin_id != user.id:
                 db.session.delete(membership)
                 db.session.commit()
                 flash('Ви вийшли з лобі.', 'info')
+
         elif action == 'set_role':
-            lobby_id = int(request.form.get('lobby_id', 0))
-            member_id = int(request.form.get('member_id', 0))
+            lobby_id = parse_int(request.form.get('lobby_id'), 0)
+            member_id = parse_int(request.form.get('member_id'), 0)
             role = request.form.get('role', 'player')
             lobby = Lobby.query.get(lobby_id)
             member = LobbyMember.query.get(member_id)
@@ -394,35 +373,31 @@ def lobby_page():
                     member.role = role
                     db.session.commit()
                     flash('Роль учасника оновлено.', 'success')
+
         elif action == 'delete_lobby':
-            lobby_id = int(request.form.get('lobby_id', 0))
+            lobby_id = parse_int(request.form.get('lobby_id'), 0)
             lobby = Lobby.query.get(lobby_id)
             if lobby and lobby.admin_id == user.id:
                 db.session.delete(lobby)
                 db.session.commit()
                 flash('Лобі видалено.', 'info')
+
         return redirect(url_for('lobby_page'))
 
     owned_lobbies = Lobby.query.filter_by(admin_id=user.id).order_by(Lobby.created_at.desc()).all()
     member_lobbies = LobbyMember.query.filter_by(user_id=user.id).all()
+
     return render_template(
         'Lobby.html',
         user=user,
         owned_lobbies=owned_lobbies,
-        member_lobbies=member_lobbies
+        member_lobbies=member_lobbies,
     )
 
 
-@app.route("/Inventory", methods=['GET', 'POST'])
-def Inventory():
-    if 'user_id' not in session:
-        flash('Будь ласка, увійдіть у свій акаунт.', 'warning')
-        return redirect(url_for('log_in'))
-
-    user = userid.query.get(session['user_id'])
-    if not user:
-        flash('Користувача не знайдено. Будь ласка, увійдіть знову.', 'danger')
-        return redirect(url_for('log_in'))
+@app.route('/Inventory', methods=['GET', 'POST'])
+def inventory():
+    user = require_user()
 
     if request.method == 'POST':
         action = request.form.get('action')
@@ -430,10 +405,12 @@ def Inventory():
             name = request.form.get('name', '').strip()
             item_type = request.form.get('item_type', '').strip()
             rarity = request.form.get('rarity', 'Звичайний').strip()
-            max_durability = int(request.form.get('max_durability', 10))
-            durability = min(int(request.form.get('durability', max_durability)), max_durability)
+            max_durability = parse_int(request.form.get('max_durability'), 10, 1)
+            durability = parse_int(request.form.get('durability'), max_durability, 0)
+            durability = min(durability, max_durability)
             description = request.form.get('description', '').strip()
-            target_user_id = int(request.form.get('target_user_id', user.id))
+            target_user_id = parse_int(request.form.get('target_user_id'), user.id, 1)
+
             memberships = LobbyMember.query.filter_by(user_id=user.id).all()
             master_lobby_ids = {
                 membership.lobby_id
@@ -444,16 +421,18 @@ def Inventory():
             if master_lobby_ids:
                 lobby_members = LobbyMember.query.filter(LobbyMember.lobby_id.in_(master_lobby_ids)).all()
                 master_user_ids = {member.user_id for member in lobby_members}
+
             if target_user_id != user.id and target_user_id not in master_user_ids:
                 flash('Ви не можете видавати предмети цьому гравцю.', 'danger')
-                return redirect(url_for('Inventory'))
+                return redirect(url_for('inventory'))
 
             icon_path = None
             if 'icon' in request.files:
-                icon_file = request.files['icon']
-                icon_path = save_upload(icon_file, os.path.join("images", "items"), target_user_id)
+                icon_path = save_upload(request.files['icon'], 'items', f'user{target_user_id}')
 
-            if name and item_type:
+            if not name or not item_type:
+                flash('Заповніть назву та тип предмету.', 'danger')
+            else:
                 db.session.add(InventoryItem(
                     name=name,
                     item_type=item_type,
@@ -462,12 +441,13 @@ def Inventory():
                     max_durability=max_durability,
                     description=description,
                     icon_path=icon_path,
-                    user_id=target_user_id
+                    user_id=target_user_id,
                 ))
                 db.session.commit()
                 flash('Предмет додано до інвентаря.', 'success')
+
         else:
-            item_id = int(request.form.get('item_id', 0))
+            item_id = parse_int(request.form.get('item_id'), 0)
             item = InventoryItem.query.filter_by(id=item_id, user_id=user.id).first()
             if item:
                 if action == 'use':
@@ -484,7 +464,8 @@ def Inventory():
                     db.session.delete(item)
                     db.session.commit()
                     flash('Предмет видалено.', 'info')
-        return redirect(url_for('Inventory'))
+
+        return redirect(url_for('inventory'))
 
     items = InventoryItem.query.filter_by(user_id=user.id).order_by(InventoryItem.created_at.desc()).all()
     memberships = LobbyMember.query.filter_by(user_id=user.id).all()
@@ -497,25 +478,15 @@ def Inventory():
     if master_lobby_ids:
         lobby_members = LobbyMember.query.filter(LobbyMember.lobby_id.in_(master_lobby_ids)).all()
         master_user_ids = {member.user_id for member in lobby_members}
-    recipients = userid.query.filter(userid.id.in_(master_user_ids)).all() if master_user_ids else []
-    return render_template('Inventory.html', user=user, items=items, recipients=recipients, is_master=bool(master_user_ids))
+    recipients = User.query.filter(User.id.in_(master_user_ids)).all() if master_user_ids else []
 
-@app.route("/LogIn", methods=['GET', 'POST'])
-def log_in():
-    if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
-
-        user = userid.query.filter_by(email=email).first()
-        if user and user.password == password:
-            session['user_id'] = user.id
-            flash('Вхід успішний!', 'success')
-            return redirect(url_for('Character'))
-        else:
-            flash('Неправильний email або пароль!', 'danger')
-
-    return render_template('log_in.html')
-
+    return render_template(
+        'Inventory.html',
+        user=user,
+        items=items,
+        recipients=recipients,
+        is_master=bool(master_user_ids),
+    )
 
 
 if __name__ == '__main__':
