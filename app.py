@@ -32,6 +32,7 @@ class User(db.Model):
     userImage = db.Column(db.String(255), nullable=True)
     description = db.Column(db.Text, nullable=True)
     is_admin = db.Column(db.Boolean, default=False)
+    is_online = db.Column(db.Boolean, default=False)
 
     owned_lobbies = db.relationship('Lobby', back_populates='admin', cascade='all, delete-orphan')
     lobby_memberships = db.relationship('LobbyMember', back_populates='user', cascade='all, delete-orphan')
@@ -213,6 +214,8 @@ def log_in():
         user = User.query.filter_by(email=email).first()
         if user and user.password == password:
             session['user_id'] = user.id
+            user.is_online = True
+            db.session.commit()
             flash('Вхід успішний!', 'success')
             return redirect(url_for('profile'))
 
@@ -223,6 +226,10 @@ def log_in():
 
 @app.route('/LogOut')
 def log_out():
+    user = current_user()
+    if user:
+        user.is_online = False
+        db.session.commit()
     session.pop('user_id', None)
     flash('Ви вийшли з акаунту.', 'info')
     return redirect(url_for('index'))

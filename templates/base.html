@@ -9,6 +9,7 @@
 </head>
 <body>
 <header class="header">
+    <input type="checkbox" id="header-toggle" class="header__toggle" aria-label="Показати або сховати меню">
     <div class="brand">
         <img src="/static/images/logo.png" alt="DRA Logo" class="logo">
         <div>
@@ -16,6 +17,10 @@
             <h1 class="brand__title">{% block header_title %}DRA Control Hub{% endblock %}</h1>
         </div>
     </div>
+    <label for="header-toggle" class="header__toggle-button">
+        <span class="toggle-text toggle-text--open">Згорнути</span>
+        <span class="toggle-text toggle-text--closed">Меню</span>
+    </label>
     <nav class="navigation">
         <a href="{{ url_for('index') }}">Головна</a>
         <a href="{{ url_for('lobby_page') }}">Лобі</a>
