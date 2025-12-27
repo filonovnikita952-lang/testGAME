@@ -471,6 +471,7 @@ textarea {
     border-radius: 16px;
     padding: 10px 12px;
     margin-bottom: 12px;
+ codex/fix-participant-panel-alignment-and-statuses-jc5xco
     width: min(220px, 100%);
     align-self: flex-start;
 }
@@ -486,6 +487,15 @@ textarea {
 .lobby-card__content {
     display: grid;
     gap: 4px;
+
+    width: min(260px, 100%);
+    align-self: flex-start;
+}
+
+.lobby-card__content {
+    display: grid;
+    gap: 6px;
+ main
 }
 
 .lobby-card__action {
@@ -498,6 +508,24 @@ textarea {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
+}
+
+.member-status {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    text-transform: lowercase;
+}
+
+.member-status--online {
+    color: #7dff9a;
+    border-color: rgba(125, 255, 154, 0.6);
+}
+
+.member-status--offline {
+    color: rgba(255, 255, 255, 0.6);
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 .member-card {
@@ -559,6 +587,10 @@ textarea {
     align-items: stretch;
     margin: 12px 0 24px;
     min-height: 70vh;
+}
+
+.lobby-side {
+    justify-self: start;
 }
 
 .lobby-side {

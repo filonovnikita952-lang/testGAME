@@ -72,6 +72,11 @@
                                         <img src="/static/images/default_avatar.png" alt="Аватар" class="avatar avatar--mini {% if member.user.is_online %}avatar--online{% else %}avatar--offline{% endif %}">
                                     {% endif %}
                                     <span>{{ member.user.nickname }}</span>
+                                    {% if member.user.is_online %}
+                                        <span class="member-status member-status--online">в мережі</span>
+                                    {% else %}
+                                        <span class="member-status member-status--offline">не в мережі</span>
+                                    {% endif %}
                                 </summary>
                                 <div class="member-card__details">
                                     <strong>{{ member.user.nickname }}</strong>
