@@ -8,6 +8,7 @@ from typing import Optional
 
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 
@@ -32,6 +33,7 @@ class User(db.Model):
     userImage = db.Column(db.String(255), nullable=True)
     description = db.Column(db.Text, nullable=True)
     is_admin = db.Column(db.Boolean, default=False)
+    is_online = db.Column(db.Boolean, default=False)
 
     owned_lobbies = db.relationship('Lobby', back_populates='admin', cascade='all, delete-orphan')
     lobby_memberships = db.relationship('LobbyMember', back_populates='user', cascade='all, delete-orphan')
@@ -65,6 +67,12 @@ class LobbyMember(db.Model):
 
 with app.app_context():
     db.create_all()
+    inspector = inspect(db.engine)
+    if 'userid' in inspector.get_table_names():
+        columns = {column['name'] for column in inspector.get_columns('userid')}
+        if 'is_online' not in columns:
+            db.session.execute(text('ALTER TABLE userid ADD COLUMN is_online BOOLEAN DEFAULT 0'))
+            db.session.commit()
 
 
 @dataclass
@@ -213,6 +221,8 @@ def log_in():
         user = User.query.filter_by(email=email).first()
         if user and user.password == password:
             session['user_id'] = user.id
+            user.is_online = True
+            db.session.commit()
             flash('Вхід успішний!', 'success')
             return redirect(url_for('profile'))
 
@@ -223,6 +233,10 @@ def log_in():
 
 @app.route('/LogOut')
 def log_out():
+    user = current_user()
+    if user:
+        user.is_online = False
+        db.session.commit()
     session.pop('user_id', None)
     flash('Ви вийшли з акаунту.', 'info')
     return redirect(url_for('index'))
@@ -312,4 +326,10 @@ def lobby_page():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        inspector = inspect(db.engine)
+        if 'userid' in inspector.get_table_names():
+            columns = {column['name'] for column in inspector.get_columns('userid')}
+            if 'is_online' not in columns:
+                db.session.execute(text('ALTER TABLE userid ADD COLUMN is_online BOOLEAN DEFAULT 0'))
+                db.session.commit()
     app.run(debug=True)
