@@ -8,6 +8,7 @@ from typing import Optional
 
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 
@@ -66,6 +67,12 @@ class LobbyMember(db.Model):
 
 with app.app_context():
     db.create_all()
+    inspector = inspect(db.engine)
+    if 'userid' in inspector.get_table_names():
+        columns = {column['name'] for column in inspector.get_columns('userid')}
+        if 'is_online' not in columns:
+            db.session.execute(text('ALTER TABLE userid ADD COLUMN is_online BOOLEAN DEFAULT 0'))
+            db.session.commit()
 
 
 @dataclass
@@ -319,4 +326,10 @@ def lobby_page():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        inspector = inspect(db.engine)
+        if 'userid' in inspector.get_table_names():
+            columns = {column['name'] for column in inspector.get_columns('userid')}
+            if 'is_online' not in columns:
+                db.session.execute(text('ALTER TABLE userid ADD COLUMN is_online BOOLEAN DEFAULT 0'))
+                db.session.commit()
     app.run(debug=True)
