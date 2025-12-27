@@ -137,6 +137,11 @@ a {
     gap: 32px;
 }
 
+.page--lobby {
+    padding-left: 16px;
+    padding-right: 4vw;
+}
+
 .footer {
     padding: 24px 6vw 40px;
     text-align: center;
@@ -461,11 +466,33 @@ textarea {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
     border: 1px solid var(--border);
     border-radius: 16px;
-    padding: 16px;
-    margin-bottom: 12px;
+    padding: 10px 12px;
+    width: min(200px, 100%);
+    align-self: flex-start;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.lobby-card__title {
+    font-size: 0.75rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.lobby-card strong {
+    font-size: 0.9rem;
+}
+
+.lobby-card__content {
+    display: grid;
+    gap: 4px;
+}
+
+.lobby-card__action {
+    margin-top: 6px;
 }
 
 .lobby-members {
@@ -501,6 +528,7 @@ textarea {
     font-weight: 600;
     padding: 6px 8px;
     border-radius: 10px;
+    flex-wrap: wrap;
 }
 
 .member-card__summary:hover {
@@ -529,14 +557,23 @@ textarea {
 
 .lobby-layout {
     display: grid;
-    grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
-    gap: 24px;
-    align-items: start;
+    grid-template-columns: minmax(180px, 210px) minmax(0, 1fr);
+    gap: 20px;
+    align-items: stretch;
     margin: 12px 0 24px;
+    min-height: 70vh;
+}
+
+.lobby-side {
+    justify-self: start;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .lobby-workspace {
-    min-height: 260px;
+    min-height: 100%;
+    align-self: start;
 }
 
 .header__toggle {
