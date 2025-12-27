@@ -31,16 +31,23 @@
     </section>
 {% endif %}
 
-<section class="stack">
+<section class="stack lobby-page">
     {% if member_lobbies %}
         {% set role_labels = {'master': 'Майстер', 'player': 'Гравець', 'spectator': 'Глядач'} %}
         {% for membership in member_lobbies %}
             <div class="lobby-card">
-                <div>
-                    <h1>Ваше лобі</h1>
+                <div class="lobby-card__content">
+                    <h2>Ваше лобі</h2>
                     <strong>{{ membership.lobby.name }}</strong>
                     <p class="muted">Ключ: {{ membership.lobby.access_key }}</p>
                     <p class="muted">Учасників: {{ membership.lobby.members | length }}</p>
+                    {% if membership.lobby.admin_id == user.id %}
+                        <form method="post" class="lobby-card__action">
+                            <input type="hidden" name="action" value="delete_lobby">
+                            <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
+                            <button type="submit" class="button danger">Видалити лобі</button>
+                        </form>
+                    {% endif %}
                 </div>
                 {% if membership.lobby.admin_id != user.id %}
                     <form method="post">
@@ -92,13 +99,6 @@
                                 </div>
                             </details>
                         {% endfor %}
-                        {% if membership.lobby.admin_id == user.id %}
-                            <form method="post">
-                                <input type="hidden" name="action" value="delete_lobby">
-                                <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
-                                <button type="submit" class="button danger">Видалити лобі</button>
-                            </form>
-                        {% endif %}
                     </div>
                 </div>
                 <div class="lobby-workspace card" aria-label="Поле для роботи"></div>

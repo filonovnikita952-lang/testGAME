@@ -464,8 +464,19 @@ textarea {
     gap: 16px;
     border: 1px solid var(--border);
     border-radius: 16px;
-    padding: 16px;
+    padding: 12px;
     margin-bottom: 12px;
+    width: min(220px, 100%);
+    align-self: flex-start;
+}
+
+.lobby-card__content {
+    display: grid;
+    gap: 4px;
+}
+
+.lobby-card__action {
+    margin-top: 4px;
 }
 
 .lobby-members {
@@ -475,6 +486,7 @@ textarea {
     align-items: flex-start;
     gap: 12px;
 }
+
 
 .member-card {
     display: grid;
@@ -529,14 +541,19 @@ textarea {
 
 .lobby-layout {
     display: grid;
-    grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+    grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
     gap: 24px;
-    align-items: start;
+    align-items: stretch;
     margin: 12px 0 24px;
+    min-height: calc(100vh - 320px);
+}
+
+.lobby-side {
+    justify-self: start;
 }
 
 .lobby-workspace {
-    min-height: 260px;
+    min-height: 100%;
 }
 
 .header__toggle {
@@ -557,6 +574,15 @@ textarea {
 
 .stats-summary {
     margin-top: 24px;
+}
+
+.lobby-page {
+    margin-left: -4vw;
+}
+
+.lobby-card h2 {
+    font-size: 1rem;
+    margin: 0;
 }
 
 @media (max-width: 860px) {

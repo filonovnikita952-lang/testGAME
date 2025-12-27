@@ -117,7 +117,11 @@ def current_user() -> Optional[User]:
     user_id = session.get('user_id')
     if not user_id:
         return None
-    return User.query.get(user_id)
+    user = User.query.get(user_id)
+    if user and not user.is_online:
+        user.is_online = True
+        db.session.commit()
+    return user
 
 
 def require_user() -> User:
