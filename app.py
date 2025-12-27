@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import secrets
 from typing import Optional
@@ -34,6 +34,7 @@ class User(db.Model):
     description = db.Column(db.Text, nullable=True)
     is_admin = db.Column(db.Boolean, default=False)
     is_online = db.Column(db.Boolean, default=False)
+    last_seen = db.Column(db.DateTime, default=datetime.utcnow)
 
     owned_lobbies = db.relationship('Lobby', back_populates='admin', cascade='all, delete-orphan')
     lobby_memberships = db.relationship('LobbyMember', back_populates='user', cascade='all, delete-orphan')
@@ -73,6 +74,9 @@ with app.app_context():
         if 'is_online' not in columns:
             db.session.execute(text('ALTER TABLE userid ADD COLUMN is_online BOOLEAN DEFAULT 0'))
             db.session.commit()
+        if 'last_seen' not in columns:
+            db.session.execute(text('ALTER TABLE userid ADD COLUMN last_seen DATETIME'))
+            db.session.commit()
 
 
 @dataclass
@@ -96,6 +100,7 @@ def normalize_static_path(path: Optional[str]) -> Optional[str]:
 def inject_helpers():
     return {
         'static_path': normalize_static_path,
+        'is_user_online': is_user_online,
     }
 
 
@@ -118,6 +123,21 @@ def current_user() -> Optional[User]:
     if not user_id:
         return None
     return User.query.get(user_id)
+
+
+def is_user_online(user: User | None) -> bool:
+    if not user or not user.last_seen:
+        return False
+    return datetime.utcnow() - user.last_seen <= timedelta(seconds=30)
+
+
+@app.before_request
+def update_last_seen():
+    user = current_user()
+    if user:
+        user.last_seen = datetime.utcnow()
+        user.is_online = True
+        db.session.commit()
 
 
 def require_user() -> User:
@@ -225,6 +245,7 @@ def log_in():
         if user and user.password == password:
             session['user_id'] = user.id
             user.is_online = True
+            user.last_seen = datetime.utcnow()
             db.session.commit()
             flash('Вхід успішний!', 'success')
             return redirect(url_for('profile'))
@@ -239,6 +260,7 @@ def log_out():
     user = current_user()
     if user:
         user.is_online = False
+        user.last_seen = datetime.utcnow()
         db.session.commit()
     session.pop('user_id', None)
     flash('Ви вийшли з акаунту.', 'info')
@@ -334,5 +356,8 @@ if __name__ == '__main__':
             columns = {column['name'] for column in inspector.get_columns('userid')}
             if 'is_online' not in columns:
                 db.session.execute(text('ALTER TABLE userid ADD COLUMN is_online BOOLEAN DEFAULT 0'))
+                db.session.commit()
+            if 'last_seen' not in columns:
+                db.session.execute(text('ALTER TABLE userid ADD COLUMN last_seen DATETIME'))
                 db.session.commit()
     app.run(debug=True)

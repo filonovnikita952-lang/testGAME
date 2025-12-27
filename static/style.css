@@ -138,7 +138,11 @@ a {
 }
 
 .page--lobby {
+codex/fix-participant-panel-alignment-and-statuses-0vnoa8
+    padding-left: 16px;
+
     padding-left: 24px;
+main
     padding-right: 4vw;
 }
 
@@ -466,10 +470,25 @@ textarea {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
     border: 1px solid var(--border);
     border-radius: 16px;
     padding: 10px 12px;
+odex/fix-participant-panel-alignment-and-statuses-0vnoa8
+    width: min(200px, 100%);
+    align-self: flex-start;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.lobby-card__title {
+    font-size: 0.75rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.lobby-card strong {
+    font-size: 0.9rem;
     margin-bottom: 12px;
  codex/fix-participant-panel-alignment-and-statuses-jc5xco
     width: min(220px, 100%);
@@ -482,11 +501,13 @@ textarea {
 
 .lobby-card strong {
     font-size: 0.95rem;
+main
 }
 
 .lobby-card__content {
     display: grid;
     gap: 4px;
+codex/fix-participant-panel-alignment-and-statuses-0vnoa8
 
     width: min(260px, 100%);
     align-self: flex-start;
@@ -496,6 +517,7 @@ textarea {
     display: grid;
     gap: 6px;
  main
+main
 }
 
 .lobby-card__action {
@@ -582,8 +604,12 @@ textarea {
 
 .lobby-layout {
     display: grid;
+ odex/fix-participant-panel-alignment-and-statuses-0vnoa8
+    grid-template-columns: minmax(180px, 210px) minmax(0, 1fr);
+    gap: 20px;
     grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
     gap: 24px;
+    main
     align-items: stretch;
     margin: 12px 0 24px;
     min-height: 70vh;
@@ -591,14 +617,24 @@ textarea {
 
 .lobby-side {
     justify-self: start;
+odex/fix-participant-panel-alignment-and-statuses-0vnoa8
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+
 }
 
 .lobby-side {
     justify-self: start;
+main
 }
 
 .lobby-workspace {
     min-height: 100%;
+codex/fix-participant-panel-alignment-and-statuses-0vnoa8
+    align-self: start;
+
+main
 }
 
 .header__toggle {
