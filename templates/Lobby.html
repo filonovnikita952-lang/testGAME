@@ -2,6 +2,7 @@
 
 {% block title %}Лобі DRA{% endblock %}
 {% block header_title %}Лобі кампаній{% endblock %}
+{% block page_class %}page--lobby{% endblock %}
 
 {% block content %}
 {% if not member_lobbies %}
@@ -36,11 +37,18 @@
         {% set role_labels = {'master': 'Майстер', 'player': 'Гравець', 'spectator': 'Глядач'} %}
         {% for membership in member_lobbies %}
             <div class="lobby-card">
-                <div>
+                <div class="lobby-card__content">
                     <h1>Ваше лобі</h1>
                     <strong>{{ membership.lobby.name }}</strong>
                     <p class="muted">Ключ: {{ membership.lobby.access_key }}</p>
                     <p class="muted">Учасників: {{ membership.lobby.members | length }}</p>
+                    {% if membership.lobby.admin_id == user.id %}
+                        <form method="post" class="lobby-card__action">
+                            <input type="hidden" name="action" value="delete_lobby">
+                            <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
+                            <button type="submit" class="button danger">Видалити лобі</button>
+                        </form>
+                    {% endif %}
                 </div>
                 {% if membership.lobby.admin_id != user.id %}
                     <form method="post">
@@ -92,13 +100,6 @@
                                 </div>
                             </details>
                         {% endfor %}
-                        {% if membership.lobby.admin_id == user.id %}
-                            <form method="post">
-                                <input type="hidden" name="action" value="delete_lobby">
-                                <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
-                                <button type="submit" class="button danger">Видалити лобі</button>
-                            </form>
-                        {% endif %}
                     </div>
                 </div>
                 <div class="lobby-workspace card" aria-label="Поле для роботи"></div>
