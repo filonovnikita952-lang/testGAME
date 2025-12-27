@@ -1,157 +1,104 @@
-<!DOCTYPE html>
-<html lang="uk">
-<head>
-    <meta charset="UTF-8">
-    <link rel="icon" type="image/png" href="/static/images/logo35.png">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/static/style.css">
-    <title>Лобі DRA</title>
-</head>
-<body>
-    <header class="header">
-        <div class="brand">
-            <img src="/static/images/logo.png" alt="DRA Logo" class="logo">
-            <div>
-                <p class="brand__tag">Lobby Control</p>
-                <h1 class="brand__title">Лобі кампаній</h1>
-            </div>
-        </div>
-        <nav class="navigation">
-            <a href="/">Головна</a>
-            <a href="/Character">Персонаж</a>
-            <a href="/Inventory">Інвентар</a>
-            <a href="/News">Новини</a>
-            <div class="user-chip">
-                <span>{{ user.nickname }}</span>
-                {% if user.userImage %}
-                    <a href="/profile"><img src="{{ url_for('static', filename=user.userImage.split('static/')[-1]) }}" alt="avatar" class="avatar"></a>
+{% extends 'base.html' %}
+
+{% block title %}Лобі DRA{% endblock %}
+{% block header_title %}Лобі кампаній{% endblock %}
+
+{% block content %}
+<section class="grid">
+    <article class="card">
+        <h2>Створення лобі</h2>
+        <p class="muted">Лише адміністратори можуть створювати нові лобі з унікальним ключем доступу.</p>
+        <form method="post" class="form inline">
+            <input type="hidden" name="action" value="create">
+            <input type="text" name="name" placeholder="Назва лобі" required>
+            <button type="submit" class="button" {% if not user.is_admin %}disabled{% endif %}>Створити</button>
+        </form>
+        {% if not user.is_admin %}
+            <p class="hint">Потрібен адмін-доступ? Зверніться до майстра кампанії.</p>
+        {% endif %}
+    </article>
+
+    <article class="card">
+        <h2>Приєднатись за ключем</h2>
+        <form method="post" class="form">
+            <input type="hidden" name="action" value="join">
+            <label for="access_key">Ключ доступу</label>
+            <input type="text" id="access_key" name="access_key" placeholder="A1B2C3" required>
+            <button type="submit" class="button">Увійти</button>
+        </form>
+    </article>
+</section>
+
+<section class="stack">
+    <h2>Ваші лобі</h2>
+    {% if member_lobbies %}
+        {% set role_labels = {'master': 'Майстер', 'player': 'Гравець', 'spectator': 'Глядач'} %}
+        {% for membership in member_lobbies %}
+            <div class="lobby-card">
+                <div>
+                    <strong>{{ membership.lobby.name }}</strong>
+                    <p class="muted">Ключ: {{ membership.lobby.access_key }}</p>
+                    <p class="muted">Учасників: {{ membership.lobby.members | length }}</p>
+                </div>
+                {% if membership.lobby.admin_id != user.id %}
+                    <form method="post">
+                        <input type="hidden" name="action" value="leave">
+                        <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
+                        <button type="submit" class="button ghost">Вийти</button>
+                    </form>
                 {% else %}
-                    <a href="/profile"><img src="/static/images/default_avatar.png" alt="Аватар" class="avatar"></a>
+                    <span class="badge">Адмін</span>
                 {% endif %}
             </div>
-        </nav>
-    </header>
-
-    <main class="page">
-        <section class="glass-panel">
-            <h2>Створення лобі</h2>
-            <p class="muted">Лише адміністратори можуть створювати нові лобі з унікальним ключем доступу.</p>
-            <form method="POST" class="form inline">
-                <input type="hidden" name="action" value="create">
-                <input type="text" name="name" placeholder="Назва лобі" required>
-                <button type="submit" class="button" {% if not user.is_admin %}disabled{% endif %}>Створити</button>
-            </form>
-            {% if not user.is_admin %}
-                <p class="hint">Потрібен адмін-доступ? Зверніться до майстра кампанії.</p>
-            {% endif %}
-        </section>
-
-        <section class="grid">
-            <article class="card">
-                <h3>Приєднатись за ключем</h3>
-                <form method="POST" class="form">
-                    <input type="hidden" name="action" value="join">
-                    <label for="access_key">Ключ доступу</label>
-                    <input type="text" id="access_key" name="access_key" placeholder="A1B2C3" required>
-                    <button type="submit" class="button">Увійти</button>
-                </form>
-            </article>
-            <article class="card">
-                <h3>Ваші лобі</h3>
-                <div class="stack">
-                    {% if member_lobbies %}
-codex/add-lobby-features-and-inventory-system-pjrxnz
-                        {% set role_labels = {'master': 'Мастер', 'player': 'Гравець', 'spectator': 'Глядач', 'admin': 'Адмін'} %}
-
-                        {% set role_labels = {'master': 'Мастер', 'player': 'Гравець', 'spectator': 'Глядач'} %}
-main
-                        {% for membership in member_lobbies %}
-                            {% set viewer_role = membership.role %}
-                            <div class="lobby-card">
-                                <div>
-                                    <strong>{{ membership.lobby.name }}</strong>
-                                    <p class="muted">Ключ: {{ membership.lobby.access_key }}</p>
-                                    <p class="muted">Учасників: {{ membership.lobby.members | length }}</p>
+            <div class="lobby-members">
+                {% for member in membership.lobby.members %}
+                    <div class="member-card">
+                        <div class="member-card__main">
+                            {% if member.user.userImage %}
+                                <img src="{{ url_for('static', filename=static_path(member.user.userImage)) }}" alt="avatar" class="avatar">
+                            {% else %}
+                                <img src="/static/images/default_avatar.png" alt="Аватар" class="avatar">
+                            {% endif %}
+                            <div>
+                                <strong>{{ member.user.nickname }}</strong>
+                                <p class="muted">{{ member.user.description or 'Опис ще не додано.' }}</p>
+                                <div class="chip-grid">
+                                    <span class="chip">{{ role_labels.get(member.role, member.role) }}</span>
+                                    {% if member.user.character %}
+                                        <span class="chip">HP: {{ member.user.character.hit_points }}</span>
+                                        <span class="chip">Золото: {{ member.user.character.gold }}</span>
+                                    {% else %}
+                                        <span class="chip">Персонаж не створено</span>
+                                    {% endif %}
                                 </div>
-                                {% if membership.lobby.admin_id != user.id %}
-                                    <form method="POST">
-                                        <input type="hidden" name="action" value="leave">
-                                        <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
-                                        <button type="submit" class="button ghost">Вийти</button>
-                                    </form>
-                                {% else %}
-                                    <span class="badge">Адмін</span>
-                                {% endif %}
                             </div>
-                            <div class="lobby-members">
-                                {% for member in membership.lobby.members %}
-                                    <div class="member-card">
-                                        <div class="member-card__main">
-                                            {% if member.user.userImage %}
-                                                <img src="{{ url_for('static', filename=member.user.userImage.split('static/')[-1]) }}" alt="avatar" class="avatar">
-                                            {% else %}
-                                                <img src="/static/images/default_avatar.png" alt="Аватар" class="avatar">
-                                            {% endif %}
-                                            <div>
-                                                <strong>{{ member.user.nickname }}</strong>
-                                                <p class="muted">{{ member.user.description or 'Опис ще не додано.' }}</p>
-                                                <div class="chip-grid">
-                                                    <span class="chip">{{ role_labels.get(member.role, member.role) }}</span>
-                                                    {% if member.user.characters %}
-codex/add-lobby-features-and-inventory-system-pjrxnz
-                                                        {% if viewer_role in ['master', 'spectator', 'admin'] or member.user_id == user.id %}
-
-                                                        {% if viewer_role in ['master', 'spectator'] or member.user_id == user.id %}
-main
-                                                            <span class="chip">HP: {{ member.user.characters.hit_points }}</span>
-                                                            <span class="chip">Золото: {{ member.user.characters.gold }}</span>
-                                                        {% endif %}
-                                                    {% else %}
-                                                        <span class="chip">Персонаж не створено</span>
-                                                    {% endif %}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {% if membership.lobby.admin_id == user.id and member.user_id != user.id %}
-                                            <form method="POST" class="form inline">
-                                                <input type="hidden" name="action" value="set_role">
-                                                <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
-                                                <input type="hidden" name="member_id" value="{{ member.id }}">
-                                                <select name="role">
-                                                    <option value="master" {% if member.role == 'master' %}selected{% endif %}>Мастер</option>
-                                                    <option value="player" {% if member.role == 'player' %}selected{% endif %}>Гравець</option>
-                                                    <option value="spectator" {% if member.role == 'spectator' %}selected{% endif %}>Глядач</option>
-                                                </select>
-                                                <button type="submit" class="button ghost">Оновити</button>
-                                            </form>
-                                        {% endif %}
-                                    </div>
-                                {% endfor %}
-                                {% if membership.lobby.admin_id == user.id %}
-                                    <form method="POST">
-                                        <input type="hidden" name="action" value="delete_lobby">
-                                        <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
-                                        <button type="submit" class="button danger">Видалити лобі</button>
-                                    </form>
-                                {% endif %}
-                            </div>
-                        {% endfor %}
-                    {% else %}
-                        <p class="muted">Ще немає активних лобі. Попросіть ключ у майстра.</p>
-                    {% endif %}
-                </div>
-            </article>
-        </section>
-
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <section class="alerts">
-                    {% for category, message in messages %}
-                        <div class="alert alert--{{ category }}">{{ message }}</div>
-                    {% endfor %}
-                </section>
-            {% endif %}
-        {% endwith %}
-    </main>
-</body>
-</html>
+                        </div>
+                        {% if membership.lobby.admin_id == user.id and member.user_id != user.id %}
+                            <form method="post" class="form inline">
+                                <input type="hidden" name="action" value="set_role">
+                                <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
+                                <input type="hidden" name="member_id" value="{{ member.id }}">
+                                <select name="role">
+                                    <option value="master" {% if member.role == 'master' %}selected{% endif %}>Майстер</option>
+                                    <option value="player" {% if member.role == 'player' %}selected{% endif %}>Гравець</option>
+                                    <option value="spectator" {% if member.role == 'spectator' %}selected{% endif %}>Глядач</option>
+                                </select>
+                                <button type="submit" class="button ghost">Оновити</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+                {% if membership.lobby.admin_id == user.id %}
+                    <form method="post">
+                        <input type="hidden" name="action" value="delete_lobby">
+                        <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
+                        <button type="submit" class="button danger">Видалити лобі</button>
+                    </form>
+                {% endif %}
+            </div>
+        {% endfor %}
+    {% else %}
+        <p class="muted">Ще немає активних лобі. Попросіть ключ у майстра.</p>
+    {% endif %}
+</section>
+{% endblock %}

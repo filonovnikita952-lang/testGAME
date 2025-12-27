@@ -1,42 +1,20 @@
-<!DOCTYPE html>
-<html lang="uk">
-<head>
-    <meta charset="UTF-8">
-    <link rel="icon" type="image/png" href="/static/images/logo35.png">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Вхід на сайт DRA</title>
-    <link rel="stylesheet" href="/static/sign_up.css">
-</head>
-<body>
-   <header class="header">
-       <img src="/static/images/logo.png" alt="DRA Logo" class="logo">
-        <nav class="navigation">
-            <a href="/">Головна</a>
-            <a href="/Lobby">Лобі</a>
-        </nav>
-    </header>
-    <div class="registration-container">
-        <h2>Вхід</h2>
-        <p class="muted">Керуйте кампаніями, персонажами та інвентарем в одному акаунті.</p>
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="alerts">
-                    {% for category, message in messages %}
-                        <div class="alert alert--{{ category }}">{{ message }}</div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
-        <form method="POST" action="/LogIn">
-            <label for="email">Email:</label>
-            <input type="email" id="email" name="email" required>
+{% extends 'base.html' %}
 
-            <label for="password">Пароль:</label>
-            <input type="password" id="password" name="password" required>
+{% block title %}Вхід DRA{% endblock %}
+{% block header_title %}Вхід{% endblock %}
 
-            <button type="submit">Увійти</button>
-        </form>
-        <p>Ще не маєте акаунту? <a href="/SignUp">Зареєструйтеся</a></p>
-    </div>
-</body>
-</html>
+{% block content %}
+<section class="card narrow">
+    <h2>Увійти до акаунту</h2>
+    <form method="post" class="form">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" required>
+
+        <label for="password">Пароль</label>
+        <input id="password" name="password" type="password" required>
+
+        <button type="submit" class="button">Увійти</button>
+    </form>
+    <p class="muted">Немає акаунта? <a href="{{ url_for('register') }}" class="link">Зареєструватися</a>.</p>
+</section>
+{% endblock %}

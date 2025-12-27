@@ -1,159 +1,118 @@
-<!DOCTYPE html>
-<html lang="uk">
-<head>
-    <meta charset="UTF-8">
-    <link rel="icon" type="image/png" href="/static/images/logo35.png">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/static/style.css">
-    <title>DRA | Digital RPG Assistant</title>
-</head>
-<body>
-    <header class="header">
-        <div class="brand">
-            <img src="/static/images/logo.png" alt="DRA Logo" class="logo">
-            <div>
-                <p class="brand__tag">Digital RPG Assistant</p>
-                <h1 class="brand__title">DRA Control Hub</h1>
+{% extends 'base.html' %}
+
+{% block title %}DRA | Digital RPG Assistant{% endblock %}
+{% block header_title %}DRA Control Hub{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero__content">
+        <p class="hero__eyebrow">DRA | Advanced tabletop management</p>
+        <h2>Керуйте кампанією, персонажами та пригодами на одному порталі</h2>
+        <p class="hero__subtitle">
+            DRA обʼєднує ключові інструменти майстра та гравців: лобі з ключем доступу, дизайн інвентаря в стилі
+            BG3 та профіль з аватаром.
+        </p>
+        <div class="hero__actions">
+            <a class="button" href="{{ url_for('lobby_page') }}">Створити лобі</a>
+            <a class="button ghost" href="{{ url_for('inventory') }}">Відкрити інвентар</a>
+        </div>
+        <div class="hero__stats">
+            <div class="stat">
+                <span class="stat__value">01</span>
+                <span class="stat__label">Ключ-доступ для лобі</span>
+            </div>
+            <div class="stat">
+                <span class="stat__value">24/7</span>
+                <span class="stat__label">Доступ до персонажа</span>
+            </div>
+            <div class="stat">
+                <span class="stat__value">BG3</span>
+                <span class="stat__label">Дизайн інвентаря</span>
             </div>
         </div>
-        <nav class="navigation">
-            <a href="/">Головна</a>
-            <a href="/Character">Персонаж</a>
-            <a href="/Inventory">Інвентар</a>
-            <a href="/Lobby">Лобі</a>
-            <a href="/News">Новини</a>
-            {% if user %}
-                <div class="user-chip">
-                    <span>{{ user.nickname }}</span>
-                    {% if user.userImage %}
-                        <a href="/profile"><img src="{{ url_for('static', filename=user.userImage.split('static/')[-1]) }}" alt="avatar" class="avatar"></a>
-                    {% else %}
-                        <a href="/profile"><img src="/static/images/default_avatar.png" alt="Аватар" class="avatar"></a>
-                    {% endif %}
-                </div>
-            {% else %}
-                <a class="button ghost" href="/LogIn">Log In</a>
-                <a class="button" href="/SignUp">Sign Up</a>
-            {% endif %}
-        </nav>
-    </header>
-
-    <main class="page">
-        <section class="hero">
-            <div class="hero__content">
-                <p class="hero__eyebrow">DRA | Advanced tabletop management</p>
-                <h2>Керуйте кампанією, персонажами та пригодами на одному порталі</h2>
-                <p class="hero__subtitle">
-                    Портал DRA створений для швидкого запуску настільних сесій: від лобі з ключем доступу до інвентаря
-                    в стилі Baldur's Gate 3 із міцністю предметів.
-                </p>
-                <div class="hero__actions">
-                    <a class="button" href="/Lobby">Створити лобі</a>
-                    <a class="button ghost" href="/Inventory">Відкрити інвентар</a>
-                </div>
-                <div class="hero__stats">
-                    <div class="stat">
-                        <span class="stat__value">01</span>
-                        <span class="stat__label">Ключ-доступ для лобі</span>
-                    </div>
-                    <div class="stat">
-                        <span class="stat__value">24/7</span>
-                        <span class="stat__label">Доступ до персонажа</span>
-                    </div>
-                    <div class="stat">
-                        <span class="stat__value">BG3</span>
-                        <span class="stat__label">Дизайн інвентаря</span>
-                    </div>
-                </div>
+    </div>
+    <div class="hero__visual">
+        <div class="glass-panel">
+            <h3>Сцена кампанії</h3>
+            <p>Створюйте сюжет, тримайте події під контролем, синхронізуйте ролі.</p>
+            <div class="chip-grid">
+                <span class="chip">Нові правила</span>
+                <span class="chip">Механіки</span>
+                <span class="chip">Саунд-дек</span>
+                <span class="chip">Артефакти</span>
             </div>
-            <div class="hero__visual">
-                <div class="glass-panel">
-                    <h3>Сцена кампанії</h3>
-                    <p>Створюйте сюжет, тримайте події під контролем, синхронізуйте ролі.</p>
-                    <div class="chip-grid">
-                        <span class="chip">Нові правила</span>
-                        <span class="chip">Механіки</span>
-                        <span class="chip">Саунд-дек</span>
-                        <span class="chip">Артефакти</span>
-                    </div>
-                </div>
-                <div class="banner-container" id="banner">
-                    <button class="arrow left">&#10094;</button>
-                    <button class="arrow right">&#10095;</button>
+        </div>
+        <div class="banner-container" id="banner">
+            <button class="arrow left" type="button">&#10094;</button>
+            <button class="arrow right" type="button">&#10095;</button>
 
-                    <img src="/static/banners/banner1.jpg" class="banner active" alt="DRA banner 1">
-                    <img src="/static/banners/banner2.jpg" class="banner" alt="DRA banner 2">
-                    <img src="/static/banners/banner3.jpg" class="banner" alt="DRA banner 3">
-                </div>
-            </div>
-        </section>
+            <img src="/static/banners/banner1.jpg" class="banner active" alt="DRA banner 1">
+            <img src="/static/banners/banner2.jpg" class="banner" alt="DRA banner 2">
+            <img src="/static/banners/banner3.jpg" class="banner" alt="DRA banner 3">
+        </div>
+    </div>
+</section>
 
-        <section class="grid">
-            <article class="card">
-                <h3>Лобі з ключем доступу</h3>
-                <p>Адмін створює лобі, отримує секретний ключ і керує учасниками у реальному часі.</p>
-                <a class="link" href="/Lobby">Перейти до лобі →</a>
-            </article>
-            <article class="card">
-                <h3>Інвентар у стилі Baldur's Gate 3</h3>
-                <p>Підігнаний під DRA інтерфейс із міцністю предметів та швидким ремонтом.</p>
-                <a class="link" href="/Inventory">Переглянути інвентар →</a>
-            </article>
-            <article class="card">
-                <h3>Акаунти і персонажі</h3>
-                <p>Персонаж зберігається за вашим акаунтом, а доступ прив'язаний до email.</p>
-                <a class="link" href="/Character">Налаштувати героя →</a>
-            </article>
-        </section>
+<section class="grid">
+    <article class="card">
+        <h3>Лобі з ключем доступу</h3>
+        <p>Адмін створює лобі, отримує секретний ключ і керує учасниками у реальному часі.</p>
+        <a class="link" href="{{ url_for('lobby_page') }}">Перейти до лобі →</a>
+    </article>
+    <article class="card">
+        <h3>Інвентар у стилі Baldur's Gate 3</h3>
+        <p>Підігнаний під DRA інтерфейс із міцністю предметів та швидким ремонтом.</p>
+        <a class="link" href="{{ url_for('inventory') }}">Переглянути інвентар →</a>
+    </article>
+    <article class="card">
+        <h3>Акаунти і персонажі</h3>
+        <p>Персонаж зберігається за вашим акаунтом, а доступ привʼязаний до email.</p>
+        <a class="link" href="{{ url_for('character') }}">Налаштувати героя →</a>
+    </article>
+</section>
 
-        <section class="split">
-            <div>
-                <h2>Що нового в DRA</h2>
-                <p>Ми підготували три ключові модулі для сучасного ведення настільних ігор:</p>
-                <ul class="list">
-                    <li>Лобі тільки для адмінів, де учасники заходять по ключу.</li>
-                    <li>Інвентар зі стилем BG3, міцністю та швидким ремонтом.</li>
-                    <li>Профіль з прив'язкою акаунта, персонажа та аватара.</li>
-                </ul>
-            </div>
-            <div class="glass-panel">
-                <h3>Майстер-сцена</h3>
-                <p>Використовуйте DRA як центр управління для правил, механік та історій.</p>
-                <div class="progress">
-                    <div class="progress__label">Активні кампанії</div>
-                    <div class="progress__bar"><span style="width: 78%"></span></div>
-                </div>
-                <div class="progress">
-                    <div class="progress__label">Заповнений інвентар</div>
-                    <div class="progress__bar"><span style="width: 52%"></span></div>
-                </div>
-            </div>
-        </section>
-    </main>
+<section class="split">
+    <div>
+        <h2>Що нового в DRA</h2>
+        <p>Ми підготували три ключові модулі для сучасного ведення настільних ігор:</p>
+        <ul class="list">
+            <li>Лобі тільки для адмінів, де учасники заходять по ключу.</li>
+            <li>Інвентар зі стилем BG3, міцністю та швидким ремонтом.</li>
+            <li>Профіль з привʼязкою акаунта, персонажа та аватара.</li>
+        </ul>
+    </div>
+    <div class="glass-panel">
+        <h3>Майстер-сцена</h3>
+        <p>Використовуйте DRA як центр управління для правил, механік та історій.</p>
+        <div class="progress">
+            <div class="progress__label">Активні кампанії</div>
+            <div class="progress__bar"><span style="width: 78%"></span></div>
+        </div>
+        <div class="progress">
+            <div class="progress__label">Заповнений інвентар</div>
+            <div class="progress__bar"><span style="width: 52%"></span></div>
+        </div>
+    </div>
+</section>
 
-    <footer>
-        <p>&copy; 2025 DRA Sanya Corporation. Всі права захищені.</p>
-    </footer>
+<script>
+    const banners = document.querySelectorAll('.banner');
+    let current = 0;
 
-    <script>
-        const banners = document.querySelectorAll('.banner');
-        let current = 0;
+    function showBanner(index) {
+        banners[current].classList.remove('active');
+        current = (index + banners.length) % banners.length;
+        banners[current].classList.add('active');
+    }
 
-        function showBanner(index) {
-            banners[current].classList.remove('active');
-            current = (index + banners.length) % banners.length;
-            banners[current].classList.add('active');
-        }
+    document.querySelector('.arrow.left').addEventListener('click', () => {
+        showBanner(current - 1);
+    });
 
-        document.querySelector('.arrow.left').addEventListener('click', () => {
-            showBanner(current - 1);
-        });
+    document.querySelector('.arrow.right').addEventListener('click', () => {
+        showBanner(current + 1);
+    });
 
-        document.querySelector('.arrow.right').addEventListener('click', () => {
-            showBanner(current + 1);
-        });
-
-        setInterval(() => showBanner(current + 1), 16000);
-    </script>
-</body>
-</html>
+    setInterval(() => showBanner(current + 1), 16000);
+</script>
+{% endblock %}
