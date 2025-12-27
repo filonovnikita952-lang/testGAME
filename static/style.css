@@ -466,6 +466,17 @@ textarea {
     border-radius: 16px;
     padding: 16px;
     margin-bottom: 12px;
+    width: min(260px, 100%);
+    align-self: flex-start;
+}
+
+.lobby-card__content {
+    display: grid;
+    gap: 6px;
+}
+
+.lobby-card__action {
+    margin-top: 6px;
 }
 
 .lobby-members {
@@ -474,6 +485,24 @@ textarea {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
+}
+
+.member-status {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    text-transform: lowercase;
+}
+
+.member-status--online {
+    color: #7dff9a;
+    border-color: rgba(125, 255, 154, 0.6);
+}
+
+.member-status--offline {
+    color: rgba(255, 255, 255, 0.6);
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 .member-card {
@@ -501,6 +530,7 @@ textarea {
     font-weight: 600;
     padding: 6px 8px;
     border-radius: 10px;
+    flex-wrap: wrap;
 }
 
 .member-card__summary:hover {
@@ -529,10 +559,14 @@ textarea {
 
 .lobby-layout {
     display: grid;
-    grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+    grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
     gap: 24px;
     align-items: start;
     margin: 12px 0 24px;
+}
+
+.lobby-side {
+    justify-self: start;
 }
 
 .lobby-workspace {
