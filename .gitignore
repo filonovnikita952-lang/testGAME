@@ -23,3 +23,5 @@ databases/
 # OS junk
 .DS_Store
 Thumbs.db
+static/uploads/
+static/uploads/
