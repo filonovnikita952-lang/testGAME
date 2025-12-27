@@ -272,6 +272,11 @@ def news():
     return render_template('News.html', user=current_user())
 
 
+@app.route('/Inventory')
+def inventory():
+    return render_template('Inventory.html', user=current_user())
+
+
 @app.route('/Lobby', methods=['GET', 'POST'])
 def lobby_page():
     user = require_user()
