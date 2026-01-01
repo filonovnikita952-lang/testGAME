@@ -2,23 +2,42 @@
 
 {% block title %}Новини DRA{% endblock %}
 {% block header_title %}Новини{% endblock %}
+{% block page_class %}page--news{% endblock %}
 
 {% block content %}
-<section class="grid">
-    <article class="card">
-        <h2>Оновлення лобі</h2>
-        <p>Майстри отримали нову рольову панель: швидка зміна статусів учасників без перезавантаження сторінки.</p>
-        <span class="chip">Лобі</span>
+<section class="news-board">
+    <article class="news-card">
+        <div class="news-pin news-pin--red" aria-hidden="true"></div>
+        <div class="news-paper">
+            <h2>Оновлення лобі</h2>
+            <p>Майстри отримали нову рольову панель: швидка зміна статусів учасників без перезавантаження сторінки.</p>
+            <span class="news-tag">Лобі</span>
+        </div>
+        <div class="news-photo">
+            <div class="news-photo__frame"></div>
+        </div>
     </article>
-    <article class="card">
-        <h2>Інвентар BG3</h2>
-        <p>Додано відстеження міцності, швидкі дії «Використати» та «Полагодити».</p>
-        <span class="chip">Інвентар</span>
+    <article class="news-card news-card--alt">
+        <div class="news-pin news-pin--blue" aria-hidden="true"></div>
+        <div class="news-paper">
+            <h2>Інвентар BG3</h2>
+            <p>Додано відстеження міцності, швидкі дії «Використати» та «Полагодити».</p>
+            <span class="news-tag">Інвентар</span>
+        </div>
+        <div class="news-photo">
+            <div class="news-photo__frame"></div>
+        </div>
     </article>
-    <article class="card">
-        <h2>Профіль гравця</h2>
-        <p>Підтримуються аватари, опис і позначка ролі в лобі.</p>
-        <span class="chip">Профіль</span>
+    <article class="news-card">
+        <div class="news-pin news-pin--green" aria-hidden="true"></div>
+        <div class="news-paper">
+            <h2>Профіль гравця</h2>
+            <p>Підтримуються аватари, опис і позначка ролі в лобі.</p>
+            <span class="news-tag">Профіль</span>
+        </div>
+        <div class="news-photo">
+            <div class="news-photo__frame"></div>
+        </div>
     </article>
 </section>
 {% endblock %}
