@@ -1,20 +1,12 @@
-(function initInventory() {
-    const inventoryRoot = document.querySelector('.inventory');
-    if (!inventoryRoot) {
-        return;
-    }
-    const grid = inventoryRoot.querySelector('#tetris-grid');
-    const rotateButton = inventoryRoot.querySelector('#rotate-item');
-    const autoPackButton = inventoryRoot.querySelector('#auto-pack');
-    const contextMenu = inventoryRoot.querySelector('#context-menu');
-    const transferModal = inventoryRoot.querySelector('#transfer-modal');
-    const transferPlayers = inventoryRoot.querySelector('#transfer-players');
-    const transferClose = inventoryRoot.querySelector('#transfer-close');
+const grid = document.getElementById('tetris-grid');
+const rotateButton = document.getElementById('rotate-item');
+const autoPackButton = document.getElementById('auto-pack');
+const contextMenu = document.getElementById('context-menu');
+const transferModal = document.getElementById('transfer-modal');
+const transferPlayers = document.getElementById('transfer-players');
+const transferClose = document.getElementById('transfer-close');
 
-    const gridConfig = { columns: 7, rows: 9 };
-    const characterSwitcher = inventoryRoot.querySelector('.character-switcher');
-    const inventoryTitle = inventoryRoot.querySelector('.inventory-title');
-    let activePlayerId = inventoryRoot.dataset.playerId || 'self';
+const gridConfig = { columns: 12, rows: 8 };
 
 const items = [
     {
@@ -29,7 +21,7 @@ const items = [
         weight: 3.2,
         description: 'Балансований клинок для ближнього бою.',
         equipSlot: 'weapon',
-        entry: { qty: 1, rotated: false, position: { x: 1, y: 1 } },
+        entry: { qty: 1, rotation: 0, position: { x: 1, y: 1 } },
     },
     {
         id: 'leather_armor',
@@ -43,7 +35,7 @@ const items = [
         weight: 5.4,
         description: 'Легка броня для мандрівника.',
         equipSlot: 'body',
-        entry: { qty: 1, rotated: false, position: { x: 3, y: 1 } },
+        entry: { qty: 1, rotation: 0, position: { x: 3, y: 1 } },
     },
     {
         id: 'potion_heal',
@@ -57,7 +49,7 @@ const items = [
         weight: 0.3,
         description: 'Відновлює 12 HP.',
         equipSlot: null,
-        entry: { qty: 3, rotated: false, position: { x: 6, y: 1 } },
+        entry: { qty: 3, rotation: 0, position: { x: 6, y: 1 } },
     },
     {
         id: 'coin_pouch',
@@ -71,7 +63,7 @@ const items = [
         weight: 0.01,
         description: 'Золоті монети. Використовуються як предмет.',
         equipSlot: null,
-        entry: { qty: 280, rotated: false, position: { x: 7, y: 3 } },
+        entry: { qty: 280, rotation: 0, position: { x: 8, y: 2 } },
     },
     {
         id: 'arrow_bundle',
@@ -85,7 +77,7 @@ const items = [
         weight: 0.1,
         description: 'Пучок стріл для лука.',
         equipSlot: null,
-        entry: { qty: 20, rotated: false, position: { x: 1, y: 6 } },
+        entry: { qty: 20, rotation: 0, position: { x: 1, y: 5 } },
     },
 ];
 
@@ -107,60 +99,15 @@ const state = {
     ghost: null,
     lastValid: null,
     lastPointer: null,
-    selectedId: null,
 };
 
 const getItemById = (id) => items.find((item) => item.id === id);
 
 const getItemSize = (item) => {
-    if (item.entry.rotated) {
+    if (item.entry.rotation === 90) {
         return { w: item.size.h, h: item.size.w };
     }
     return { w: item.size.w, h: item.size.h };
-};
-
-const buildStorageKey = () => `dra.inventory.entries.${activePlayerId}`;
-
-const persistInventory = () => {
-    const payload = items.map((item) => ({
-        id: item.id,
-        entry: item.entry,
-    }));
-    localStorage.setItem(buildStorageKey(), JSON.stringify(payload));
-};
-
-const loadInventory = () => {
-    const stored = localStorage.getItem(buildStorageKey());
-    if (!stored) return;
-    try {
-        const payload = JSON.parse(stored);
-        payload.forEach((saved) => {
-            const item = getItemById(saved.id);
-            if (item && saved.entry) {
-                item.entry = {
-                    ...item.entry,
-                    ...saved.entry,
-                    rotated: Boolean(saved.entry.rotated),
-                };
-            }
-        });
-    } catch (error) {
-        console.warn('Inventory load failed', error);
-    }
-};
-
-const setActivePlayer = (playerId, label) => {
-    activePlayerId = playerId || inventoryRoot.dataset.playerId || 'self';
-    if (inventoryTitle && label) {
-        inventoryTitle.textContent = `Персонаж: ${label}`;
-    }
-    if (characterSwitcher) {
-        characterSwitcher.querySelectorAll('.character-switcher__chip').forEach((chip) => {
-            chip.classList.toggle('is-active', chip.dataset.playerId === activePlayerId);
-        });
-    }
-    loadInventory();
-    renderItems();
 };
 
 const createGridCells = () => {
@@ -198,7 +145,6 @@ const renderItems = () => {
             ${item.stackable ? `<div class="inventory-item__qty">x${item.entry.qty}</div>` : ''}
         `;
         element.addEventListener('pointerdown', (event) => startDrag(event, item.id));
-        element.addEventListener('click', () => selectItem(item.id));
         element.addEventListener('contextmenu', (event) => openContextMenu(event, item.id));
         grid.appendChild(element);
     });
@@ -252,7 +198,6 @@ const startDrag = (event, itemId) => {
     const item = getItemById(itemId);
     if (!item) return;
     state.draggingId = itemId;
-    selectItem(itemId);
     const ghost = document.createElement('div');
     ghost.className = 'inventory-ghost';
     state.ghost = ghost;
@@ -310,7 +255,6 @@ const endDrag = (event) => {
     const check = isPositionValid(item.id, position, size);
     if (check.valid) {
         item.entry.position = position;
-        persistInventory();
     } else if (check.overlap && item.stackable && check.overlap.id === item.id) {
         const space = check.overlap.maxStack - check.overlap.entry.qty;
         const moved = Math.min(space, item.entry.qty);
@@ -319,7 +263,6 @@ const endDrag = (event) => {
         if (item.entry.qty <= 0) {
             item.entry.position = null;
         }
-        persistInventory();
     }
     cleanupDrag(item.id);
     renderItems();
@@ -341,25 +284,10 @@ const cleanupDrag = (itemId) => {
     window.removeEventListener('pointerup', endDrag);
 };
 
-const selectItem = (itemId) => {
-    state.selectedId = itemId;
-    grid.querySelectorAll('.inventory-item').forEach((node) => node.classList.remove('is-selected'));
-    const element = grid.querySelector(`[data-item-id="${itemId}"]`);
-    if (element) {
-        element.classList.add('is-selected');
-    }
-};
-
-const toggleRotation = (item) => {
-    if (!item || !item.rotatable) return;
-    item.entry.rotated = !item.entry.rotated;
-    persistInventory();
-};
-
 const rotateDragging = () => {
-    const item = getItemById(state.draggingId || state.selectedId);
+    const item = getItemById(state.draggingId);
     if (!item || !item.rotatable) return;
-    toggleRotation(item);
+    item.entry.rotation = item.entry.rotation === 90 ? 0 : 90;
     updateGhost();
     renderItems();
 };
@@ -434,7 +362,6 @@ const setupEquipSlots = () => {
             slot.classList.remove('is-filled');
             slot.textContent = slot.dataset.slotLabel;
             renderItems();
-            persistInventory();
         });
         slot.dataset.slotLabel = slot.textContent;
     });
@@ -451,7 +378,6 @@ const tryEquip = (item) => {
     slot.classList.add('is-filled');
     slot.textContent = item.name;
     item.entry.position = null;
-    persistInventory();
     return true;
 };
 
@@ -475,23 +401,8 @@ document.addEventListener('click', (event) => {
     }
 });
 
-    createGridCells();
-    if (characterSwitcher) {
-        const firstChip = characterSwitcher.querySelector('.character-switcher__chip');
-        if (firstChip) {
-            setActivePlayer(firstChip.dataset.playerId, firstChip.textContent.trim());
-        }
-        characterSwitcher.addEventListener('click', (event) => {
-            const chip = event.target.closest('.character-switcher__chip');
-            if (!chip) return;
-            persistInventory();
-            setActivePlayer(chip.dataset.playerId, chip.textContent.trim());
-        });
-    } else {
-        loadInventory();
-        renderItems();
-    }
-    setupTabs();
-    setupContextActions();
-    setupEquipSlots();
-})();
+createGridCells();
+renderItems();
+setupTabs();
+setupContextActions();
+setupEquipSlots();
