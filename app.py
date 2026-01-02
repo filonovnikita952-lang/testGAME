@@ -663,6 +663,14 @@ def lobby_page():
 
     owned_lobbies = Lobby.query.filter_by(admin_id=user.id).order_by(Lobby.created_at.desc()).all()
     member_lobbies = LobbyMember.query.filter_by(user_id=user.id).all()
+    transfer_players = []
+    if member_lobbies:
+        first_lobby = member_lobbies[0].lobby
+        if first_lobby:
+            transfer_players = [
+                {'id': member.user.id, 'name': member.user.nickname}
+                for member in first_lobby.members
+            ]
 
     return render_template(
         'Lobby.html',
