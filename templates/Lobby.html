@@ -137,7 +137,7 @@ codex/fix-participant-panel-alignment-and-statuses-0vnoa8
                     </div>
                 </div>
                 <div class="lobby-workspace card" aria-label="Поле для роботи">
-                    <section class="inventory inventory--embedded" data-player-id="{{ user.id }}">
+                    <section class="inventory inventory--embedded" data-player-id="{{ user.id }}" data-lobby-id="{{ membership.lobby.id }}">
                         <div class="inventory-panel">
                             <div class="inventory-panel__header">
                                 <h2 class="inventory-title">
@@ -154,6 +154,11 @@ codex/fix-participant-panel-alignment-and-statuses-0vnoa8
                                                 {{ member.user.nickname }}
                                             </button>
                                         {% endfor %}
+                                        {% if membership.role == 'master' %}
+                                            <button class="button ghost character-switcher__action" type="button" data-action="view-inventory">
+                                                Переглянути інвентар
+                                            </button>
+                                        {% endif %}
                                     </div>
                                 {% endif %}
                             </div>
@@ -316,5 +321,8 @@ codex/fix-participant-panel-alignment-and-statuses-0vnoa8
         <p class="muted">Ще немає активних лобі. Попросіть ключ у майстра.</p>
     {% endif %}
 </section>
+<script>
+    window.INVENTORY_DATA = {{ inventory_data | tojson }};
+</script>
 <script src="{{ url_for('static', filename='inventory.js') }}" defer></script>
 {% endblock %}
