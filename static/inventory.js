@@ -1,18 +1,112 @@
-const initInventory = () => {
-    const grid = document.getElementById('tetris-grid');
-    if (!grid) return;
+const grid = document.getElementById('tetris-grid');
+const rotateButton = document.getElementById('rotate-item');
+const autoPackButton = document.getElementById('auto-pack');
+const contextMenu = document.getElementById('context-menu');
+const transferModal = document.getElementById('transfer-modal');
+const transferPlayers = document.getElementById('transfer-players');
+const transferClose = document.getElementById('transfer-close');
+const embeddedInventory = document.querySelector('.inventory--embedded');
+const characterSwitcher = document.querySelector('.character-switcher');
 
-    const rotateButton = document.getElementById('rotate-item');
-    const autoPackButton = document.getElementById('auto-pack');
-    const contextMenu = document.getElementById('context-menu');
-    const transferModal = document.getElementById('transfer-modal');
-    const transferPlayers = document.getElementById('transfer-players');
-    const transferClose = document.getElementById('transfer-close');
-    const inventoryRoot = document.querySelector('.inventory');
-    const currentPlayerId = inventoryRoot?.dataset.playerId || 'self';
+const gridConfig = { columns: 12, rows: 8 };
 
-    const gridConfig = { columns: 12, rows: 8 };
-    const storagePrefix = 'dra_inventory_';
+const defaultItems = [
+    {
+        id: 'sword_basic',
+        name: 'Меч найманця',
+        type: 'weapon',
+        size: { w: 1, h: 3 },
+        rotatable: true,
+        stackable: false,
+        quality: 'uncommon',
+        maxStack: 1,
+        weight: 3.2,
+        description: 'Балансований клинок для ближнього бою.',
+        equipSlot: 'weapon',
+        entry: { qty: 1, rotation: 0, position: { x: 1, y: 1 } },
+    },
+    {
+        id: 'leather_armor',
+        name: 'Шкіряна броня',
+        type: 'armor',
+        size: { w: 2, h: 3 },
+        rotatable: false,
+        stackable: false,
+        quality: 'common',
+        maxStack: 1,
+        weight: 5.4,
+        description: 'Легка броня для мандрівника.',
+        equipSlot: 'body',
+        entry: { qty: 1, rotation: 0, position: { x: 3, y: 1 } },
+    },
+    {
+        id: 'potion_heal',
+        name: 'Зілля лікування',
+        type: 'food',
+        size: { w: 1, h: 2 },
+        rotatable: true,
+        stackable: true,
+        quality: 'uncommon',
+        maxStack: 5,
+        weight: 0.3,
+        description: 'Відновлює 12 HP.',
+        equipSlot: null,
+        entry: { qty: 3, rotation: 0, position: { x: 6, y: 1 } },
+    },
+    {
+        id: 'coin_pouch',
+        name: 'Мішечок монет',
+        type: 'money',
+        size: { w: 1, h: 1 },
+        rotatable: false,
+        stackable: true,
+        quality: 'common',
+        maxStack: 9999,
+        weight: 0.01,
+        description: 'Золоті монети. Використовуються як предмет.',
+        equipSlot: null,
+        entry: { qty: 280, rotation: 0, position: { x: 8, y: 2 } },
+    },
+    {
+        id: 'arrow_bundle',
+        name: 'Стрілковий набір',
+        type: 'ammunition',
+        size: { w: 2, h: 1 },
+        rotatable: true,
+        stackable: true,
+        quality: 'common',
+        maxStack: 30,
+        weight: 0.1,
+        description: 'Пучок стріл для лука.',
+        equipSlot: null,
+        entry: { qty: 20, rotation: 0, position: { x: 1, y: 5 } },
+    },
+];
+
+let items = Array.isArray(window.INVENTORY_DATA) && window.INVENTORY_DATA.length
+    ? window.INVENTORY_DATA
+    : defaultItems;
+
+const equipped = {
+    head: null,
+    body: null,
+    hands: null,
+    legs: null,
+    weapon: null,
+    offhand: null,
+    amulet: null,
+    ring: null,
+};
+
+const transferPlayersList = Array.isArray(window.TRANSFER_PLAYERS) ? window.TRANSFER_PLAYERS : [];
+
+const state = {
+    draggingId: null,
+    ghost: null,
+    lastValid: null,
+    lastPointer: null,
+    transferItemId: null,
+};
 
     let items = [];
     let equipped = {
@@ -66,8 +160,31 @@ const initInventory = () => {
         }
     };
 
-    const saveInventory = (playerId, data) => {
-        localStorage.setItem(getStorageKey(playerId), JSON.stringify(data));
+const setItems = (nextItems) => {
+    items = nextItems;
+    state.draggingId = null;
+    state.ghost = null;
+    state.lastValid = null;
+    state.lastPointer = null;
+    renderItems();
+};
+
+const cellSize = () => {
+    const rect = grid.getBoundingClientRect();
+    const styles = getComputedStyle(grid);
+    const paddingX = parseFloat(styles.paddingLeft) || 0;
+    const paddingY = parseFloat(styles.paddingTop) || 0;
+    const gapX = parseFloat(styles.columnGap) || 0;
+    const gapY = parseFloat(styles.rowGap) || 0;
+    const width = (rect.width - paddingX * 2 - gapX * (gridConfig.columns - 1)) / gridConfig.columns;
+    const height = (rect.height - paddingY * 2 - gapY * (gridConfig.rows - 1)) / gridConfig.rows;
+    return {
+        width,
+        height,
+        paddingX,
+        paddingY,
+        gapX,
+        gapY,
     };
 
     const syncCurrentInventory = () => {
@@ -315,9 +432,20 @@ const initInventory = () => {
         transferModal.classList.add('is-open');
     };
 
-    const closeTransferModal = () => {
-        transferModal?.classList.remove('is-open');
-    };
+const openTransferModal = (itemId) => {
+    state.transferItemId = itemId;
+    transferPlayers.innerHTML = '';
+    transferPlayersList.forEach((player) => {
+        if (String(player.id) === String(window.CURRENT_USER_ID)) {
+            return;
+        }
+        const row = document.createElement('div');
+        row.className = 'transfer-player';
+        row.innerHTML = `<span>${player.name}</span><button class="button ghost" type="button" data-player-id="${player.id}">Передати</button>`;
+        transferPlayers.appendChild(row);
+    });
+    transferModal.classList.add('is-open');
+};
 
     const setupTabs = () => {
         document.querySelectorAll('.tab-button').forEach((button) => {
@@ -469,4 +597,120 @@ const initInventory = () => {
     setupMasterPanel();
 };
 
-document.addEventListener('DOMContentLoaded', initInventory);
+const lobbyId = embeddedInventory?.dataset.lobbyId;
+const canViewOtherInventory = embeddedInventory?.dataset.canView === 'true';
+let selectedPlayerId = embeddedInventory?.dataset.playerId || null;
+
+const setSelectedPlayer = (playerId) => {
+    selectedPlayerId = playerId;
+    if (!characterSwitcher) return;
+    characterSwitcher.querySelectorAll('.character-switcher__chip').forEach((chip) => {
+        chip.classList.toggle('is-active', chip.dataset.playerId === playerId);
+    });
+};
+
+const loadInventoryForPlayer = async (playerId) => {
+    if (!playerId || !lobbyId) return;
+    try {
+        const response = await fetch(`/api/inventory/${playerId}?lobby_id=${lobbyId}`);
+        if (!response.ok) {
+            throw new Error('Не вдалося завантажити інвентар.');
+        }
+        const data = await response.json();
+        setItems(Array.isArray(data) ? data : []);
+    } catch (error) {
+        alert(error.message || 'Не вдалося завантажити інвентар.');
+    }
+};
+
+document.addEventListener('keydown', (event) => {
+    if (event.key.toLowerCase() === 'r') {
+        rotateDragging();
+    }
+});
+
+rotateButton.addEventListener('click', rotateDragging);
+autoPackButton.addEventListener('click', () => {
+    alert('Auto-pack поки що недоступний у демо.');
+});
+transferClose.addEventListener('click', closeTransferModal);
+transferModal.addEventListener('click', (event) => {
+    if (event.target === transferModal) closeTransferModal();
+});
+transferPlayers.addEventListener('click', async (event) => {
+    const button = event.target.closest('button[data-player-id]');
+    if (!button) return;
+    const recipientId = button.dataset.playerId;
+    const item = getItemById(state.transferItemId);
+    if (!item) return;
+    let amount = item.entry.qty;
+    if (item.stackable && item.entry.qty > 1) {
+        const input = window.prompt(`Скільки передати? (1-${item.entry.qty})`, `${item.entry.qty}`);
+        if (!input) return;
+        const parsed = Number.parseInt(input, 10);
+        if (Number.isNaN(parsed) || parsed < 1 || parsed > item.entry.qty) {
+            alert('Некоректна кількість.');
+            return;
+        }
+        amount = parsed;
+    }
+    const response = await fetch('/api/transfers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            recipient_id: recipientId,
+            item_id: item.id,
+            amount,
+        }),
+    });
+    if (response.ok) {
+        closeTransferModal();
+    } else {
+        const payload = await response.json().catch(() => ({}));
+        alert(payload.error || 'Не вдалося передати предмет.');
+    }
+});
+document.addEventListener('click', (event) => {
+    if (!contextMenu.contains(event.target)) {
+        closeContextMenu();
+    }
+});
+
+if (characterSwitcher) {
+    const chips = characterSwitcher.querySelectorAll('.character-switcher__chip');
+    if (chips.length && !selectedPlayerId) {
+        setSelectedPlayer(chips[0].dataset.playerId);
+    }
+    chips.forEach((chip) => {
+        chip.addEventListener('click', () => {
+            setSelectedPlayer(chip.dataset.playerId);
+            if (canViewOtherInventory) {
+                loadInventoryForPlayer(chip.dataset.playerId);
+            }
+        });
+    });
+    if (canViewOtherInventory && selectedPlayerId) {
+        loadInventoryForPlayer(selectedPlayerId);
+    }
+}
+
+window.addEventListener('inventory-transfer-updated', () => {
+    const currentUserId = window.CURRENT_USER_ID;
+    if (!currentUserId) return;
+    if (embeddedInventory && selectedPlayerId === String(currentUserId)) {
+        loadInventoryForPlayer(selectedPlayerId);
+        return;
+    }
+    if (!embeddedInventory && grid && String(currentUserId)) {
+        fetch(`/api/inventory/${currentUserId}`)
+            .then((response) => (response.ok ? response.json() : []))
+            .then((data) => setItems(Array.isArray(data) ? data : []))
+            .catch(() => {});
+    }
+});
+
+createGridCells();
+renderItems();
+setupTabs();
+setupContextActions();
+setupEquipSlots();
