@@ -137,7 +137,12 @@ codex/fix-participant-panel-alignment-and-statuses-0vnoa8
                     </div>
                 </div>
                 <div class="lobby-workspace card" aria-label="Поле для роботи">
-                    <section class="inventory inventory--embedded" data-player-id="{{ user.id }}">
+                    <section
+                        class="inventory inventory--embedded"
+                        data-player-id="{{ user.id }}"
+                        data-lobby-id="{{ membership.lobby.id }}"
+                        data-can-view="{{ 'true' if membership.role in ['master', 'spectator'] else 'false' }}"
+                    >
                         <div class="inventory-panel">
                             <div class="inventory-panel__header">
                                 <h2 class="inventory-title">
@@ -210,6 +215,45 @@ codex/fix-participant-panel-alignment-and-statuses-0vnoa8
                                             </select>
                                             <button type="button" class="button">Створити та передати</button>
                                         </form>
+                                        <div class="item-schema card">
+                                            <h4>Структура предмета</h4>
+                                            <div class="item-schema__section">
+                                                <h5>Основна частина (обовʼязкова)</h5>
+                                                <ul>
+                                                    <li><strong>ID</strong> — авто-ідентифікатор предмета (для видачі по ID).</li>
+                                                    <li><strong>name</strong> — базова назва від адміністратора.</li>
+                                                    <li><strong>description</strong> — базовий опис від адміністратора.</li>
+                                                    <li><strong>image</strong> — зображення предмета.</li>
+                                                    <li><strong>h/w</strong> — висота та ширина в тетрис-інвентарі.</li>
+                                                    <li><strong>weight</strong> — вага однієї одиниці.</li>
+                                                    <li><strong>MAXstr</strong> — максимальна міцність предмета.</li>
+                                                    <li><strong>type</strong> — тип (береться з таблиці типів).</li>
+                                                    <li><strong>quality</strong> — якість (звичайний, незвичайний, епічний, легендарний, міфічний).</li>
+                                                </ul>
+                                            </div>
+                                            <div class="item-schema__section">
+                                                <h5>Персональна частина (на користувача)</h5>
+                                                <ul>
+                                                    <li><strong>remain</strong> — кому належить предмет (власник).</li>
+                                                    <li><strong>remain(username)</strong> — клітинка інвентаря, де лежить предмет.</li>
+                                                    <li><strong>str(username)</strong> — поточна міцність.</li>
+                                                    <li><strong>amount(username)</strong> — кількість (1..MAXamount).</li>
+                                                    <li><strong>description(username)</strong> — нотатки гравця (не перекриває базовий опис).</li>
+                                                    <li><strong>name(username)</strong> — особиста назва (перекриває базову лише для цього гравця).</li>
+                                                </ul>
+                                            </div>
+                                            <div class="item-schema__section">
+                                                <h5>Таблиця типів</h5>
+                                                <ul class="item-schema__types">
+                                                    <li>weapon</li>
+                                                    <li>ammo</li>
+                                                    <li>armor</li>
+                                                    <li>map</li>
+                                                    <li>food</li>
+                                                    <li>other</li>
+                                                </ul>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             {% else %}
@@ -316,5 +360,9 @@ codex/fix-participant-panel-alignment-and-statuses-0vnoa8
         <p class="muted">Ще немає активних лобі. Попросіть ключ у майстра.</p>
     {% endif %}
 </section>
+<script>
+    window.INVENTORY_DATA = {{ inventory_data | tojson }};
+    window.TRANSFER_PLAYERS = {{ transfer_players | tojson }};
+</script>
 <script src="{{ url_for('static', filename='inventory.js') }}" defer></script>
 {% endblock %}

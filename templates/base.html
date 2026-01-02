@@ -55,6 +55,7 @@
             </section>
         {% endif %}
     {% endwith %}
+    <section class="transfer-notifications" id="transfer-notifications" aria-live="polite"></section>
 
     {% block content %}{% endblock %}
 </main>
@@ -62,5 +63,9 @@
 <footer class="footer">
     <p>&copy; 2025 DRA Sanya Corporation. Всі права захищені.</p>
 </footer>
+<script>
+    window.CURRENT_USER_ID = {{ user.id if user else 'null' }};
+</script>
+<script src="{{ url_for('static', filename='transfer_notifications.js') }}" defer></script>
 </body>
 </html>
