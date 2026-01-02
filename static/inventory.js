@@ -112,6 +112,7 @@
         lastPointer: null,
         transferItemId: null,
     };
+    const pendingRemovals = new Set();
 
     const lobbyId = embeddedInventory?.dataset.lobbyId;
     const canViewOtherInventory = embeddedInventory?.dataset.canView === 'true';
@@ -142,7 +143,30 @@
         }
     };
 
+    const persistInventory = async () => {
+        if (!window.CURRENT_USER_ID) return;
+        if (embeddedInventory && selectedPlayerId
+            && String(selectedPlayerId) !== String(window.CURRENT_USER_ID)) {
+            return;
+        }
+        const response = await fetch('/api/inventory/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                items,
+                removed_ids: Array.from(pendingRemovals),
+            }),
+        });
+        if (response.ok) {
+            pendingRemovals.clear();
+        }
+    };
+
     const syncCurrentInventory = () => {
+        if (window.CURRENT_USER_ID) {
+            persistInventory();
+            return;
+        }
         if (embeddedInventory) return;
         saveInventory(window.CURRENT_USER_ID, { items, equipped });
     };
@@ -326,7 +350,8 @@
             check.overlap.entry.qty += moved;
             item.entry.qty -= moved;
             if (item.entry.qty <= 0) {
-                item.entry.position = null;
+                pendingRemovals.add(item.id);
+                items = items.filter((entry) => String(entry.id) !== String(item.id));
             }
         }
         cleanupDrag(item.id);
@@ -439,6 +464,7 @@
                     syncCurrentInventory();
                 }
                 if (action === 'drop') {
+                    pendingRemovals.add(itemId);
                     items = items.filter((entry) => String(entry.id) !== String(itemId));
                     renderItems();
                     syncCurrentInventory();
@@ -550,7 +576,7 @@
         }
     };
 
-    if (!embeddedInventory) {
+    if (!embeddedInventory && !window.CURRENT_USER_ID) {
         const stored = loadInventory(window.CURRENT_USER_ID);
         if (stored?.items?.length) {
             items = stored.items;
