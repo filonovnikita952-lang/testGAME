@@ -5,378 +5,352 @@
 {% block page_class %}page--lobby{% endblock %}
 
 {% block content %}
-{% if not member_lobbies %}
-    <section class="grid">
-        <article class="card">
-            <h2>Створення лобі</h2>
-            <p class="muted">Лише адміністратори можуть створювати нові лобі з унікальним ключем доступу.</p>
-            <form method="post" class="form inline">
-                <input type="hidden" name="action" value="create">
-                <input type="text" name="name" placeholder="Назва лобі" required>
-                <button type="submit" class="button" {% if not user.is_admin %}disabled{% endif %}>Створити</button>
-            </form>
-            {% if not user.is_admin %}
-                <p class="hint">Потрібен адмін-доступ? Зверніться до майстра кампанії.</p>
-            {% endif %}
-        </article>
+<section class="lobby-shell">
+    {% if not member_lobbies %}
+        <header class="lobby-hero">
+            <div>
+                <p class="lobby-hero__eyebrow">DRA Campaign Hub</p>
+                <h1>Створи або приєднайся до лобі</h1>
+                <p class="muted">Лобі зберігає склад команди, ролі та інвентар. Використовуйте ключ доступу для швидкого входу.</p>
+            </div>
+        </header>
+        <div class="lobby-welcome">
+            <article class="card lobby-welcome__card">
+                <h2>Створення лобі</h2>
+                <p class="muted">Нову кампанію може запускати лише адміністратор.</p>
+                <form method="post" class="form">
+                    <input type="hidden" name="action" value="create">
+                    <label for="lobby_name">Назва лобі</label>
+                    <input type="text" id="lobby_name" name="name" placeholder="Назва лобі" required>
+                    <button type="submit" class="button" {% if not user.is_admin %}disabled{% endif %}>Створити</button>
+                </form>
+                {% if not user.is_admin %}
+                    <p class="hint">Потрібен доступ адміністратора? Зверніться до майстра кампанії.</p>
+                {% endif %}
+            </article>
 
-        <article class="card">
-            <h2>Приєднатись за ключем</h2>
-            <form method="post" class="form">
-                <input type="hidden" name="action" value="join">
-                <label for="access_key">Ключ доступу</label>
-                <input type="text" id="access_key" name="access_key" placeholder="A1B2C3" required>
-                <button type="submit" class="button">Увійти</button>
-            </form>
-        </article>
-    </section>
-{% endif %}
-
-<section class="stack">
-    {% if member_lobbies %}
+            <article class="card lobby-welcome__card">
+                <h2>Приєднатися</h2>
+                <p class="muted">Введіть ключ доступу, який отримали від майстра.</p>
+                <form method="post" class="form">
+                    <input type="hidden" name="action" value="join">
+                    <label for="access_key">Ключ доступу</label>
+                    <input type="text" id="access_key" name="access_key" placeholder="A1B2C3" required>
+                    <button type="submit" class="button">Увійти</button>
+                </form>
+            </article>
+        </div>
+    {% else %}
         {% set role_labels = {'master': 'Майстер', 'player': 'Гравець', 'spectator': 'Глядач'} %}
         {% for membership in member_lobbies %}
-            <div class="lobby-card">
-                <div class="lobby-card__content">
-                    <h1>Ваше лобі</h1>
-                    <strong>{{ membership.lobby.name }}</strong>
-                    <p class="muted">Ключ: {{ membership.lobby.access_key }}</p>
-                    <p class="muted">Учасників: {{ membership.lobby.members | length }}</p>
-                    {% if membership.lobby.admin_id == user.id %}
-                        <form method="post" class="lobby-card__action">
-                            <input type="hidden" name="action" value="delete_lobby">
-                            <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
-                            <button type="submit" class="button danger">Видалити лобі</button>
-                        </form>
-                    {% endif %}
-                </div>
-                {% if membership.lobby.admin_id != user.id %}
-                    <form method="post">
-                        <input type="hidden" name="action" value="leave">
-                        <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
-                        <button type="submit" class="button ghost">Вийти</button>
-                    </form>
-                {% else %}
-                    <span class="badge">Адмін</span>
-                {% endif %}
-            </div>
-            <div class="lobby-layout">
-                <div class="lobby-side">
-                    <div class="lobby-card">
-                        <div class="lobby-card__content">
-                            <p class="lobby-card__title">Ваше лобі</p>
-                            <strong>{{ membership.lobby.name }}</strong>
-                            <p class="muted">Ключ: {{ membership.lobby.access_key }}</p>
-                            <p class="muted">Учасників: {{ membership.lobby.members | length }}</p>
-                            {% if membership.lobby.admin_id == user.id %}
-                                <form method="post" class="lobby-card__action">
-                                    <input type="hidden" name="action" value="delete_lobby">
-                                    <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
-                                    <button type="submit" class="button danger">Видалити лобі</button>
-                                </form>
-                            {% endif %}
+            <section class="lobby-room">
+                <header class="lobby-room__header">
+                    <div class="lobby-room__title">
+                        <p class="lobby-room__eyebrow">Ваше лобі</p>
+                        <h2>{{ membership.lobby.name }}</h2>
+                        <div class="lobby-room__meta">
+                            <span>Ключ доступу: <strong>{{ membership.lobby.access_key }}</strong></span>
+                            <span>Учасників: <strong>{{ membership.lobby.members | length }}</strong></span>
+                            <span>Роль: <strong>{{ role_labels.get(membership.role, membership.role) }}</strong></span>
                         </div>
-                        {% if membership.lobby.admin_id != user.id %}
+                    </div>
+                    <div class="lobby-room__actions">
+                        {% if membership.lobby.admin_id == user.id %}
+                            <span class="badge">Адмін</span>
+                            <form method="post">
+                                <input type="hidden" name="action" value="delete_lobby">
+                                <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
+                                <button type="submit" class="button danger">Видалити лобі</button>
+                            </form>
+                        {% else %}
                             <form method="post">
                                 <input type="hidden" name="action" value="leave">
                                 <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
                                 <button type="submit" class="button ghost">Вийти</button>
                             </form>
-                        {% else %}
-                            <span class="badge badge--secondary">Адмін</span>
                         {% endif %}
                     </div>
-                    <div class="lobby-members">
-                        {% for member in membership.lobby.members %}
-                            {% if member.user %}
-                                <details class="member-card">
-                                    <summary class="member-card__summary">
-                                        {% if member.user.userImage %}
-                                            <img src="{{ url_for('static', filename=static_path(member.user.userImage)) }}" alt="avatar" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
-                                        {% else %}
-                                            <img src="/static/images/default_avatar.png" alt="Аватар" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
-                                        {% endif %}
-                                        <span>{{ member.user.nickname }}</span>
-                                        <span class="member-status member-status--online">{{ member.role }}</span>
-                                    </summary>
-                                    <div class="member-card__details">
-                                        <strong>{{ member.user.nickname }}</strong>
-                                        <p class="muted">{{ member.user.description or 'Опис ще не додано.' }}</p>
-                                        <div class="chip-grid">
-                                            <span class="chip">{{ role_labels.get(member.role, member.role) }}</span>
-                                            {% if member.user.description %}
-                                                <span class="chip">Профіль: оновлено</span>
+                </header>
+
+                <div class="lobby-room__grid">
+                    <aside class="lobby-roster">
+                        <div class="lobby-roster__header">
+                            <h3>Склад команди</h3>
+                            <p class="muted">Натисніть на учасника, щоб побачити деталі.</p>
+                        </div>
+                        <div class="lobby-roster__list">
+                            {% for member in membership.lobby.members %}
+                                {% if member.user %}
+                                    <details class="roster-card">
+                                        <summary class="roster-card__summary">
+                                            {% if member.user.userImage %}
+                                                <img src="{{ url_for('static', filename=static_path(member.user.userImage)) }}" alt="avatar" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
                                             {% else %}
-                                                <span class="chip">Профіль: без опису</span>
+                                                <img src="/static/images/default_avatar.png" alt="Аватар" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
+                                            {% endif %}
+                                            <span>{{ member.user.nickname }}</span>
+                                            <span class="member-status {% if is_user_online(member.user) %}member-status--online{% else %}member-status--offline{% endif %}">
+                                                {{ role_labels.get(member.role, member.role) }}
+                                            </span>
+                                        </summary>
+                                        <div class="roster-card__details">
+                                            <strong>{{ member.user.nickname }}</strong>
+                                            <p class="muted">{{ member.user.description or 'Опис ще не додано.' }}</p>
+                                            <div class="chip-grid">
+                                                <span class="chip">{{ role_labels.get(member.role, member.role) }}</span>
+                                                {% if member.user.description %}
+                                                    <span class="chip">Профіль: оновлено</span>
+                                                {% else %}
+                                                    <span class="chip">Профіль: без опису</span>
+                                                {% endif %}
+                                            </div>
+                                            {% if membership.lobby.admin_id == user.id and member.user_id != user.id %}
+                                                <form method="post" class="form inline roster-card__form">
+                                                    <input type="hidden" name="action" value="set_role">
+                                                    <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
+                                                    <input type="hidden" name="member_id" value="{{ member.id }}">
+                                                    <select name="role">
+                                                        <option value="master" {% if member.role == 'master' %}selected{% endif %}>Майстер</option>
+                                                        <option value="player" {% if member.role == 'player' %}selected{% endif %}>Гравець</option>
+                                                        <option value="spectator" {% if member.role == 'spectator' %}selected{% endif %}>Глядач</option>
+                                                    </select>
+                                                    <button type="submit" class="button ghost">Оновити</button>
+                                                </form>
                                             {% endif %}
                                         </div>
-                                        {% if membership.lobby.admin_id == user.id and member.user_id != user.id %}
-                                            <form method="post" class="form inline">
-                                                <input type="hidden" name="action" value="set_role">
-                                                <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
-                                                <input type="hidden" name="member_id" value="{{ member.id }}">
-                                                <select name="role">
-                                                    <option value="master" {% if member.role == 'master' %}selected{% endif %}>Майстер</option>
-                                                    <option value="player" {% if member.role == 'player' %}selected{% endif %}>Гравець</option>
-                                                    <option value="spectator" {% if member.role == 'spectator' %}selected{% endif %}>Глядач</option>
-                                                </select>
-                                                <button type="submit" class="button ghost">Оновити</button>
-                                            </form>
+                                    </details>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                    </aside>
+
+                    <div class="lobby-room__workspace card" aria-label="Поле для роботи">
+                        <section
+                            class="inventory inventory--embedded"
+                            data-player-id="{{ user.id }}"
+                            data-lobby-id="{{ membership.lobby.id }}"
+                            data-can-view="{{ 'true' if membership.role in ['master', 'spectator'] else 'false' }}"
+                        >
+                            <div class="inventory-panel">
+                                <div class="inventory-panel__header">
+                                    <h2 class="inventory-title">
+                                        {% if membership.role == 'master' %}
+                                            Майстер
+                                        {% else %}
+                                            Персонаж
                                         {% endif %}
-                                    </div>
-                                    {% if membership.lobby.admin_id == user.id and member.user_id != user.id %}
-                                        <form method="post" class="form inline">
-                                            <input type="hidden" name="action" value="set_role">
-                                            <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
-                                            <input type="hidden" name="member_id" value="{{ member.id }}">
-                                            <select name="role">
-                                                <option value="master" {% if member.role == 'master' %}selected{% endif %}>Майстер</option>
-                                                <option value="player" {% if member.role == 'player' %}selected{% endif %}>Гравець</option>
-                                                <option value="spectator" {% if member.role == 'spectator' %}selected{% endif %}>Глядач</option>
-                                            </select>
-                                            <button type="submit" class="button ghost">Оновити</button>
-                                        </form>
+                                    </h2>
+                                    {% if membership.role in ['master', 'spectator'] %}
+                                        <div class="character-switcher">
+                                            {% for member in membership.lobby.members if member.user %}
+                                                <button class="chip character-switcher__chip" type="button" data-player-id="{{ member.user.id }}">
+                                                    {{ member.user.nickname }}
+                                                </button>
+                                            {% endfor %}
+                                        </div>
                                     {% endif %}
                                 </div>
-                            </details>
-                        {% endif %}
-                    {% endfor %}
-                    </div>
-                </div>
-                <div class="lobby-workspace card" aria-label="Поле для роботи">
-                    <section
-                        class="inventory inventory--embedded"
-                        data-player-id="{{ user.id }}"
-                        data-lobby-id="{{ membership.lobby.id }}"
-                        data-can-view="{{ 'true' if membership.role in ['master', 'spectator'] else 'false' }}"
-                    >
-                        <div class="inventory-panel">
-                            <div class="inventory-panel__header">
-                                <h2 class="inventory-title">
-                                    {% if membership.role == 'master' %}
-                                        Майстер
-                                    {% else %}
-                                        Персонаж
-                                    {% endif %}
-                                </h2>
-                                {% if membership.role in ['master', 'spectator'] %}
-                                    <div class="character-switcher">
-                                        {% for member in membership.lobby.members if member.user %}
-                                            <button class="chip character-switcher__chip" type="button" data-player-id="{{ member.user.id }}">
-                                                {{ member.user.nickname }}
-                                            </button>
-                                        {% endfor %}
-                                    </div>
-                                {% endif %}
-                            </div>
-                            <div class="inventory-tabs" role="tablist" aria-label="Режими інвентаря">
-                                <button class="tab-button is-active" data-tab="equipment" type="button" role="tab">Екіпировка</button>
-                                <button class="tab-button" data-tab="stats" type="button" role="tab">Stats</button>
-                            </div>
+                                <div class="inventory-tabs" role="tablist" aria-label="Режими інвентаря">
+                                    <button class="tab-button is-active" data-tab="equipment" type="button" role="tab">Екіпировка</button>
+                                    <button class="tab-button" data-tab="stats" type="button" role="tab">Stats</button>
+                                </div>
 
-                            {% if membership.role == 'master' %}
-                                <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
-                                    <div class="master-panel">
-                                        <h3>Створення предмета</h3>
-                                        <form class="form">
-                                            <label for="item_name_{{ membership.lobby.id }}">Назва</label>
-                                            <input type="text" id="item_name_{{ membership.lobby.id }}" placeholder="Наприклад: Зілля">
-                                            <label for="item_type_{{ membership.lobby.id }}">Тип</label>
-                                            <select id="item_type_{{ membership.lobby.id }}">
-                                                <option value="weapon">Weapon</option>
-                                                <option value="armor">Armor</option>
-                                                <option value="ammunition">Ammunition</option>
-                                                <option value="material">Material</option>
-                                                <option value="food">Food</option>
-                                                <option value="other">Other</option>
-                                            </select>
-                                            <label for="item_quality_{{ membership.lobby.id }}">Редкість</label>
-                                            <select id="item_quality_{{ membership.lobby.id }}">
-                                                <option value="common">Common</option>
-                                                <option value="uncommon">Uncommon</option>
-                                                <option value="epic">Epic</option>
-                                                <option value="legendary">Legendary</option>
-                                                <option value="mythical">Mythical</option>
-                                            </select>
-                                            <div class="form inline">
-                                                <div>
-                                                    <label for="item_w_{{ membership.lobby.id }}">W</label>
-                                                    <input type="number" id="item_w_{{ membership.lobby.id }}" min="1" max="7" value="1">
+                                {% if membership.role == 'master' %}
+                                    <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
+                                        <div class="master-panel">
+                                            <h3>Створення предмета</h3>
+                                            <form class="form">
+                                                <label for="item_name_{{ membership.lobby.id }}">Назва</label>
+                                                <input type="text" id="item_name_{{ membership.lobby.id }}" placeholder="Наприклад: Зілля">
+                                                <label for="item_type_{{ membership.lobby.id }}">Тип</label>
+                                                <select id="item_type_{{ membership.lobby.id }}">
+                                                    <option value="weapon">Weapon</option>
+                                                    <option value="armor">Armor</option>
+                                                    <option value="ammunition">Ammunition</option>
+                                                    <option value="material">Material</option>
+                                                    <option value="food">Food</option>
+                                                    <option value="other">Other</option>
+                                                </select>
+                                                <label for="item_quality_{{ membership.lobby.id }}">Редкість</label>
+                                                <select id="item_quality_{{ membership.lobby.id }}">
+                                                    <option value="common">Common</option>
+                                                    <option value="uncommon">Uncommon</option>
+                                                    <option value="epic">Epic</option>
+                                                    <option value="legendary">Legendary</option>
+                                                    <option value="mythical">Mythical</option>
+                                                </select>
+                                                <div class="form inline">
+                                                    <div>
+                                                        <label for="item_w_{{ membership.lobby.id }}">W</label>
+                                                        <input type="number" id="item_w_{{ membership.lobby.id }}" min="1" max="7" value="1">
+                                                    </div>
+                                                    <div>
+                                                        <label for="item_h_{{ membership.lobby.id }}">H</label>
+                                                        <input type="number" id="item_h_{{ membership.lobby.id }}" min="1" max="9" value="1">
+                                                    </div>
+                                                    <div>
+                                                        <label for="item_weight_{{ membership.lobby.id }}">Вага</label>
+                                                        <input type="number" id="item_weight_{{ membership.lobby.id }}" min="0" step="0.1" value="0">
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <label for="item_h_{{ membership.lobby.id }}">H</label>
-                                                    <input type="number" id="item_h_{{ membership.lobby.id }}" min="1" max="9" value="1">
+                                                <label for="item_image_{{ membership.lobby.id }}">Фото предмета</label>
+                                                <input type="file" id="item_image_{{ membership.lobby.id }}" accept="image/*">
+                                                <label for="item_target_{{ membership.lobby.id }}">Передати</label>
+                                                <select id="item_target_{{ membership.lobby.id }}">
+                                                    {% for member in membership.lobby.members if member.user %}
+                                                        <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                                <button type="button" class="button">Створити та передати</button>
+                                            </form>
+                                            <div class="item-schema card">
+                                                <h4>Структура предмета</h4>
+                                                <div class="item-schema__section">
+                                                    <h5>Основна частина (обовʼязкова)</h5>
+                                                    <ul>
+                                                        <li><strong>ID</strong> — авто-ідентифікатор предмета (для видачі по ID).</li>
+                                                        <li><strong>name</strong> — базова назва від адміністратора.</li>
+                                                        <li><strong>description</strong> — базовий опис від адміністратора.</li>
+                                                        <li><strong>image</strong> — зображення предмета.</li>
+                                                        <li><strong>h/w</strong> — висота та ширина в тетрис-інвентарі.</li>
+                                                        <li><strong>weight</strong> — вага однієї одиниці.</li>
+                                                        <li><strong>MAXstr</strong> — максимальна міцність предмета.</li>
+                                                        <li><strong>type</strong> — тип (береться з таблиці типів).</li>
+                                                        <li><strong>quality</strong> — якість (звичайний, незвичайний, епічний, легендарний, міфічний).</li>
+                                                    </ul>
                                                 </div>
-                                                <div>
-                                                    <label for="item_weight_{{ membership.lobby.id }}">Вага</label>
-                                                    <input type="number" id="item_weight_{{ membership.lobby.id }}" min="0" step="0.1" value="0">
+                                                <div class="item-schema__section">
+                                                    <h5>Персональна частина (на користувача)</h5>
+                                                    <ul>
+                                                        <li><strong>remain</strong> — кому належить предмет (власник).</li>
+                                                        <li><strong>remain(username)</strong> — клітинка інвентаря, де лежить предмет.</li>
+                                                        <li><strong>str(username)</strong> — поточна міцність.</li>
+                                                        <li><strong>amount(username)</strong> — кількість (1..MAXamount).</li>
+                                                        <li><strong>description(username)</strong> — нотатки гравця (не перекриває базовий опис).</li>
+                                                        <li><strong>name(username)</strong> — особиста назва (перекриває базову лише для цього гравця).</li>
+                                                    </ul>
                                                 </div>
-                                            </div>
-                                            <label for="item_image_{{ membership.lobby.id }}">Фото предмета</label>
-                                            <input type="file" id="item_image_{{ membership.lobby.id }}" accept="image/*">
-                                            <label for="item_target_{{ membership.lobby.id }}">Передати</label>
-                                            <select id="item_target_{{ membership.lobby.id }}">
-                                                {% for member in membership.lobby.members if member.user %}
-                                                    <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
-                                                {% endfor %}
-                                            </select>
-                                            <button type="button" class="button">Створити та передати</button>
-                                        </form>
-                                        <div class="item-schema card">
-                                            <h4>Структура предмета</h4>
-                                            <div class="item-schema__section">
-                                                <h5>Основна частина (обовʼязкова)</h5>
-                                                <ul>
-                                                    <li><strong>ID</strong> — авто-ідентифікатор предмета (для видачі по ID).</li>
-                                                    <li><strong>name</strong> — базова назва від адміністратора.</li>
-                                                    <li><strong>description</strong> — базовий опис від адміністратора.</li>
-                                                    <li><strong>image</strong> — зображення предмета.</li>
-                                                    <li><strong>h/w</strong> — висота та ширина в тетрис-інвентарі.</li>
-                                                    <li><strong>weight</strong> — вага однієї одиниці.</li>
-                                                    <li><strong>MAXstr</strong> — максимальна міцність предмета.</li>
-                                                    <li><strong>type</strong> — тип (береться з таблиці типів).</li>
-                                                    <li><strong>quality</strong> — якість (звичайний, незвичайний, епічний, легендарний, міфічний).</li>
-                                                </ul>
-                                            </div>
-                                            <div class="item-schema__section">
-                                                <h5>Персональна частина (на користувача)</h5>
-                                                <ul>
-                                                    <li><strong>remain</strong> — кому належить предмет (власник).</li>
-                                                    <li><strong>remain(username)</strong> — клітинка інвентаря, де лежить предмет.</li>
-                                                    <li><strong>str(username)</strong> — поточна міцність.</li>
-                                                    <li><strong>amount(username)</strong> — кількість (1..MAXamount).</li>
-                                                    <li><strong>description(username)</strong> — нотатки гравця (не перекриває базовий опис).</li>
-                                                    <li><strong>name(username)</strong> — особиста назва (перекриває базову лише для цього гравця).</li>
-                                                </ul>
-                                            </div>
-                                            <div class="item-schema__section">
-                                                <h5>Таблиця типів</h5>
-                                                <ul class="item-schema__types">
-                                                    <li>weapon</li>
-                                                    <li>ammo</li>
-                                                    <li>armor</li>
-                                                    <li>map</li>
-                                                    <li>food</li>
-                                                    <li>other</li>
-                                                </ul>
+                                                <div class="item-schema__section">
+                                                    <h5>Таблиця типів</h5>
+                                                    <ul class="item-schema__types">
+                                                        <li>weapon</li>
+                                                        <li>ammo</li>
+                                                        <li>armor</li>
+                                                        <li>map</li>
+                                                        <li>food</li>
+                                                        <li>other</li>
+                                                    </ul>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            {% else %}
-                                <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
-                                    <div class="paper-doll">
-                                        <img src="/static/images/default_avatar.png" alt="Персонаж" class="paper-doll__image">
-                                        <div class="paper-doll__slot slot-head" data-slot="head">Голова</div>
-                                        <div class="paper-doll__slot slot-body" data-slot="body">Тіло</div>
-                                        <div class="paper-doll__slot slot-hands" data-slot="hands">Руки</div>
-                                        <div class="paper-doll__slot slot-legs" data-slot="legs">Ноги</div>
-                                        <div class="paper-doll__slot slot-weapon" data-slot="weapon">Зброя</div>
-                                        <div class="paper-doll__slot slot-shield" data-slot="offhand">Щит</div>
-                                        <div class="paper-doll__slot slot-amulet" data-slot="amulet">Амулет</div>
-                                        <div class="paper-doll__slot slot-ring" data-slot="ring">Кільце</div>
+                                {% else %}
+                                    <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
+                                        <div class="paper-doll">
+                                            <img src="/static/images/default_avatar.png" alt="Персонаж" class="paper-doll__image">
+                                            <div class="paper-doll__slot slot-head" data-slot="head">Голова</div>
+                                            <div class="paper-doll__slot slot-body" data-slot="body">Тіло</div>
+                                            <div class="paper-doll__slot slot-hands" data-slot="hands">Руки</div>
+                                            <div class="paper-doll__slot slot-legs" data-slot="legs">Ноги</div>
+                                            <div class="paper-doll__slot slot-weapon" data-slot="weapon">Зброя</div>
+                                            <div class="paper-doll__slot slot-shield" data-slot="offhand">Щит</div>
+                                            <div class="paper-doll__slot slot-amulet" data-slot="amulet">Амулет</div>
+                                            <div class="paper-doll__slot slot-ring" data-slot="ring">Кільце</div>
+                                        </div>
                                     </div>
-                                </div>
-                            {% endif %}
+                                {% endif %}
 
-                            <div class="tab-content" data-panel="stats" role="tabpanel">
-                                <div class="stats-grid">
-                                    <div class="stat-card">
-                                        <span class="stat-card__label">STR</span>
-                                        <strong>14</strong>
-                                        <span class="stat-card__mod">+2</span>
+                                <div class="tab-content" data-panel="stats" role="tabpanel">
+                                    <div class="stats-grid">
+                                        <div class="stat-card">
+                                            <span class="stat-card__label">STR</span>
+                                            <strong>14</strong>
+                                            <span class="stat-card__mod">+2</span>
+                                        </div>
+                                        <div class="stat-card">
+                                            <span class="stat-card__label">DEX</span>
+                                            <strong>12</strong>
+                                            <span class="stat-card__mod">+1</span>
+                                        </div>
+                                        <div class="stat-card">
+                                            <span class="stat-card__label">CON</span>
+                                            <strong>13</strong>
+                                            <span class="stat-card__mod">+1</span>
+                                        </div>
+                                        <div class="stat-card">
+                                            <span class="stat-card__label">INT</span>
+                                            <strong>10</strong>
+                                            <span class="stat-card__mod">+0</span>
+                                        </div>
+                                        <div class="stat-card">
+                                            <span class="stat-card__label">WIS</span>
+                                            <strong>11</strong>
+                                            <span class="stat-card__mod">+0</span>
+                                        </div>
+                                        <div class="stat-card">
+                                            <span class="stat-card__label">CHA</span>
+                                            <strong>16</strong>
+                                            <span class="stat-card__mod">+3</span>
+                                        </div>
                                     </div>
-                                    <div class="stat-card">
-                                        <span class="stat-card__label">DEX</span>
-                                        <strong>12</strong>
-                                        <span class="stat-card__mod">+1</span>
-                                    </div>
-                                    <div class="stat-card">
-                                        <span class="stat-card__label">CON</span>
-                                        <strong>13</strong>
-                                        <span class="stat-card__mod">+1</span>
-                                    </div>
-                                    <div class="stat-card">
-                                        <span class="stat-card__label">INT</span>
-                                        <strong>10</strong>
-                                        <span class="stat-card__mod">+0</span>
-                                    </div>
-                                    <div class="stat-card">
-                                        <span class="stat-card__label">WIS</span>
-                                        <strong>11</strong>
-                                        <span class="stat-card__mod">+0</span>
-                                    </div>
-                                    <div class="stat-card">
-                                        <span class="stat-card__label">CHA</span>
-                                        <strong>16</strong>
-                                        <span class="stat-card__mod">+3</span>
-                                    </div>
-                                </div>
 
-                                <div class="stats-extra">
-                                    <div class="stat-pill">HP: 38</div>
-                                    <div class="stat-pill">Stamina: 22</div>
-                                    <div class="stat-pill">Mana: 18</div>
-                                    <div class="stat-pill">Armor Class: 15</div>
-                                    <div class="stat-pill">Resistances: fire, poison</div>
-                                    <div class="stat-pill">Carry Capacity: 80</div>
+                                    <div class="stats-extra">
+                                        <div class="stat-pill">HP: 38</div>
+                                        <div class="stat-pill">Stamina: 22</div>
+                                        <div class="stat-pill">Mana: 18</div>
+                                        <div class="stat-pill">Armor Class: 15</div>
+                                        <div class="stat-pill">Resistances: fire, poison</div>
+                                        <div class="stat-pill">Carry Capacity: 80</div>
+                                    </div>
                                 </div>
+                            </div>
+
+                            <div class="inventory-grid-panel">
+                                <div class="inventory-actions">
+                                    <button class="button ghost" type="button" id="auto-pack">Auto-pack</button>
+                                    <button class="button" type="button" id="rotate-item">Rotate (R)</button>
+                                </div>
+                                <div class="tetris-grid" id="tetris-grid" aria-label="Рюкзак"></div>
+                                <p class="muted inventory-hint">Перетягуйте предмети, натискайте R для повороту та ПКМ для контекстного меню.</p>
+                            </div>
+                        </section>
+
+                        <div class="context-menu" id="context-menu" aria-hidden="true">
+                            <div class="context-menu__header">
+                                <strong id="context-name">Item</strong>
+                                <span class="chip" id="context-type">type</span>
+                                <span class="chip chip--quality" id="context-quality">quality</span>
+                            </div>
+                            <p class="context-menu__meta" id="context-size">Розмір: 1×1</p>
+                            <p class="context-menu__meta" id="context-weight">Вага: 0</p>
+                            <p class="context-menu__description" id="context-description"></p>
+                            <div class="context-menu__actions">
+                                <button class="button ghost" type="button" data-action="use">Use</button>
+                                <button class="button ghost" type="button" data-action="equip">Equip</button>
+                                <button class="button ghost" type="button" data-action="rotate">Rotate</button>
+                                <button class="button ghost" type="button" data-action="split">Split</button>
+                                <button class="button ghost" type="button" data-action="drop">Drop</button>
+                                <button class="button" type="button" data-action="transfer">Transfer to…</button>
                             </div>
                         </div>
 
-                        <div class="inventory-grid-panel">
-                            <div class="inventory-actions">
-                                <button class="button ghost" type="button" id="auto-pack">Auto-pack</button>
-                                <button class="button" type="button" id="rotate-item">Rotate (R)</button>
+                        <div class="transfer-modal" id="transfer-modal" aria-hidden="true">
+                            <div class="transfer-modal__content">
+                                <h3>Передати предмет</h3>
+                                <div class="transfer-modal__players" id="transfer-players"></div>
+                                <button class="button ghost" type="button" id="transfer-close">Скасувати</button>
                             </div>
-                            <div class="tetris-grid" id="tetris-grid" aria-label="Рюкзак"></div>
-                            <p class="muted inventory-hint">Перетягуйте предмети, натискайте R для повороту та ПКМ для контекстного меню.</p>
-                        </div>
-                    </section>
-
-                    <div class="context-menu" id="context-menu" aria-hidden="true">
-                        <div class="context-menu__header">
-                            <strong id="context-name">Item</strong>
-                            <span class="chip" id="context-type">type</span>
-                            <span class="chip chip--quality" id="context-quality">quality</span>
-                        </div>
-                        <p class="context-menu__meta" id="context-size">Розмір: 1×1</p>
-                        <p class="context-menu__meta" id="context-weight">Вага: 0</p>
-                        <p class="context-menu__description" id="context-description"></p>
-                        <div class="context-menu__actions">
-                            <button class="button ghost" type="button" data-action="use">Use</button>
-                            <button class="button ghost" type="button" data-action="equip">Equip</button>
-                            <button class="button ghost" type="button" data-action="rotate">Rotate</button>
-                            <button class="button ghost" type="button" data-action="split">Split</button>
-                            <button class="button ghost" type="button" data-action="drop">Drop</button>
-                            <button class="button" type="button" data-action="transfer">Transfer to…</button>
-                        </div>
-                    </div>
-
-                    <div class="transfer-modal" id="transfer-modal" aria-hidden="true">
-                        <div class="transfer-modal__content">
-                            <h3>Передати предмет</h3>
-                            <div class="transfer-modal__players" id="transfer-players"></div>
-                            <button class="button ghost" type="button" id="transfer-close">Скасувати</button>
                         </div>
                     </div>
                 </div>
-            </div>
+            </section>
         {% endfor %}
-    {% else %}
-        <p class="muted">Ще немає активних лобі. Попросіть ключ у майстра.</p>
     {% endif %}
 </section>
+
 <script>
     window.INVENTORY_DATA = {{ inventory_data | tojson }};
-    window.TRANSFER_PLAYERS = [
-        {% for member in membership.lobby.members if member.user %}
-            {
-                id: {{ member.user.id }},
-                name: "{{ member.user.nickname }}"
-            }{{ "," if not loop.last else "" }}
-        {% endfor %}
-    ];
+    window.TRANSFER_PLAYERS = {{ transfer_players | tojson }};
 </script>
 <script src="{{ url_for('static', filename='inventory.js') }}" defer></script>
 {% endblock %}

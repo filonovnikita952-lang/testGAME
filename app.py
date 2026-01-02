@@ -479,6 +479,78 @@ def can_view_inventory(current: User, target_user_id: int, lobby_id: Optional[in
     return target_membership is not None
 
 
+def build_transfer_players(user: Optional[User]) -> list[dict]:
+    if not user:
+        return []
+    memberships = LobbyMember.query.filter_by(user_id=user.id).all()
+    if not memberships:
+        return []
+    lobby = memberships[0].lobby
+    if not lobby:
+        return []
+    return [
+        {'id': member.user.id, 'name': member.user.nickname}
+        for member in lobby.members
+        if member.user
+    ]
+
+
+def sync_inventory_state(user: User, items_data: list[dict], removed_ids: list[str]) -> None:
+    owned_instances = {
+        str(instance.id): instance
+        for instance in ItemInstance.query.filter_by(owner_id=user.id).all()
+    }
+    removed_set = {str(item_id) for item_id in removed_ids if item_id}
+    for item_id in removed_set:
+        instance = owned_instances.get(item_id)
+        if not instance:
+            continue
+        if instance.slot:
+            db.session.delete(instance.slot)
+        db.session.delete(instance)
+    for item in items_data:
+        item_id = str(item.get('id'))
+        if item_id in removed_set:
+            continue
+        instance = owned_instances.get(item_id)
+        if not instance:
+            continue
+        entry = item.get('entry') or {}
+        qty = parse_int(entry.get('qty'), instance.amount, minimum=0)
+        definition = instance.definition
+        if qty <= 0:
+            if instance.slot:
+                db.session.delete(instance.slot)
+            db.session.delete(instance)
+            continue
+        instance.amount = min(qty, definition.max_amount)
+        rotation = parse_int(entry.get('rotation'), 0)
+        rotation = 90 if rotation == 90 and definition.rotatable else 0
+        position = entry.get('position')
+        if isinstance(position, dict):
+            x = min(parse_int(position.get('x'), 1, minimum=1), 12)
+            y = min(parse_int(position.get('y'), 1, minimum=1), 8)
+            if instance.slot:
+                instance.slot.x = x
+                instance.slot.y = y
+                instance.slot.rotation = rotation
+                instance.slot.owner_id = user.id
+            else:
+                db.session.add(
+                    InventorySlot(
+                        instance_id=instance.id,
+                        owner_id=user.id,
+                        x=x,
+                        y=y,
+                        rotation=rotation,
+                    )
+                )
+        else:
+            if instance.slot:
+                db.session.delete(instance.slot)
+    db.session.commit()
+
+
 def find_first_fit_slot(owner_id: int, definition: ItemDefinition) -> Optional[tuple[int, int]]:
     occupied = set()
     slots = (
@@ -633,7 +705,12 @@ def news():
 def inventory():
     user = current_user()
     inventory_data = build_inventory_payload(user)
-    return render_template('Inventory.html', user=user, inventory_data=inventory_data)
+    return render_template(
+        'Inventory.html',
+        user=user,
+        inventory_data=inventory_data,
+        transfer_players=build_transfer_players(user),
+    )
 
 
 @app.route('/Lobby', methods=['GET', 'POST'])
@@ -703,14 +780,7 @@ def lobby_page():
 
     owned_lobbies = Lobby.query.filter_by(admin_id=user.id).order_by(Lobby.created_at.desc()).all()
     member_lobbies = LobbyMember.query.filter_by(user_id=user.id).all()
-    transfer_players = []
-    if member_lobbies:
-        first_lobby = member_lobbies[0].lobby
-        if first_lobby:
-            transfer_players = [
-                {'id': member.user.id, 'name': member.user.nickname}
-                for member in first_lobby.members
-            ]
+    transfer_players = build_transfer_players(user)
 
     return render_template(
         'Lobby.html',
@@ -733,6 +803,20 @@ def inventory_api(user_id: int):
     if not target:
         return jsonify({'error': 'not_found'}), 404
     return jsonify(build_inventory_payload(target))
+
+
+@app.route('/api/inventory/sync', methods=['POST'])
+def inventory_sync():
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    items = data.get('items')
+    if not isinstance(items, list):
+        return jsonify({'error': 'invalid_payload'}), 400
+    removed_ids = data.get('removed_ids')
+    if not isinstance(removed_ids, list):
+        removed_ids = []
+    sync_inventory_state(user, items, removed_ids)
+    return jsonify({'status': 'ok'})
 
 
 @app.route('/api/transfers', methods=['POST'])
