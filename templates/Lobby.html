@@ -87,7 +87,7 @@
                         {% endif %}
                     </div>
                     <div class="lobby-members">
-                        {% for member in membership.lobby.members %}
+                        {% for member in membership.lobby.members if member.user %}
                             <details class="member-card">
                                 <summary class="member-card__summary">
                                     {% if member.user.userImage %}
@@ -96,9 +96,7 @@
                                         <img src="/static/images/default_avatar.png" alt="Аватар" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
                                     {% endif %}
                                     <span>{{ member.user.nickname }}</span>
-
-                                        <span class="member-status member-status--online"> {{ member.role }}</span>
-
+                                    <span class="member-status member-status--online">{{ member.role }}</span>
                                 </summary>
                                 <div class="member-card__details">
                                     <strong>{{ member.user.nickname }}</strong>
@@ -108,36 +106,24 @@
                                         {% if member.user.description %}
                                             <span class="chip">Профіль: оновлено</span>
                                         {% else %}
-                                            <span class="member-status member-status--offline">не в мережі</span>
-                                        {% endif %}
-                                    </summary>
-                                    <div class="member-card__details">
-                                        <strong>{{ member.user.nickname }}</strong>
-                                        <p class="muted">{{ member.user.description or 'Опис ще не додано.' }}</p>
-                                        <div class="chip-grid">
-                                            <span class="chip">{{ role_labels.get(member.role, member.role) }}</span>
-                                            {% if member.user.description %}
-                                                <span class="chip">Профіль: оновлено</span>
-                                            {% else %}
-                                                <span class="chip">Профіль: без опису</span>
-                                            {% endif %}
-                                        </div>
-                                        {% if membership.lobby.admin_id == user.id and member.user_id != user.id %}
-                                            <form method="post" class="form inline">
-                                                <input type="hidden" name="action" value="set_role">
-                                                <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
-                                                <input type="hidden" name="member_id" value="{{ member.id }}">
-                                                <select name="role">
-                                                    <option value="master" {% if member.role == 'master' %}selected{% endif %}>Майстер</option>
-                                                    <option value="player" {% if member.role == 'player' %}selected{% endif %}>Гравець</option>
-                                                    <option value="spectator" {% if member.role == 'spectator' %}selected{% endif %}>Глядач</option>
-                                                </select>
-                                                <button type="submit" class="button ghost">Оновити</button>
-                                            </form>
+                                            <span class="chip">Профіль: без опису</span>
                                         {% endif %}
                                     </div>
-                                </details>
-                            {% endif %}
+                                    {% if membership.lobby.admin_id == user.id and member.user_id != user.id %}
+                                        <form method="post" class="form inline">
+                                            <input type="hidden" name="action" value="set_role">
+                                            <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
+                                            <input type="hidden" name="member_id" value="{{ member.id }}">
+                                            <select name="role">
+                                                <option value="master" {% if member.role == 'master' %}selected{% endif %}>Майстер</option>
+                                                <option value="player" {% if member.role == 'player' %}selected{% endif %}>Гравець</option>
+                                                <option value="spectator" {% if member.role == 'spectator' %}selected{% endif %}>Глядач</option>
+                                            </select>
+                                            <button type="submit" class="button ghost">Оновити</button>
+                                        </form>
+                                    {% endif %}
+                                </div>
+                            </details>
                         {% endfor %}
                     </div>
                 </div>
@@ -159,12 +145,10 @@
                                 </h2>
                                 {% if membership.role in ['master', 'spectator'] %}
                                     <div class="character-switcher">
-                                        {% for member in membership.lobby.members %}
-                                            {% if member.user %}
-                                                <button class="chip character-switcher__chip" type="button" data-player-id="{{ member.user.id }}">
-                                                    {{ member.user.nickname }}
-                                                </button>
-                                            {% endif %}
+                                        {% for member in membership.lobby.members if member.user %}
+                                            <button class="chip character-switcher__chip" type="button" data-player-id="{{ member.user.id }}">
+                                                {{ member.user.nickname }}
+                                            </button>
                                         {% endfor %}
                                     </div>
                                 {% endif %}
@@ -216,10 +200,8 @@
                                             <input type="file" id="item_image_{{ membership.lobby.id }}" accept="image/*">
                                             <label for="item_target_{{ membership.lobby.id }}">Передати</label>
                                             <select id="item_target_{{ membership.lobby.id }}">
-                                                {% for member in membership.lobby.members %}
-                                                    {% if member.user %}
-                                                        <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
-                                                    {% endif %}
+                                                {% for member in membership.lobby.members if member.user %}
+                                                    <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
                                                 {% endfor %}
                                             </select>
                                             <button type="button" class="button">Створити та передати</button>
@@ -372,7 +354,7 @@
 <script>
     window.INVENTORY_DATA = {{ inventory_data | tojson }};
     window.TRANSFER_PLAYERS = [
-        {% for member in membership.lobby.members %}
+        {% for member in membership.lobby.members if member.user %}
             {
                 id: {{ member.user.id }},
                 name: "{{ member.user.nickname }}"
