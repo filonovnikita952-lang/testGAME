@@ -187,6 +187,15 @@ const setItems = (nextItems) => {
     renderItems();
 };
 
+const setItems = (nextItems) => {
+    items = nextItems;
+    state.draggingId = null;
+    state.ghost = null;
+    state.lastValid = null;
+    state.lastPointer = null;
+    renderItems();
+};
+
 const cellSize = () => {
     const rect = grid.getBoundingClientRect();
     const styles = getComputedStyle(grid);
@@ -610,6 +619,32 @@ const setupContextActions = () => {
     setupContextActions();
     setupEquipSlots();
     setupMasterPanel();
+};
+
+const lobbyId = embeddedInventory?.dataset.lobbyId;
+const canViewOtherInventory = embeddedInventory?.dataset.canView === 'true';
+let selectedPlayerId = embeddedInventory?.dataset.playerId || null;
+
+const setSelectedPlayer = (playerId) => {
+    selectedPlayerId = playerId;
+    if (!characterSwitcher) return;
+    characterSwitcher.querySelectorAll('.character-switcher__chip').forEach((chip) => {
+        chip.classList.toggle('is-active', chip.dataset.playerId === playerId);
+    });
+};
+
+const loadInventoryForPlayer = async (playerId) => {
+    if (!playerId || !lobbyId) return;
+    try {
+        const response = await fetch(`/api/inventory/${playerId}?lobby_id=${lobbyId}`);
+        if (!response.ok) {
+            throw new Error('Не вдалося завантажити інвентар.');
+        }
+        const data = await response.json();
+        setItems(Array.isArray(data) ? data : []);
+    } catch (error) {
+        alert(error.message || 'Не вдалося завантажити інвентар.');
+    }
 };
 
 const lobbyId = embeddedInventory?.dataset.lobbyId;
