@@ -670,7 +670,6 @@ def lobby_page():
             transfer_players = [
                 {'id': member.user.id, 'name': member.user.nickname}
                 for member in first_lobby.members
-                if member.user
             ]
 
     return render_template(
