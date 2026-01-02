@@ -88,28 +88,16 @@
                     </div>
                     <div class="lobby-members">
                         {% for member in membership.lobby.members %}
-                            <details class="member-card">
-                                <summary class="member-card__summary">
-                                    {% if member.user.userImage %}
-                                        <img src="{{ url_for('static', filename=static_path(member.user.userImage)) }}" alt="avatar" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
-                                    {% else %}
-                                        <img src="/static/images/default_avatar.png" alt="Аватар" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
-                                    {% endif %}
-                                    <span>{{ member.user.nickname }}</span>
-
-                                        <span class="member-status member-status--online"> {{ member.role }}</span>
-
-                                </summary>
-                                <div class="member-card__details">
-                                    <strong>{{ member.user.nickname }}</strong>
-                                    <p class="muted">{{ member.user.description or 'Опис ще не додано.' }}</p>
-                                    <div class="chip-grid">
-                                        <span class="chip">{{ role_labels.get(member.role, member.role) }}</span>
-                                        {% if member.user.description %}
-                                            <span class="chip">Профіль: оновлено</span>
+                            {% if member.user %}
+                                <details class="member-card">
+                                    <summary class="member-card__summary">
+                                        {% if member.user.userImage %}
+                                            <img src="{{ url_for('static', filename=static_path(member.user.userImage)) }}" alt="avatar" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
                                         {% else %}
-                                            <span class="member-status member-status--offline">не в мережі</span>
+                                            <img src="/static/images/default_avatar.png" alt="Аватар" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
                                         {% endif %}
+                                        <span>{{ member.user.nickname }}</span>
+                                        <span class="member-status member-status--online">{{ member.role }}</span>
                                     </summary>
                                     <div class="member-card__details">
                                         <strong>{{ member.user.nickname }}</strong>
