@@ -5,10 +5,12 @@ const contextMenu = document.getElementById('context-menu');
 const transferModal = document.getElementById('transfer-modal');
 const transferPlayers = document.getElementById('transfer-players');
 const transferClose = document.getElementById('transfer-close');
+const embeddedInventory = document.querySelector('.inventory--embedded');
+const characterSwitcher = document.querySelector('.character-switcher');
 
 const gridConfig = { columns: 12, rows: 8 };
 
-const items = [
+const defaultItems = [
     {
         id: 'sword_basic',
         name: 'Меч найманця',
@@ -81,6 +83,10 @@ const items = [
     },
 ];
 
+let items = Array.isArray(window.INVENTORY_DATA) && window.INVENTORY_DATA.length
+    ? window.INVENTORY_DATA
+    : defaultItems;
+
 const equipped = {
     head: null,
     body: null,
@@ -92,13 +98,14 @@ const equipped = {
     ring: null,
 };
 
-const players = ['Гравець 1', 'Гравець 2', 'Гравець 3'];
+const transferPlayersList = Array.isArray(window.TRANSFER_PLAYERS) ? window.TRANSFER_PLAYERS : [];
 
 const state = {
     draggingId: null,
     ghost: null,
     lastValid: null,
     lastPointer: null,
+    transferItemId: null,
 };
 
 const getItemById = (id) => items.find((item) => item.id === id);
@@ -148,6 +155,15 @@ const renderItems = () => {
         element.addEventListener('contextmenu', (event) => openContextMenu(event, item.id));
         grid.appendChild(element);
     });
+};
+
+const setItems = (nextItems) => {
+    items = nextItems;
+    state.draggingId = null;
+    state.ghost = null;
+    state.lastValid = null;
+    state.lastPointer = null;
+    renderItems();
 };
 
 const cellSize = () => {
@@ -312,12 +328,16 @@ const closeContextMenu = () => {
     contextMenu.dataset.itemId = '';
 };
 
-const openTransferModal = () => {
+const openTransferModal = (itemId) => {
+    state.transferItemId = itemId;
     transferPlayers.innerHTML = '';
-    players.forEach((player) => {
+    transferPlayersList.forEach((player) => {
+        if (String(player.id) === String(window.CURRENT_USER_ID)) {
+            return;
+        }
         const row = document.createElement('div');
         row.className = 'transfer-player';
-        row.innerHTML = `<span>${player}</span><button class="button ghost" type="button">Передати</button>`;
+        row.innerHTML = `<span>${player.name}</span><button class="button ghost" type="button" data-player-id="${player.id}">Передати</button>`;
         transferPlayers.appendChild(row);
     });
     transferModal.classList.add('is-open');
@@ -344,7 +364,7 @@ const setupContextActions = () => {
         button.addEventListener('click', () => {
             const action = button.dataset.action;
             if (action === 'transfer') {
-                openTransferModal();
+                openTransferModal(contextMenu.dataset.itemId);
             }
             closeContextMenu();
         });
@@ -381,6 +401,32 @@ const tryEquip = (item) => {
     return true;
 };
 
+const lobbyId = embeddedInventory?.dataset.lobbyId;
+const canViewOtherInventory = embeddedInventory?.dataset.canView === 'true';
+let selectedPlayerId = embeddedInventory?.dataset.playerId || null;
+
+const setSelectedPlayer = (playerId) => {
+    selectedPlayerId = playerId;
+    if (!characterSwitcher) return;
+    characterSwitcher.querySelectorAll('.character-switcher__chip').forEach((chip) => {
+        chip.classList.toggle('is-active', chip.dataset.playerId === playerId);
+    });
+};
+
+const loadInventoryForPlayer = async (playerId) => {
+    if (!playerId || !lobbyId) return;
+    try {
+        const response = await fetch(`/api/inventory/${playerId}?lobby_id=${lobbyId}`);
+        if (!response.ok) {
+            throw new Error('Не вдалося завантажити інвентар.');
+        }
+        const data = await response.json();
+        setItems(Array.isArray(data) ? data : []);
+    } catch (error) {
+        alert(error.message || 'Не вдалося завантажити інвентар.');
+    }
+};
+
 document.addEventListener('keydown', (event) => {
     if (event.key.toLowerCase() === 'r') {
         rotateDragging();
@@ -395,9 +441,75 @@ transferClose.addEventListener('click', closeTransferModal);
 transferModal.addEventListener('click', (event) => {
     if (event.target === transferModal) closeTransferModal();
 });
+transferPlayers.addEventListener('click', async (event) => {
+    const button = event.target.closest('button[data-player-id]');
+    if (!button) return;
+    const recipientId = button.dataset.playerId;
+    const item = getItemById(state.transferItemId);
+    if (!item) return;
+    let amount = item.entry.qty;
+    if (item.stackable && item.entry.qty > 1) {
+        const input = window.prompt(`Скільки передати? (1-${item.entry.qty})`, `${item.entry.qty}`);
+        if (!input) return;
+        const parsed = Number.parseInt(input, 10);
+        if (Number.isNaN(parsed) || parsed < 1 || parsed > item.entry.qty) {
+            alert('Некоректна кількість.');
+            return;
+        }
+        amount = parsed;
+    }
+    const response = await fetch('/api/transfers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            recipient_id: recipientId,
+            item_id: item.id,
+            amount,
+        }),
+    });
+    if (response.ok) {
+        closeTransferModal();
+    } else {
+        const payload = await response.json().catch(() => ({}));
+        alert(payload.error || 'Не вдалося передати предмет.');
+    }
+});
 document.addEventListener('click', (event) => {
     if (!contextMenu.contains(event.target)) {
         closeContextMenu();
+    }
+});
+
+if (characterSwitcher) {
+    const chips = characterSwitcher.querySelectorAll('.character-switcher__chip');
+    if (chips.length && !selectedPlayerId) {
+        setSelectedPlayer(chips[0].dataset.playerId);
+    }
+    chips.forEach((chip) => {
+        chip.addEventListener('click', () => {
+            setSelectedPlayer(chip.dataset.playerId);
+            if (canViewOtherInventory) {
+                loadInventoryForPlayer(chip.dataset.playerId);
+            }
+        });
+    });
+    if (canViewOtherInventory && selectedPlayerId) {
+        loadInventoryForPlayer(selectedPlayerId);
+    }
+}
+
+window.addEventListener('inventory-transfer-updated', () => {
+    const currentUserId = window.CURRENT_USER_ID;
+    if (!currentUserId) return;
+    if (embeddedInventory && selectedPlayerId === String(currentUserId)) {
+        loadInventoryForPlayer(selectedPlayerId);
+        return;
+    }
+    if (!embeddedInventory && grid && String(currentUserId)) {
+        fetch(`/api/inventory/${currentUserId}`)
+            .then((response) => (response.ok ? response.json() : []))
+            .then((data) => setItems(Array.isArray(data) ? data : []))
+            .catch(() => {});
     }
 });
 

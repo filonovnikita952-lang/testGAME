@@ -36,10 +36,6 @@
     {% if member_lobbies %}
         {% set role_labels = {'master': 'Майстер', 'player': 'Гравець', 'spectator': 'Глядач'} %}
         {% for membership in member_lobbies %}
-odex/fix-participant-panel-alignment-and-statuses-8tbi9n
-
-codex/fix-participant-panel-alignment-and-statuses-0vnoa8
-
             <div class="lobby-card">
                 <div class="lobby-card__content">
                     <h1>Ваше лобі</h1>
@@ -64,7 +60,6 @@ codex/fix-participant-panel-alignment-and-statuses-0vnoa8
                     <span class="badge">Адмін</span>
                 {% endif %}
             </div>
- main
             <div class="lobby-layout">
                 <div class="lobby-side">
                     <div class="lobby-card">
@@ -93,51 +88,58 @@ codex/fix-participant-panel-alignment-and-statuses-0vnoa8
                     </div>
                     <div class="lobby-members">
                         {% for member in membership.lobby.members %}
-                            <details class="member-card">
-                                <summary class="member-card__summary">
-                                    {% if member.user.userImage %}
-                                        <img src="{{ url_for('static', filename=static_path(member.user.userImage)) }}" alt="avatar" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
-                                    {% else %}
-                                        <img src="/static/images/default_avatar.png" alt="Аватар" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
-                                    {% endif %}
-                                    <span>{{ member.user.nickname }}</span>
-                                    {% if member.user.is_online %}
-                                        <span class="member-status member-status--online">в мережі</span>
-                                    {% else %}
-                                        <span class="member-status member-status--offline">не в мережі</span>
-                                    {% endif %}
-                                </summary>
-                                <div class="member-card__details">
-                                    <strong>{{ member.user.nickname }}</strong>
-                                    <p class="muted">{{ member.user.description or 'Опис ще не додано.' }}</p>
-                                    <div class="chip-grid">
-                                        <span class="chip">{{ role_labels.get(member.role, member.role) }}</span>
-                                        {% if member.user.description %}
-                                            <span class="chip">Профіль: оновлено</span>
+                            {% if member.user %}
+                                <details class="member-card">
+                                    <summary class="member-card__summary">
+                                        {% if member.user.userImage %}
+                                            <img src="{{ url_for('static', filename=static_path(member.user.userImage)) }}" alt="avatar" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
                                         {% else %}
-                                            <span class="chip">Профіль: без опису</span>
+                                            <img src="/static/images/default_avatar.png" alt="Аватар" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
+                                        {% endif %}
+                                        <span>{{ member.user.nickname }}</span>
+                                        {% if member.user.is_online %}
+                                            <span class="member-status member-status--online">в мережі</span>
+                                        {% else %}
+                                            <span class="member-status member-status--offline">не в мережі</span>
+                                        {% endif %}
+                                    </summary>
+                                    <div class="member-card__details">
+                                        <strong>{{ member.user.nickname }}</strong>
+                                        <p class="muted">{{ member.user.description or 'Опис ще не додано.' }}</p>
+                                        <div class="chip-grid">
+                                            <span class="chip">{{ role_labels.get(member.role, member.role) }}</span>
+                                            {% if member.user.description %}
+                                                <span class="chip">Профіль: оновлено</span>
+                                            {% else %}
+                                                <span class="chip">Профіль: без опису</span>
+                                            {% endif %}
+                                        </div>
+                                        {% if membership.lobby.admin_id == user.id and member.user_id != user.id %}
+                                            <form method="post" class="form inline">
+                                                <input type="hidden" name="action" value="set_role">
+                                                <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
+                                                <input type="hidden" name="member_id" value="{{ member.id }}">
+                                                <select name="role">
+                                                    <option value="master" {% if member.role == 'master' %}selected{% endif %}>Майстер</option>
+                                                    <option value="player" {% if member.role == 'player' %}selected{% endif %}>Гравець</option>
+                                                    <option value="spectator" {% if member.role == 'spectator' %}selected{% endif %}>Глядач</option>
+                                                </select>
+                                                <button type="submit" class="button ghost">Оновити</button>
+                                            </form>
                                         {% endif %}
                                     </div>
-                                    {% if membership.lobby.admin_id == user.id and member.user_id != user.id %}
-                                        <form method="post" class="form inline">
-                                            <input type="hidden" name="action" value="set_role">
-                                            <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
-                                            <input type="hidden" name="member_id" value="{{ member.id }}">
-                                            <select name="role">
-                                                <option value="master" {% if member.role == 'master' %}selected{% endif %}>Майстер</option>
-                                                <option value="player" {% if member.role == 'player' %}selected{% endif %}>Гравець</option>
-                                                <option value="spectator" {% if member.role == 'spectator' %}selected{% endif %}>Глядач</option>
-                                            </select>
-                                            <button type="submit" class="button ghost">Оновити</button>
-                                        </form>
-                                    {% endif %}
-                                </div>
-                            </details>
+                                </details>
+                            {% endif %}
                         {% endfor %}
                     </div>
                 </div>
                 <div class="lobby-workspace card" aria-label="Поле для роботи">
-                    <section class="inventory inventory--embedded" data-player-id="{{ user.id }}">
+                    <section
+                        class="inventory inventory--embedded"
+                        data-player-id="{{ user.id }}"
+                        data-lobby-id="{{ membership.lobby.id }}"
+                        data-can-view="{{ 'true' if membership.role in ['master', 'spectator'] else 'false' }}"
+                    >
                         <div class="inventory-panel">
                             <div class="inventory-panel__header">
                                 <h2 class="inventory-title">
@@ -150,9 +152,11 @@ codex/fix-participant-panel-alignment-and-statuses-0vnoa8
                                 {% if membership.role in ['master', 'spectator'] %}
                                     <div class="character-switcher">
                                         {% for member in membership.lobby.members %}
-                                            <button class="chip character-switcher__chip" type="button" data-player-id="{{ member.user.id }}">
-                                                {{ member.user.nickname }}
-                                            </button>
+                                            {% if member.user %}
+                                                <button class="chip character-switcher__chip" type="button" data-player-id="{{ member.user.id }}">
+                                                    {{ member.user.nickname }}
+                                                </button>
+                                            {% endif %}
                                         {% endfor %}
                                     </div>
                                 {% endif %}
@@ -205,11 +209,52 @@ codex/fix-participant-panel-alignment-and-statuses-0vnoa8
                                             <label for="item_target_{{ membership.lobby.id }}">Передати</label>
                                             <select id="item_target_{{ membership.lobby.id }}">
                                                 {% for member in membership.lobby.members %}
-                                                    <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
+                                                    {% if member.user %}
+                                                        <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
+                                                    {% endif %}
                                                 {% endfor %}
                                             </select>
                                             <button type="button" class="button">Створити та передати</button>
                                         </form>
+                                        <div class="item-schema card">
+                                            <h4>Структура предмета</h4>
+                                            <div class="item-schema__section">
+                                                <h5>Основна частина (обовʼязкова)</h5>
+                                                <ul>
+                                                    <li><strong>ID</strong> — авто-ідентифікатор предмета (для видачі по ID).</li>
+                                                    <li><strong>name</strong> — базова назва від адміністратора.</li>
+                                                    <li><strong>description</strong> — базовий опис від адміністратора.</li>
+                                                    <li><strong>image</strong> — зображення предмета.</li>
+                                                    <li><strong>h/w</strong> — висота та ширина в тетрис-інвентарі.</li>
+                                                    <li><strong>weight</strong> — вага однієї одиниці.</li>
+                                                    <li><strong>MAXstr</strong> — максимальна міцність предмета.</li>
+                                                    <li><strong>type</strong> — тип (береться з таблиці типів).</li>
+                                                    <li><strong>quality</strong> — якість (звичайний, незвичайний, епічний, легендарний, міфічний).</li>
+                                                </ul>
+                                            </div>
+                                            <div class="item-schema__section">
+                                                <h5>Персональна частина (на користувача)</h5>
+                                                <ul>
+                                                    <li><strong>remain</strong> — кому належить предмет (власник).</li>
+                                                    <li><strong>remain(username)</strong> — клітинка інвентаря, де лежить предмет.</li>
+                                                    <li><strong>str(username)</strong> — поточна міцність.</li>
+                                                    <li><strong>amount(username)</strong> — кількість (1..MAXamount).</li>
+                                                    <li><strong>description(username)</strong> — нотатки гравця (не перекриває базовий опис).</li>
+                                                    <li><strong>name(username)</strong> — особиста назва (перекриває базову лише для цього гравця).</li>
+                                                </ul>
+                                            </div>
+                                            <div class="item-schema__section">
+                                                <h5>Таблиця типів</h5>
+                                                <ul class="item-schema__types">
+                                                    <li>weapon</li>
+                                                    <li>ammo</li>
+                                                    <li>armor</li>
+                                                    <li>map</li>
+                                                    <li>food</li>
+                                                    <li>other</li>
+                                                </ul>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             {% else %}
@@ -316,5 +361,9 @@ codex/fix-participant-panel-alignment-and-statuses-0vnoa8
         <p class="muted">Ще немає активних лобі. Попросіть ключ у майстра.</p>
     {% endif %}
 </section>
+<script>
+    window.INVENTORY_DATA = {{ inventory_data | tojson }};
+    window.TRANSFER_PLAYERS = {{ transfer_players | tojson }};
+</script>
 <script src="{{ url_for('static', filename='inventory.js') }}" defer></script>
 {% endblock %}
