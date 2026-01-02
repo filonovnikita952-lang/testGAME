@@ -678,7 +678,6 @@ def lobby_page():
         owned_lobbies=owned_lobbies,
         member_lobbies=member_lobbies,
         inventory_data=build_inventory_payload(user),
-        transfer_players=transfer_players,
     )
 
 
