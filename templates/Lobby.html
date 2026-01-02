@@ -87,26 +87,41 @@
                         {% endif %}
                     </div>
                     <div class="lobby-members">
-                        {% for member in membership.lobby.members if member.user %}
-                            <details class="member-card">
-                                <summary class="member-card__summary">
-                                    {% if member.user.userImage %}
-                                        <img src="{{ url_for('static', filename=static_path(member.user.userImage)) }}" alt="avatar" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
-                                    {% else %}
-                                        <img src="/static/images/default_avatar.png" alt="Аватар" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
-                                    {% endif %}
-                                    <span>{{ member.user.nickname }}</span>
-                                    <span class="member-status member-status--online">{{ member.role }}</span>
-                                </summary>
-                                <div class="member-card__details">
-                                    <strong>{{ member.user.nickname }}</strong>
-                                    <p class="muted">{{ member.user.description or 'Опис ще не додано.' }}</p>
-                                    <div class="chip-grid">
-                                        <span class="chip">{{ role_labels.get(member.role, member.role) }}</span>
-                                        {% if member.user.description %}
-                                            <span class="chip">Профіль: оновлено</span>
+                        {% for member in membership.lobby.members %}
+                            {% if member.user %}
+                                <details class="member-card">
+                                    <summary class="member-card__summary">
+                                        {% if member.user.userImage %}
+                                            <img src="{{ url_for('static', filename=static_path(member.user.userImage)) }}" alt="avatar" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
                                         {% else %}
-                                            <span class="chip">Профіль: без опису</span>
+                                            <img src="/static/images/default_avatar.png" alt="Аватар" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
+                                        {% endif %}
+                                        <span>{{ member.user.nickname }}</span>
+                                        <span class="member-status member-status--online">{{ member.role }}</span>
+                                    </summary>
+                                    <div class="member-card__details">
+                                        <strong>{{ member.user.nickname }}</strong>
+                                        <p class="muted">{{ member.user.description or 'Опис ще не додано.' }}</p>
+                                        <div class="chip-grid">
+                                            <span class="chip">{{ role_labels.get(member.role, member.role) }}</span>
+                                            {% if member.user.description %}
+                                                <span class="chip">Профіль: оновлено</span>
+                                            {% else %}
+                                                <span class="chip">Профіль: без опису</span>
+                                            {% endif %}
+                                        </div>
+                                        {% if membership.lobby.admin_id == user.id and member.user_id != user.id %}
+                                            <form method="post" class="form inline">
+                                                <input type="hidden" name="action" value="set_role">
+                                                <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
+                                                <input type="hidden" name="member_id" value="{{ member.id }}">
+                                                <select name="role">
+                                                    <option value="master" {% if member.role == 'master' %}selected{% endif %}>Майстер</option>
+                                                    <option value="player" {% if member.role == 'player' %}selected{% endif %}>Гравець</option>
+                                                    <option value="spectator" {% if member.role == 'spectator' %}selected{% endif %}>Глядач</option>
+                                                </select>
+                                                <button type="submit" class="button ghost">Оновити</button>
+                                            </form>
                                         {% endif %}
                                     </div>
                                     {% if membership.lobby.admin_id == user.id and member.user_id != user.id %}
