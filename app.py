@@ -18,6 +18,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'supersecretkey')
 
 UPLOAD_SUBDIR = 'uploads'
+RESET_DB_ENV = 'RESET_DB_ON_START'
 
 
 db = SQLAlchemy(app)
@@ -140,8 +141,21 @@ class TransferRequest(db.Model):
     item_instance = db.relationship('ItemInstance')
 
 
-with app.app_context():
-    db.create_all()
+def _should_reset_database(db_uri: str) -> bool:
+    flag = os.environ.get(RESET_DB_ENV)
+    if flag is None:
+        return os.path.basename(db_uri) == 'dra.db'
+    return flag.strip().lower() in {'1', 'true', 'yes'}
+
+
+def _sqlite_db_path(db_uri: str) -> Optional[str]:
+    if not db_uri.startswith('sqlite:///'):
+        return None
+    path = db_uri[len('sqlite:///'):]
+    return path or None
+
+
+def _ensure_user_columns():
     inspector = inspect(db.engine)
     if 'userid' in inspector.get_table_names():
         columns = {column['name'] for column in inspector.get_columns('userid')}
@@ -151,6 +165,32 @@ with app.app_context():
         if 'last_seen' not in columns:
             db.session.execute(text('ALTER TABLE userid ADD COLUMN last_seen DATETIME'))
             db.session.commit()
+
+
+def initialize_database():
+    db.create_all()
+    _ensure_user_columns()
+
+
+def reset_database():
+    db.drop_all()
+    db.create_all()
+    _ensure_user_columns()
+
+
+def reset_database_if_needed():
+    db_uri = app.config['SQLALCHEMY_DATABASE_URI']
+    if not _should_reset_database(db_uri):
+        initialize_database()
+        return
+    sqlite_path = _sqlite_db_path(db_uri)
+    if sqlite_path and os.path.exists(sqlite_path):
+        os.remove(sqlite_path)
+    reset_database()
+
+
+with app.app_context():
+    reset_database_if_needed()
 
 
 @dataclass
@@ -831,15 +871,4 @@ def decline_transfer(transfer_id: int):
 
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-        inspector = inspect(db.engine)
-        if 'userid' in inspector.get_table_names():
-            columns = {column['name'] for column in inspector.get_columns('userid')}
-            if 'is_online' not in columns:
-                db.session.execute(text('ALTER TABLE userid ADD COLUMN is_online BOOLEAN DEFAULT 0'))
-                db.session.commit()
-            if 'last_seen' not in columns:
-                db.session.execute(text('ALTER TABLE userid ADD COLUMN last_seen DATETIME'))
-                db.session.commit()
     app.run(debug=True)
