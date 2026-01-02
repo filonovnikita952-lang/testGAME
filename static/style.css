@@ -27,6 +27,32 @@ body {
     min-height: 100vh;
 }
 
+@keyframes page-fade {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes float-glow {
+    0% {
+        transform: translateY(0);
+        box-shadow: 0 0 0 rgba(109, 211, 255, 0);
+    }
+    50% {
+        transform: translateY(-6px);
+        box-shadow: 0 18px 30px rgba(109, 211, 255, 0.12);
+    }
+    100% {
+        transform: translateY(0);
+        box-shadow: 0 0 0 rgba(109, 211, 255, 0);
+    }
+}
+
 a {
     color: inherit;
     text-decoration: none;
@@ -44,6 +70,7 @@ a {
     align-items: center;
     justify-content: space-between;
     gap: 24px;
+    animation: page-fade 0.6s ease both;
 }
 
 .brand {
@@ -85,11 +112,12 @@ a {
     letter-spacing: 0.05em;
     padding: 8px 12px;
     border-radius: 999px;
-    transition: background 0.3s ease, color 0.3s ease;
+    transition: background 0.3s ease, color 0.3s ease, transform 0.3s ease;
 }
 
 .navigation a:hover {
     background: rgba(255, 255, 255, 0.08);
+    transform: translateY(-2px);
 }
 
 .user-chip {
@@ -108,6 +136,12 @@ a {
     border-radius: 12px;
     object-fit: cover;
     border: 2px solid rgba(255, 255, 255, 0.2);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.avatar:hover {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 10px 18px rgba(0, 0, 0, 0.35);
 }
 
 .avatar--mini {
@@ -135,10 +169,10 @@ a {
     display: flex;
     flex-direction: column;
     gap: 32px;
+    animation: page-fade 0.6s ease both;
 }
 
 .page--lobby {
-odex/fix-participant-panel-alignment-and-statuses-8tbi9n
     padding-left: 16px;
     padding-right: 4vw;
 }
@@ -146,13 +180,12 @@ odex/fix-participant-panel-alignment-and-statuses-8tbi9n
 .page--inventory {
     padding-left: 24px;
     padding-right: 24px;
-codex/fix-participant-panel-alignment-and-statuses-0vnoa8
-    padding-left: 16px;
+}
 
-    padding-left: 24px;
-main
-    padding-right: 4vw;
-main
+.page--news {
+    max-width: 1200px;
+    margin: 0 auto;
+    gap: 40px;
 }
 
 .footer {
@@ -255,6 +288,7 @@ main
     border-radius: 24px;
     margin-top: 20px;
     border: 1px solid var(--border);
+    animation: float-glow 8s ease-in-out infinite;
 }
 
 .banner {
@@ -313,6 +347,36 @@ main
 .card.narrow {
     max-width: 480px;
     margin: 0 auto;
+}
+
+.card,
+.glass-panel,
+.lobby-card,
+.member-card,
+.stat,
+.stat-card,
+.inventory-panel,
+.inventory-grid-panel,
+.news-card,
+.news-paper,
+.context-menu,
+.transfer-modal__content {
+    transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.card:hover,
+.glass-panel:hover,
+.lobby-card:hover,
+.member-card:hover,
+.stat:hover,
+.stat-card:hover,
+.inventory-panel:hover,
+.inventory-grid-panel:hover,
+.news-card:hover,
+.news-paper:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 36px rgba(0, 0, 0, 0.35);
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 .link {
@@ -443,6 +507,111 @@ textarea {
     gap: 24px;
 }
 
+.news-board {
+    display: grid;
+    gap: 24px;
+}
+
+.news-card {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr) minmax(160px, 220px);
+    gap: 16px;
+    align-items: stretch;
+    animation: page-fade 0.7s ease both;
+}
+
+.news-card:nth-child(2) {
+    animation-delay: 0.08s;
+}
+
+.news-card:nth-child(3) {
+    animation-delay: 0.16s;
+}
+
+.news-card--alt .news-paper {
+    border-color: rgba(109, 211, 255, 0.4);
+}
+
+.news-pin {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-top: 18px;
+    box-shadow: 0 0 12px rgba(0, 0, 0, 0.4);
+}
+
+.news-pin--red {
+    background: #ff6b6b;
+}
+
+.news-pin--blue {
+    background: #6dd3ff;
+}
+
+.news-pin--green {
+    background: #4dd19b;
+}
+
+.news-paper {
+    background: rgba(16, 19, 34, 0.9);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 20px 22px;
+    display: grid;
+    gap: 10px;
+    box-shadow: 0 18px 30px rgba(0, 0, 0, 0.3);
+}
+
+.news-paper h2 {
+    margin: 0;
+    font-size: 1.2rem;
+}
+
+.news-paper p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.6;
+}
+
+.news-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.news-photo {
+    display: grid;
+    place-items: center;
+}
+
+.news-photo__frame {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    background: radial-gradient(circle at top, rgba(109, 211, 255, 0.25), transparent 60%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0));
+    position: relative;
+    overflow: hidden;
+    animation: float-glow 10s ease-in-out infinite;
+}
+
+.news-photo__frame::after {
+    content: "";
+    position: absolute;
+    inset: 12px;
+    border-radius: 14px;
+    border: 1px dashed rgba(255, 255, 255, 0.2);
+}
+
 .alert {
     padding: 12px 16px;
     border-radius: 12px;
@@ -488,10 +657,7 @@ textarea {
     border: 1px solid var(--border);
     border-radius: 16px;
     padding: 10px 12px;
-codex/fix-participant-panel-alignment-and-statuses-8tbi9n
-odex/fix-participant-panel-alignment-and-statuses-0vnoa8
-main
-    width: min(200px, 100%);
+    width: min(220px, 100%);
     align-self: flex-start;
     background: rgba(255, 255, 255, 0.03);
 }
@@ -504,41 +670,21 @@ main
 }
 
 .lobby-card strong {
-    font-size: 0.9rem;
-odex/fix-participant-panel-alignment-and-statuses-8tbi9n
-    margin-bottom: 12px;
- codex/fix-participant-panel-alignment-and-statuses-jc5xco
-    width: min(220px, 100%);
-    align-self: flex-start;
+    font-size: 0.95rem;
+    display: block;
+    margin-bottom: 4px;
 }
 
 .lobby-card h1 {
     font-size: 1.1rem;
-}
-
-.lobby-card strong {
-    font-size: 0.95rem;
-main
-main
-}
-
-.lobby-card__content {
-    display: grid;
-    gap: 4px;
-codex/fix-participant-panel-alignment-and-statuses-8tbi9n
-
-codex/fix-participant-panel-alignment-and-statuses-0vnoa8
-
-    width: min(260px, 100%);
-    align-self: flex-start;
+    margin: 0;
 }
 
 .lobby-card__content {
     display: grid;
     gap: 6px;
- main
-main
-main
+    width: min(260px, 100%);
+    align-self: flex-start;
 }
 
 .lobby-card__action {
@@ -625,16 +771,8 @@ main
 
 .lobby-layout {
     display: grid;
-codex/fix-participant-panel-alignment-and-statuses-8tbi9n
-    grid-template-columns: minmax(180px, 210px) minmax(0, 1fr);
-    gap: 20px;
-
- odex/fix-participant-panel-alignment-and-statuses-0vnoa8
-    grid-template-columns: minmax(180px, 210px) minmax(0, 1fr);
-    gap: 20px;
     grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
     gap: 24px;
-    main
     align-items: stretch;
     margin: 12px 0 24px;
     min-height: 70vh;
@@ -642,32 +780,14 @@ codex/fix-participant-panel-alignment-and-statuses-8tbi9n
 
 .lobby-side {
     justify-self: start;
-odex/fix-participant-panel-alignment-and-statuses-8tbi9n
     display: flex;
     flex-direction: column;
     gap: 12px;
-odex/fix-participant-panel-alignment-and-statuses-0vnoa8
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-
-}
-
-.lobby-side {
-    justify-self: start;
-main
-
 }
 
 .lobby-workspace {
     min-height: 100%;
-odex/fix-participant-panel-alignment-and-statuses-8tbi9n
     align-self: start;
-codex/fix-participant-panel-alignment-and-statuses-0vnoa8
-    align-self: start;
-
-main
-
 }
 
 .header__toggle {
@@ -979,6 +1099,16 @@ main
     margin-top: 24px;
 }
 
+@media (max-width: 900px) {
+    .news-card {
+        grid-template-columns: 16px 1fr;
+    }
+
+    .news-photo {
+        grid-column: 1 / -1;
+    }
+}
+
 @media (max-width: 860px) {
     .header {
         flex-direction: column;
@@ -1072,5 +1202,16 @@ main
 
     .member-card__details {
         position: static;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
     }
 }
