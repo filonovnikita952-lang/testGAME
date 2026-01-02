@@ -1,6 +1,102 @@
-const initInventory = () => {
-    const grid = document.getElementById('tetris-grid');
-    if (!grid) return;
+const grid = document.getElementById('tetris-grid');
+const rotateButton = document.getElementById('rotate-item');
+const autoPackButton = document.getElementById('auto-pack');
+const contextMenu = document.getElementById('context-menu');
+const transferModal = document.getElementById('transfer-modal');
+const transferPlayers = document.getElementById('transfer-players');
+const transferClose = document.getElementById('transfer-close');
+const embeddedInventory = document.querySelector('.inventory--embedded');
+const characterSwitcher = document.querySelector('.character-switcher');
+
+const gridConfig = { columns: 12, rows: 8 };
+
+const defaultItems = [
+    {
+        id: 'sword_basic',
+        name: 'Меч найманця',
+        type: 'weapon',
+        size: { w: 1, h: 3 },
+        rotatable: true,
+        stackable: false,
+        quality: 'uncommon',
+        maxStack: 1,
+        weight: 3.2,
+        description: 'Балансований клинок для ближнього бою.',
+        equipSlot: 'weapon',
+        entry: { qty: 1, rotation: 0, position: { x: 1, y: 1 } },
+    },
+    {
+        id: 'leather_armor',
+        name: 'Шкіряна броня',
+        type: 'armor',
+        size: { w: 2, h: 3 },
+        rotatable: false,
+        stackable: false,
+        quality: 'common',
+        maxStack: 1,
+        weight: 5.4,
+        description: 'Легка броня для мандрівника.',
+        equipSlot: 'body',
+        entry: { qty: 1, rotation: 0, position: { x: 3, y: 1 } },
+    },
+    {
+        id: 'potion_heal',
+        name: 'Зілля лікування',
+        type: 'food',
+        size: { w: 1, h: 2 },
+        rotatable: true,
+        stackable: true,
+        quality: 'uncommon',
+        maxStack: 5,
+        weight: 0.3,
+        description: 'Відновлює 12 HP.',
+        equipSlot: null,
+        entry: { qty: 3, rotation: 0, position: { x: 6, y: 1 } },
+    },
+    {
+        id: 'coin_pouch',
+        name: 'Мішечок монет',
+        type: 'money',
+        size: { w: 1, h: 1 },
+        rotatable: false,
+        stackable: true,
+        quality: 'common',
+        maxStack: 9999,
+        weight: 0.01,
+        description: 'Золоті монети. Використовуються як предмет.',
+        equipSlot: null,
+        entry: { qty: 280, rotation: 0, position: { x: 8, y: 2 } },
+    },
+    {
+        id: 'arrow_bundle',
+        name: 'Стрілковий набір',
+        type: 'ammunition',
+        size: { w: 2, h: 1 },
+        rotatable: true,
+        stackable: true,
+        quality: 'common',
+        maxStack: 30,
+        weight: 0.1,
+        description: 'Пучок стріл для лука.',
+        equipSlot: null,
+        entry: { qty: 20, rotation: 0, position: { x: 1, y: 5 } },
+    },
+];
+
+let items = Array.isArray(window.INVENTORY_DATA) && window.INVENTORY_DATA.length
+    ? window.INVENTORY_DATA
+    : defaultItems;
+
+const equipped = {
+    head: null,
+    body: null,
+    hands: null,
+    legs: null,
+    weapon: null,
+    offhand: null,
+    amulet: null,
+    ring: null,
+};
 
     const rotateButton = document.getElementById('rotate-item');
     const autoPackButton = document.getElementById('auto-pack');
@@ -66,8 +162,31 @@ const initInventory = () => {
         }
     };
 
-    const saveInventory = (playerId, data) => {
-        localStorage.setItem(getStorageKey(playerId), JSON.stringify(data));
+const setItems = (nextItems) => {
+    items = nextItems;
+    state.draggingId = null;
+    state.ghost = null;
+    state.lastValid = null;
+    state.lastPointer = null;
+    renderItems();
+};
+
+const cellSize = () => {
+    const rect = grid.getBoundingClientRect();
+    const styles = getComputedStyle(grid);
+    const paddingX = parseFloat(styles.paddingLeft) || 0;
+    const paddingY = parseFloat(styles.paddingTop) || 0;
+    const gapX = parseFloat(styles.columnGap) || 0;
+    const gapY = parseFloat(styles.rowGap) || 0;
+    const width = (rect.width - paddingX * 2 - gapX * (gridConfig.columns - 1)) / gridConfig.columns;
+    const height = (rect.height - paddingY * 2 - gapY * (gridConfig.rows - 1)) / gridConfig.rows;
+    return {
+        width,
+        height,
+        paddingX,
+        paddingY,
+        gapX,
+        gapY,
     };
 
     const syncCurrentInventory = () => {
@@ -469,4 +588,71 @@ const initInventory = () => {
     setupMasterPanel();
 };
 
-document.addEventListener('DOMContentLoaded', initInventory);
+const lobbyId = embeddedInventory?.dataset.lobbyId;
+let selectedPlayerId = embeddedInventory?.dataset.playerId || null;
+
+const setSelectedPlayer = (playerId) => {
+    selectedPlayerId = playerId;
+    if (!characterSwitcher) return;
+    characterSwitcher.querySelectorAll('.character-switcher__chip').forEach((chip) => {
+        chip.classList.toggle('is-active', chip.dataset.playerId === playerId);
+    });
+};
+
+const loadInventoryForPlayer = async (playerId) => {
+    if (!playerId || !lobbyId) return;
+    try {
+        const response = await fetch(`/api/inventory/${playerId}?lobby_id=${lobbyId}`);
+        if (!response.ok) {
+            throw new Error('Не вдалося завантажити інвентар.');
+        }
+        const data = await response.json();
+        setItems(Array.isArray(data) ? data : []);
+    } catch (error) {
+        alert(error.message || 'Не вдалося завантажити інвентар.');
+    }
+};
+
+document.addEventListener('keydown', (event) => {
+    if (event.key.toLowerCase() === 'r') {
+        rotateDragging();
+    }
+});
+
+rotateButton.addEventListener('click', rotateDragging);
+autoPackButton.addEventListener('click', () => {
+    alert('Auto-pack поки що недоступний у демо.');
+});
+transferClose.addEventListener('click', closeTransferModal);
+transferModal.addEventListener('click', (event) => {
+    if (event.target === transferModal) closeTransferModal();
+});
+document.addEventListener('click', (event) => {
+    if (!contextMenu.contains(event.target)) {
+        closeContextMenu();
+    }
+});
+
+if (characterSwitcher) {
+    const chips = characterSwitcher.querySelectorAll('.character-switcher__chip');
+    if (chips.length && !selectedPlayerId) {
+        setSelectedPlayer(chips[0].dataset.playerId);
+    }
+    chips.forEach((chip) => {
+        chip.addEventListener('click', () => {
+            setSelectedPlayer(chip.dataset.playerId);
+        });
+    });
+    const viewButton = characterSwitcher.querySelector('[data-action="view-inventory"]');
+    if (viewButton) {
+        viewButton.addEventListener('click', () => {
+            loadInventoryForPlayer(selectedPlayerId);
+        });
+    }
+}
+
+createGridCells();
+renderItems();
+setupTabs();
+setupContextActions();
+setupEquipSlots();
