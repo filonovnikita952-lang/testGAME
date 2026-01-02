@@ -110,7 +110,7 @@
 
 <script>
     window.INVENTORY_DATA = {{ inventory_data | tojson }};
-    window.TRANSFER_PLAYERS = [];
+    window.TRANSFER_PLAYERS = {{ transfer_players | tojson }};
 </script>
 <script src="{{ url_for('static', filename='inventory.js') }}" defer></script>
 {% endblock %}
