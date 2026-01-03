@@ -768,15 +768,15 @@ textarea {
 
 .lobby-room__grid {
     display: grid;
-    grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
-    gap: 24px;
+    grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+    gap: 12px;
     align-items: stretch;
 }
 
 .lobby-roster {
     display: grid;
-    gap: 16px;
-    padding: 16px;
+    gap: 10px;
+    padding: 12px;
     border-radius: 16px;
     border: 1px solid rgba(255, 255, 255, 0.12);
     background: linear-gradient(180deg, rgba(34, 38, 52, 0.95), rgba(16, 18, 26, 0.95));
@@ -1030,7 +1030,7 @@ textarea {
 .lobby-inventory-layout {
     display: grid;
     grid-template-columns: minmax(240px, 320px) minmax(320px, 1fr) minmax(240px, 320px);
-    gap: 16px;
+    gap: 10px;
     align-items: start;
 }
 
@@ -1151,6 +1151,11 @@ textarea {
 
 .inventory-subgrids {
     display: grid;
+    gap: 8px;
+}
+
+.lobby-panel {
+    display: grid;
     gap: 10px;
 }
 
@@ -1174,13 +1179,13 @@ textarea {
 .equipment-board {
     display: grid;
     grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) minmax(120px, 1fr);
-    gap: 12px;
+    gap: 8px;
     align-items: start;
 }
 
 .equipment-board__column {
     display: grid;
-    gap: 12px;
+    gap: 8px;
 }
 
 .equipment-group {
