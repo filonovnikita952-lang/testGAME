@@ -139,32 +139,17 @@
                                             <span class="panel-tag">-AVATAR-</span>
                                         </div>
                                         <div class="character-frame">
-                                            <img src="" alt="Арт персонажа" class="character-frame__image is-hidden" id="character-art-preview-{{ membership.lobby.id }}">
-                                            <div class="character-frame__placeholder" id="character-art-placeholder-{{ membership.lobby.id }}">
-                                                Завантажте арт персонажа
-                                            </div>
+                                            {% if user.userImage %}
+                                                <img src="{{ url_for('static', filename=static_path(user.userImage)) }}" alt="Персонаж" class="character-frame__image">
+                                            {% else %}
+                                                <img src="/static/images/default_avatar.png" alt="Персонаж" class="character-frame__image">
+                                            {% endif %}
                                         </div>
-                                        <div class="character-art-upload">
-                                            <label for="character_art_{{ membership.lobby.id }}">Арт персонажа (окремо від аватарки)</label>
-                                            <input type="file" id="character_art_{{ membership.lobby.id }}" accept="image/*" data-character-art>
-                                        </div>
-                                        <div class="character-stats" data-stat-group data-lobby-id="{{ membership.lobby.id }}">
-                                            <label class="stat-field">
-                                                <span>HP</span>
-                                                <input type="number" value="38" min="0" data-stat-key="hp">
-                                            </label>
-                                            <label class="stat-field">
-                                                <span>Stamina</span>
-                                                <input type="number" value="22" min="0" data-stat-key="stamina">
-                                            </label>
-                                            <label class="stat-field">
-                                                <span>Mana</span>
-                                                <input type="number" value="18" min="0" data-stat-key="mana">
-                                            </label>
-                                            <label class="stat-field">
-                                                <span>Armor Class</span>
-                                                <input type="number" value="15" min="0" data-stat-key="armor_class">
-                                            </label>
+                                        <div class="character-stats">
+                                            <div class="stat-pill">HP: 38</div>
+                                            <div class="stat-pill">Stamina: 22</div>
+                                            <div class="stat-pill">Mana: 18</div>
+                                            <div class="stat-pill">Armor Class: 15</div>
                                         </div>
                                         <div class="character-storage">
                                             <h4 class="inventory-section__title">Швидкі слоти</h4>
@@ -291,129 +276,78 @@
                                             </div>
 
                                             <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
-                                                <div class="equipment-board" aria-label="Екіпіровка">
-                                                    <div class="equipment-board__column">
-                                                        <div class="equipment-group">
-                                                            <span class="equipment-group__label">HEAD</span>
-                                                            <div class="equipment-slot-grid">
-                                                                {% for _ in range(8) %}
-                                                                    <span class="slot-grid__cell"></span>
-                                                                {% endfor %}
-                                                            </div>
-                                                        </div>
-                                                        <div class="equipment-group">
-                                                            <span class="equipment-group__label">PANTS</span>
-                                                            <div class="equipment-slot-grid equipment-slot-grid--tall">
-                                                                {% for _ in range(12) %}
-                                                                    <span class="slot-grid__cell"></span>
-                                                                {% endfor %}
-                                                            </div>
-                                                        </div>
-                                                        <div class="equipment-group">
-                                                            <span class="equipment-group__label">WEAPON I</span>
-                                                            <div class="equipment-slot-grid equipment-slot-grid--wide">
-                                                                {% for _ in range(10) %}
-                                                                    <span class="slot-grid__cell"></span>
-                                                                {% endfor %}
-                                                            </div>
-                                                        </div>
-                                                        <div class="equipment-group">
-                                                            <span class="equipment-group__label">BELT</span>
-                                                            <div class="equipment-slot-grid equipment-slot-grid--belt">
-                                                                {% for _ in range(12) %}
-                                                                    <span class="slot-grid__cell"></span>
-                                                                {% endfor %}
-                                                            </div>
-                                                        </div>
+                                                <div class="equipment-grid" aria-label="Екіпіровка">
+                                                    <div class="equipment-slot equipment-slot--weapon" data-slot="weapon">
+                                                        <span>Основне озброєння</span>
                                                     </div>
-                                                    <div class="equipment-board__column">
-                                                        <div class="equipment-group">
-                                                            <span class="equipment-group__label">SHIRT</span>
-                                                            <div class="equipment-slot-grid">
-                                                                {% for _ in range(8) %}
-                                                                    <span class="slot-grid__cell"></span>
-                                                                {% endfor %}
-                                                            </div>
-                                                        </div>
-                                                        <div class="equipment-group">
-                                                            <span class="equipment-group__label">ARMOR</span>
-                                                            <div class="equipment-slot-grid equipment-slot-grid--tall">
-                                                                {% for _ in range(12) %}
-                                                                    <span class="slot-grid__cell"></span>
-                                                                {% endfor %}
-                                                            </div>
-                                                        </div>
+                                                    <div class="equipment-slot equipment-slot--shield" data-slot="offhand">
+                                                        <span>Щит</span>
                                                     </div>
-                                                    <div class="equipment-board__column equipment-board__preview">
-                                                        <div class="equipment-preview">
-                                                            <span class="equipment-group__label">EQUIPMENT</span>
-                                                            <div class="equipment-preview__frame">
-                                                                <div class="equipment-preview__placeholder">Броня персонажа</div>
-                                                            </div>
-                                                        </div>
+                                                    <div class="equipment-slot equipment-slot--shirt" data-slot="shirt">
+                                                        <span>Кофта</span>
+                                                    </div>
+                                                    <div class="equipment-slot equipment-slot--pants" data-slot="pants">
+                                                        <span>Штани</span>
+                                                    </div>
+                                                    <div class="equipment-slot equipment-slot--boots" data-slot="boots">
+                                                        <span>Сапоги</span>
+                                                    </div>
+                                                    <div class="equipment-slot equipment-slot--armor" data-slot="armor">
+                                                        <span>Броня</span>
+                                                    </div>
+                                                    <div class="equipment-slot equipment-slot--head" data-slot="head">
+                                                        <span>Голова</span>
+                                                    </div>
+                                                    <div class="equipment-slot equipment-slot--jewelry" data-slot="jewelry">
+                                                        <span>Украшения</span>
+                                                    </div>
+                                                    <div class="equipment-slot equipment-slot--cloak" data-slot="cloak">
+                                                        <span>Плащ/Рюкзак</span>
                                                     </div>
                                                 </div>
                                             </div>
 
                                             <div class="tab-content" data-panel="stats" role="tabpanel">
-                                                <div class="stats-grid" data-stat-group data-lobby-id="{{ membership.lobby.id }}">
-                                                    <label class="stat-card">
+                                                <div class="stats-grid">
+                                                    <div class="stat-card">
                                                         <span class="stat-card__label">STR</span>
-                                                        <input type="number" value="14" min="0" data-stat-key="str">
+                                                        <strong>14</strong>
                                                         <span class="stat-card__mod">+2</span>
-                                                    </label>
-                                                    <label class="stat-card">
+                                                    </div>
+                                                    <div class="stat-card">
                                                         <span class="stat-card__label">DEX</span>
-                                                        <input type="number" value="12" min="0" data-stat-key="dex">
+                                                        <strong>12</strong>
                                                         <span class="stat-card__mod">+1</span>
-                                                    </label>
-                                                    <label class="stat-card">
+                                                    </div>
+                                                    <div class="stat-card">
                                                         <span class="stat-card__label">CON</span>
-                                                        <input type="number" value="13" min="0" data-stat-key="con">
+                                                        <strong>13</strong>
                                                         <span class="stat-card__mod">+1</span>
-                                                    </label>
-                                                    <label class="stat-card">
+                                                    </div>
+                                                    <div class="stat-card">
                                                         <span class="stat-card__label">INT</span>
-                                                        <input type="number" value="10" min="0" data-stat-key="int">
+                                                        <strong>10</strong>
                                                         <span class="stat-card__mod">+0</span>
-                                                    </label>
-                                                    <label class="stat-card">
+                                                    </div>
+                                                    <div class="stat-card">
                                                         <span class="stat-card__label">WIS</span>
-                                                        <input type="number" value="11" min="0" data-stat-key="wis">
+                                                        <strong>11</strong>
                                                         <span class="stat-card__mod">+0</span>
-                                                    </label>
-                                                    <label class="stat-card">
+                                                    </div>
+                                                    <div class="stat-card">
                                                         <span class="stat-card__label">CHA</span>
-                                                        <input type="number" value="16" min="0" data-stat-key="cha">
+                                                        <strong>16</strong>
                                                         <span class="stat-card__mod">+3</span>
-                                                    </label>
+                                                    </div>
                                                 </div>
 
-                                                <div class="stats-extra" data-stat-group data-lobby-id="{{ membership.lobby.id }}">
-                                                    <label class="stat-pill">
-                                                        <span>HP</span>
-                                                        <input type="number" value="38" min="0" data-stat-key="hp">
-                                                    </label>
-                                                    <label class="stat-pill">
-                                                        <span>Stamina</span>
-                                                        <input type="number" value="22" min="0" data-stat-key="stamina">
-                                                    </label>
-                                                    <label class="stat-pill">
-                                                        <span>Mana</span>
-                                                        <input type="number" value="18" min="0" data-stat-key="mana">
-                                                    </label>
-                                                    <label class="stat-pill">
-                                                        <span>Armor Class</span>
-                                                        <input type="number" value="15" min="0" data-stat-key="armor_class">
-                                                    </label>
-                                                    <label class="stat-pill">
-                                                        <span>Resistances</span>
-                                                        <input type="text" value="fire, poison" data-stat-key="resistances">
-                                                    </label>
-                                                    <label class="stat-pill">
-                                                        <span>Carry Capacity</span>
-                                                        <input type="number" value="80" min="0" data-stat-key="carry_capacity">
-                                                    </label>
+                                                <div class="stats-extra">
+                                                    <div class="stat-pill">HP: 38</div>
+                                                    <div class="stat-pill">Stamina: 22</div>
+                                                    <div class="stat-pill">Mana: 18</div>
+                                                    <div class="stat-pill">Armor Class: 15</div>
+                                                    <div class="stat-pill">Resistances: fire, poison</div>
+                                                    <div class="stat-pill">Carry Capacity: 80</div>
                                                 </div>
                                             </div>
                                         </div>
