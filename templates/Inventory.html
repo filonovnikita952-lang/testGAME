@@ -6,23 +6,45 @@
 
 {% block content %}
 <section class="inventory">
-    <div class="inventory-panel">
+    <div class="inventory-panel panel-secondary">
+        <div class="panel-header">
+            <span class="panel-title">KING</span>
+            <span class="panel-tag">-BACKPACK-</span>
+        </div>
         <div class="inventory-tabs" role="tablist" aria-label="Режими інвентаря">
             <button class="tab-button is-active" data-tab="equipment" type="button" role="tab">Екіпировка</button>
             <button class="tab-button" data-tab="stats" type="button" role="tab">Stats</button>
         </div>
 
         <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
-            <div class="paper-doll">
-                <img src="/static/images/default_avatar.png" alt="Персонаж" class="paper-doll__image">
-                <div class="paper-doll__slot slot-head" data-slot="head">Голова</div>
-                <div class="paper-doll__slot slot-body" data-slot="body">Тіло</div>
-                <div class="paper-doll__slot slot-hands" data-slot="hands">Руки</div>
-                <div class="paper-doll__slot slot-legs" data-slot="legs">Ноги</div>
-                <div class="paper-doll__slot slot-weapon" data-slot="weapon">Зброя</div>
-                <div class="paper-doll__slot slot-shield" data-slot="offhand">Щит</div>
-                <div class="paper-doll__slot slot-amulet" data-slot="amulet">Амулет</div>
-                <div class="paper-doll__slot slot-ring" data-slot="ring">Кільце</div>
+            <div class="equipment-grid" aria-label="Екіпіровка">
+                <div class="equipment-slot equipment-slot--weapon" data-slot="weapon">
+                    <span>Основне озброєння</span>
+                </div>
+                <div class="equipment-slot equipment-slot--shield" data-slot="offhand">
+                    <span>Щит</span>
+                </div>
+                <div class="equipment-slot equipment-slot--shirt" data-slot="shirt">
+                    <span>Кофта</span>
+                </div>
+                <div class="equipment-slot equipment-slot--pants" data-slot="pants">
+                    <span>Штани</span>
+                </div>
+                <div class="equipment-slot equipment-slot--boots" data-slot="boots">
+                    <span>Сапоги</span>
+                </div>
+                <div class="equipment-slot equipment-slot--armor" data-slot="armor">
+                    <span>Броня</span>
+                </div>
+                <div class="equipment-slot equipment-slot--head" data-slot="head">
+                    <span>Голова</span>
+                </div>
+                <div class="equipment-slot equipment-slot--jewelry" data-slot="jewelry">
+                    <span>Украшения</span>
+                </div>
+                <div class="equipment-slot equipment-slot--cloak" data-slot="cloak">
+                    <span>Плащ/Рюкзак</span>
+                </div>
             </div>
         </div>
 
@@ -71,7 +93,11 @@
         </div>
     </div>
 
-    <div class="inventory-grid-panel">
+    <div class="inventory-grid-panel panel-main">
+        <div class="panel-header">
+            <span class="panel-title">INVENTORY</span>
+            <span class="panel-tag">THIEVES BACKPACK</span>
+        </div>
         <div class="inventory-actions">
             <button class="button ghost" type="button" id="auto-pack">Auto-pack</button>
             <button class="button" type="button" id="rotate-item">Rotate (R)</button>
