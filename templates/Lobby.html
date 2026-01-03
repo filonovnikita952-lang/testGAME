@@ -131,33 +131,20 @@
                             data-lobby-id="{{ membership.lobby.id }}"
                             data-can-view="{{ 'true' if membership.role in ['master', 'spectator'] else 'false' }}"
                         >
-                            <div class="inventory-panel__header inventory-panel__header--wide">
-                                <h2 class="inventory-title">
+                            <div class="inventory-panel">
+                                <div class="inventory-panel__header">
+                                    <h2 class="inventory-title">
+                                        {% if membership.role == 'master' %}
+                                            Майстер
+                                        {% else %}
+                                            Персонаж
+                                        {% endif %}
+                                    </h2>
+                                </div>
+                                <div class="inventory-panel__content">
                                     {% if membership.role == 'master' %}
-                                        Майстер
-                                    {% else %}
-                                        Персонаж
-                                    {% endif %}
-                                </h2>
-                                {% if membership.role in ['master', 'spectator'] %}
-                                    <div class="character-switcher">
-                                        {% for member in membership.lobby.members if member.user %}
-                                            <button class="chip character-switcher__chip" type="button" data-player-id="{{ member.user.id }}">
-                                                {{ member.user.nickname }}
-                                            </button>
-                                        {% endfor %}
-                                    </div>
-                                {% endif %}
-                            </div>
-
-                            {% if membership.role == 'master' %}
-                                <div class="inventory-panel">
-                                    <div class="inventory-tabs" role="tablist" aria-label="Режими інвентаря">
-                                        <button class="tab-button is-active" data-tab="equipment" type="button" role="tab">Екіпировка</button>
-                                        <button class="tab-button" data-tab="stats" type="button" role="tab">Stats</button>
-                                    </div>
-                                    <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
-                                        <div class="master-panel">
+                                        <section class="inventory-section inventory-section--master">
+                                            <div class="master-panel">
                                             <h3>Створення предмета</h3>
                                             <form class="form">
                                                 <label for="item_name_{{ membership.lobby.id }}">Назва</label>
@@ -242,138 +229,26 @@
                                                     </ul>
                                                 </div>
                                             </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            {% else %}
-                                <div class="lobby-inventory-layout">
-                                    <div class="lobby-inventory__character inventory-panel panel-main">
-                                        <div class="panel-header">
-                                            <span class="panel-title">Персонаж</span>
-                                            <span class="panel-tag">model</span>
-                                        </div>
-                                        <div class="character-frame">
-                                            <img src="/static/images/default_avatar.png" alt="Персонаж" class="character-frame__image">
-                                        </div>
-                                        <div class="character-stats">
-                                            <div class="stat-pill">HP: 38</div>
-                                            <div class="stat-pill">Stamina: 22</div>
-                                            <div class="stat-pill">Mana: 18</div>
-                                            <div class="stat-pill">Armor Class: 15</div>
-                                        </div>
-                                        <div class="character-storage">
-                                            <div class="slot-grid slot-grid--compact">
-                                                {% for _ in range(10) %}
-                                                    <span class="slot-grid__cell"></span>
-                                                {% endfor %}
                                             </div>
-                                        </div>
-                                    </div>
+                                        </section>
+                                    {% else %}
+                                        <section class="inventory-section inventory-section--equipment">
+                                            <h3 class="inventory-section__title">Екіпіровка</h3>
+                                            <div class="paper-doll">
+                                            <img src="/static/images/default_avatar.png" alt="Персонаж" class="paper-doll__image">
+                                            <div class="paper-doll__slot slot-head" data-slot="head">Голова</div>
+                                            <div class="paper-doll__slot slot-body" data-slot="body">Тіло</div>
+                                            <div class="paper-doll__slot slot-hands" data-slot="hands">Руки</div>
+                                            <div class="paper-doll__slot slot-legs" data-slot="legs">Ноги</div>
+                                            <div class="paper-doll__slot slot-weapon" data-slot="weapon">Зброя</div>
+                                            <div class="paper-doll__slot slot-shield" data-slot="offhand">Щит</div>
+                                            <div class="paper-doll__slot slot-amulet" data-slot="amulet">Амулет</div>
+                                            <div class="paper-doll__slot slot-ring" data-slot="ring">Кільце</div>
+                                            </div>
+                                        </section>
 
-                                    <div class="lobby-inventory__inventory inventory-grid-panel panel-main">
-                                        <div class="panel-header">
-                                            <span class="panel-title">Інвентар</span>
-                                            <span class="panel-tag">Backpack</span>
-                                        </div>
-                                        <div class="inventory-actions">
-                                            <button class="button ghost" type="button" id="auto-pack">Auto-pack</button>
-                                            <button class="button" type="button" id="rotate-item">Rotate (R)</button>
-                                        </div>
-                                        <div class="tetris-grid" id="tetris-grid" aria-label="Рюкзак"></div>
-                                        <div class="inventory-subgrids">
-                                            <div class="slot-grid slot-grid--wide">
-                                                {% for _ in range(24) %}
-                                                    <span class="slot-grid__cell"></span>
-                                                {% endfor %}
-                                            </div>
-                                            <div class="slot-grid slot-grid--wide">
-                                                {% for _ in range(24) %}
-                                                    <span class="slot-grid__cell"></span>
-                                                {% endfor %}
-                                            </div>
-                                        </div>
-                                        <p class="muted inventory-hint">Перетягуйте предмети, натискайте R для повороту та ПКМ для контекстного меню.</p>
-                                    </div>
-
-                                    <aside class="lobby-inventory__equipment inventory-panel">
-                                        <div class="panel-header">
-                                            <span class="panel-title">KING</span>
-                                            <span class="panel-tag">equipment</span>
-                                        </div>
-                                        <div class="inventory-tabs" role="tablist" aria-label="Режими інвентаря">
-                                            <button class="tab-button is-active" data-tab="equipment" type="button" role="tab">Екіпіровка</button>
-                                            <button class="tab-button" data-tab="stats" type="button" role="tab">Stats</button>
-                                        </div>
-                                        <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
-                                            <div class="equipment-board">
-                                                <div class="equipment-board__column">
-                                                    <div class="equipment-group">
-                                                        <span class="equipment-group__label">Head</span>
-                                                        <div class="paper-doll__slot equipment-slot-grid" data-slot="head">
-                                                            {% for _ in range(8) %}
-                                                                <span class="slot-grid__cell"></span>
-                                                            {% endfor %}
-                                                            Head
-                                                        </div>
-                                                    </div>
-                                                    <div class="equipment-group">
-                                                        <span class="equipment-group__label">Pants</span>
-                                                        <div class="paper-doll__slot equipment-slot-grid" data-slot="legs">
-                                                            {% for _ in range(12) %}
-                                                                <span class="slot-grid__cell"></span>
-                                                            {% endfor %}
-                                                            Pants
-                                                        </div>
-                                                    </div>
-                                                    <div class="equipment-group">
-                                                        <span class="equipment-group__label">Weapon I</span>
-                                                        <div class="paper-doll__slot equipment-slot-grid equipment-slot-grid--wide" data-slot="weapon">
-                                                            {% for _ in range(10) %}
-                                                                <span class="slot-grid__cell"></span>
-                                                            {% endfor %}
-                                                            Weapon
-                                                        </div>
-                                                    </div>
-                                                    <div class="equipment-group">
-                                                        <span class="equipment-group__label">Belt</span>
-                                                        <div class="paper-doll__slot equipment-slot-grid equipment-slot-grid--belt" data-slot="hands">
-                                                            {% for _ in range(12) %}
-                                                                <span class="slot-grid__cell"></span>
-                                                            {% endfor %}
-                                                            Belt
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="equipment-board__column">
-                                                    <div class="equipment-group">
-                                                        <span class="equipment-group__label">Shirt</span>
-                                                        <div class="paper-doll__slot equipment-slot-grid" data-slot="body">
-                                                            {% for _ in range(8) %}
-                                                                <span class="slot-grid__cell"></span>
-                                                            {% endfor %}
-                                                            Shirt
-                                                        </div>
-                                                    </div>
-                                                    <div class="equipment-group">
-                                                        <span class="equipment-group__label">Armor</span>
-                                                        <div class="paper-doll__slot equipment-slot-grid equipment-slot-grid--tall" data-slot="offhand">
-                                                            {% for _ in range(12) %}
-                                                                <span class="slot-grid__cell"></span>
-                                                            {% endfor %}
-                                                            Armor
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div class="equipment-board__armor">
-                                                    <div class="armor-preview">
-                                                        <div class="armor-preview__plate"></div>
-                                                        <div class="armor-preview__strap"></div>
-                                                        <div class="armor-preview__shin"></div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="tab-content" data-panel="stats" role="tabpanel">
+                                        <section class="inventory-section inventory-section--stats">
+                                            <h3 class="inventory-section__title">Статистика</h3>
                                             <div class="stats-grid">
                                                 <div class="stat-card">
                                                     <span class="stat-card__label">STR</span>
@@ -406,6 +281,7 @@
                                                     <span class="stat-card__mod">+3</span>
                                                 </div>
                                             </div>
+
                                             <div class="stats-extra">
                                                 <div class="stat-pill">HP: 38</div>
                                                 <div class="stat-pill">Stamina: 22</div>
@@ -414,8 +290,8 @@
                                                 <div class="stat-pill">Resistances: fire, poison</div>
                                                 <div class="stat-pill">Carry Capacity: 80</div>
                                             </div>
-                                        </div>
-                                    </aside>
+                                        </section>
+                                    {% endif %}
                                 </div>
                             {% endif %}
 
