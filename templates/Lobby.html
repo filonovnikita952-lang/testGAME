@@ -131,172 +131,295 @@
                             data-lobby-id="{{ membership.lobby.id }}"
                             data-can-view="{{ 'true' if membership.role in ['master', 'spectator'] else 'false' }}"
                         >
-                            <div class="inventory-panel">
-                                <div class="inventory-panel__header">
-                                    <h2 class="inventory-title">
-                                        {% if membership.role == 'master' %}
-                                            Майстер
-                                        {% else %}
-                                            Персонаж
-                                        {% endif %}
-                                    </h2>
-                                </div>
-                                <div class="inventory-panel__content">
+                            <div class="lobby-inventory-layout">
+                                <section class="lobby-inventory__character">
+                                    <div class="inventory-panel panel-secondary lobby-panel">
+                                        <div class="panel-header">
+                                            <span class="panel-title">{{ user.nickname or 'KING' }}</span>
+                                            <span class="panel-tag">-AVATAR-</span>
+                                        </div>
+                                        <div class="character-frame">
+                                            <img src="" alt="Арт персонажа" class="character-frame__image is-hidden" id="character-art-preview-{{ membership.lobby.id }}">
+                                            <div class="character-frame__placeholder" id="character-art-placeholder-{{ membership.lobby.id }}">
+                                                Завантажте арт персонажа
+                                            </div>
+                                        </div>
+                                        <div class="character-art-upload">
+                                            <label for="character_art_{{ membership.lobby.id }}">Арт персонажа (окремо від аватарки)</label>
+                                            <input type="file" id="character_art_{{ membership.lobby.id }}" accept="image/*" data-character-art>
+                                        </div>
+                                        <div class="character-stats" data-stat-group data-lobby-id="{{ membership.lobby.id }}">
+                                            <label class="stat-field">
+                                                <span>HP</span>
+                                                <input type="number" value="38" min="0" data-stat-key="hp">
+                                            </label>
+                                            <label class="stat-field">
+                                                <span>Stamina</span>
+                                                <input type="number" value="22" min="0" data-stat-key="stamina">
+                                            </label>
+                                            <label class="stat-field">
+                                                <span>Mana</span>
+                                                <input type="number" value="18" min="0" data-stat-key="mana">
+                                            </label>
+                                            <label class="stat-field">
+                                                <span>Armor Class</span>
+                                                <input type="number" value="15" min="0" data-stat-key="armor_class">
+                                            </label>
+                                        </div>
+                                        <div class="character-storage">
+                                            <h4 class="inventory-section__title">Швидкі слоти</h4>
+                                            <div class="slot-grid slot-grid--compact">
+                                                {% for _ in range(10) %}
+                                                    <span class="slot-grid__cell"></span>
+                                                {% endfor %}
+                                            </div>
+                                            <h4 class="inventory-section__title">Пояс</h4>
+                                            <div class="slot-grid slot-grid--wide">
+                                                {% for _ in range(12) %}
+                                                    <span class="slot-grid__cell"></span>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <section class="lobby-inventory__inventory">
+                                    <div class="inventory-grid-panel panel-main">
+                                        <div class="panel-header">
+                                            <span class="panel-title">INVENTORY</span>
+                                            <span class="panel-tag">THIEVES BACKPACK</span>
+                                        </div>
+                                        <div class="inventory-actions">
+                                            <button class="button ghost" type="button" id="auto-pack">Auto-pack</button>
+                                            <button class="button" type="button" id="rotate-item">Rotate (R)</button>
+                                        </div>
+                                        <div class="tetris-grid" id="tetris-grid" aria-label="Рюкзак"></div>
+                                        <p class="muted inventory-hint">Перетягуйте предмети, натискайте R для повороту та ПКМ для контекстного меню.</p>
+                                    </div>
+                                    <div class="inventory-subgrids">
+                                        <div class="inventory-grid-panel">
+                                            <div class="panel-header">
+                                                <span class="panel-title">СХОВИЩЕ</span>
+                                            </div>
+                                            <div class="slot-grid slot-grid--wide">
+                                                {% for _ in range(12) %}
+                                                    <span class="slot-grid__cell"></span>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                        <div class="inventory-grid-panel">
+                                            <div class="panel-header">
+                                                <span class="panel-title">ДОДАТКОВІ СЛОТИ</span>
+                                            </div>
+                                            <div class="slot-grid slot-grid--wide">
+                                                {% for _ in range(12) %}
+                                                    <span class="slot-grid__cell"></span>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <section class="lobby-inventory__equipment">
                                     {% if membership.role == 'master' %}
-                                        <section class="inventory-section inventory-section--master">
-                                            <div class="master-panel">
-                                            <h3>Створення предмета</h3>
-                                            <form class="form">
-                                                <label for="item_name_{{ membership.lobby.id }}">Назва</label>
-                                                <input type="text" id="item_name_{{ membership.lobby.id }}" placeholder="Наприклад: Зілля">
-                                                <label for="item_type_{{ membership.lobby.id }}">Тип</label>
-                                                <select id="item_type_{{ membership.lobby.id }}">
-                                                    <option value="weapon">Weapon</option>
-                                                    <option value="armor">Armor</option>
-                                                    <option value="ammunition">Ammunition</option>
-                                                    <option value="material">Material</option>
-                                                    <option value="food">Food</option>
-                                                    <option value="other">Other</option>
-                                                </select>
-                                                <label for="item_quality_{{ membership.lobby.id }}">Редкість</label>
-                                                <select id="item_quality_{{ membership.lobby.id }}">
-                                                    <option value="common">Common</option>
-                                                    <option value="uncommon">Uncommon</option>
-                                                    <option value="epic">Epic</option>
-                                                    <option value="legendary">Legendary</option>
-                                                    <option value="mythical">Mythical</option>
-                                                </select>
-                                                <div class="form inline">
-                                                    <div>
-                                                        <label for="item_w_{{ membership.lobby.id }}">W</label>
-                                                        <input type="number" id="item_w_{{ membership.lobby.id }}" min="1" max="7" value="1">
-                                                    </div>
-                                                    <div>
-                                                        <label for="item_h_{{ membership.lobby.id }}">H</label>
-                                                        <input type="number" id="item_h_{{ membership.lobby.id }}" min="1" max="9" value="1">
-                                                    </div>
-                                                    <div>
-                                                        <label for="item_weight_{{ membership.lobby.id }}">Вага</label>
-                                                        <input type="number" id="item_weight_{{ membership.lobby.id }}" min="0" step="0.1" value="0">
-                                                    </div>
-                                                </div>
-                                                <label for="item_image_{{ membership.lobby.id }}">Фото предмета</label>
-                                                <input type="file" id="item_image_{{ membership.lobby.id }}" accept="image/*">
-                                                <label for="item_target_{{ membership.lobby.id }}">Передати</label>
-                                                <select id="item_target_{{ membership.lobby.id }}">
-                                                    {% for member in membership.lobby.members %}
-                                                        {% if member.user %}
-                                                            <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
-                                                        {% endif %}
-                                                    {% endfor %}
-                                                </select>
-                                                <button type="button" class="button">Створити та передати</button>
-                                            </form>
-                                            <div class="item-schema card">
-                                                <h4>Структура предмета</h4>
-                                                <div class="item-schema__section">
-                                                    <h5>Основна частина (обовʼязкова)</h5>
-                                                    <ul>
-                                                        <li><strong>ID</strong> — авто-ідентифікатор предмета (для видачі по ID).</li>
-                                                        <li><strong>name</strong> — базова назва від адміністратора.</li>
-                                                        <li><strong>description</strong> — базовий опис від адміністратора.</li>
-                                                        <li><strong>image</strong> — зображення предмета.</li>
-                                                        <li><strong>h/w</strong> — висота та ширина в тетрис-інвентарі.</li>
-                                                        <li><strong>weight</strong> — вага однієї одиниці.</li>
-                                                        <li><strong>MAXstr</strong> — максимальна міцність предмета.</li>
-                                                        <li><strong>type</strong> — тип (береться з таблиці типів).</li>
-                                                        <li><strong>quality</strong> — якість (звичайний, незвичайний, епічний, легендарний, міфічний).</li>
-                                                    </ul>
-                                                </div>
-                                                <div class="item-schema__section">
-                                                    <h5>Персональна частина (на користувача)</h5>
-                                                    <ul>
-                                                        <li><strong>remain</strong> — кому належить предмет (власник).</li>
-                                                        <li><strong>remain(username)</strong> — клітинка інвентаря, де лежить предмет.</li>
-                                                        <li><strong>str(username)</strong> — поточна міцність.</li>
-                                                        <li><strong>amount(username)</strong> — кількість (1..MAXamount).</li>
-                                                        <li><strong>description(username)</strong> — нотатки гравця (не перекриває базовий опис).</li>
-                                                        <li><strong>name(username)</strong> — особиста назва (перекриває базову лише для цього гравця).</li>
-                                                    </ul>
-                                                </div>
-                                                <div class="item-schema__section">
-                                                    <h5>Таблиця типів</h5>
-                                                    <ul class="item-schema__types">
-                                                        <li>weapon</li>
-                                                        <li>ammo</li>
-                                                        <li>armor</li>
-                                                        <li>map</li>
-                                                        <li>food</li>
-                                                        <li>other</li>
-                                                    </ul>
-                                                </div>
+                                        <div class="inventory-panel panel-secondary lobby-panel lobby-panel--scroll">
+                                            <div class="panel-header">
+                                                <span class="panel-title">Майстер</span>
+                                                <span class="panel-tag">TOOLS</span>
                                             </div>
-                                            </div>
-                                        </section>
+                                            <section class="inventory-section inventory-section--master">
+                                                <div class="master-panel">
+                                                    <h3>Створення предмета</h3>
+                                                    <form class="form">
+                                                        <label for="item_name_{{ membership.lobby.id }}">Назва</label>
+                                                        <input type="text" id="item_name_{{ membership.lobby.id }}" placeholder="Наприклад: Зілля">
+                                                        <label for="item_type_{{ membership.lobby.id }}">Тип</label>
+                                                        <select id="item_type_{{ membership.lobby.id }}">
+                                                            <option value="weapon">Weapon</option>
+                                                            <option value="armor">Armor</option>
+                                                            <option value="ammunition">Ammunition</option>
+                                                            <option value="material">Material</option>
+                                                            <option value="food">Food</option>
+                                                            <option value="other">Other</option>
+                                                        </select>
+                                                        <label for="item_quality_{{ membership.lobby.id }}">Редкість</label>
+                                                        <select id="item_quality_{{ membership.lobby.id }}">
+                                                            <option value="common">Common</option>
+                                                            <option value="uncommon">Uncommon</option>
+                                                            <option value="epic">Epic</option>
+                                                            <option value="legendary">Legendary</option>
+                                                            <option value="mythical">Mythical</option>
+                                                        </select>
+                                                        <div class="form inline">
+                                                            <div>
+                                                                <label for="item_w_{{ membership.lobby.id }}">W</label>
+                                                                <input type="number" id="item_w_{{ membership.lobby.id }}" min="1" max="7" value="1">
+                                                            </div>
+                                                            <div>
+                                                                <label for="item_h_{{ membership.lobby.id }}">H</label>
+                                                                <input type="number" id="item_h_{{ membership.lobby.id }}" min="1" max="9" value="1">
+                                                            </div>
+                                                            <div>
+                                                                <label for="item_weight_{{ membership.lobby.id }}">Вага</label>
+                                                                <input type="number" id="item_weight_{{ membership.lobby.id }}" min="0" step="0.1" value="0">
+                                                            </div>
+                                                        </div>
+                                                        <label for="item_image_{{ membership.lobby.id }}">Фото предмета</label>
+                                                        <input type="file" id="item_image_{{ membership.lobby.id }}" accept="image/*">
+                                                        <label for="item_target_{{ membership.lobby.id }}">Передати</label>
+                                                        <select id="item_target_{{ membership.lobby.id }}">
+                                                            {% for member in membership.lobby.members %}
+                                                                {% if member.user %}
+                                                                    <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
+                                                                {% endif %}
+                                                            {% endfor %}
+                                                        </select>
+                                                        <button type="button" class="button">Створити та передати</button>
+                                                    </form>
+                                                </div>
+                                            </section>
+                                        </div>
                                     {% else %}
-                                        <section class="inventory-section inventory-section--equipment">
-                                            <h3 class="inventory-section__title">Екіпіровка</h3>
-                                            <div class="paper-doll">
-                                            <img src="/static/images/default_avatar.png" alt="Персонаж" class="paper-doll__image">
-                                            <div class="paper-doll__slot slot-head" data-slot="head">Голова</div>
-                                            <div class="paper-doll__slot slot-body" data-slot="body">Тіло</div>
-                                            <div class="paper-doll__slot slot-hands" data-slot="hands">Руки</div>
-                                            <div class="paper-doll__slot slot-legs" data-slot="legs">Ноги</div>
-                                            <div class="paper-doll__slot slot-weapon" data-slot="weapon">Зброя</div>
-                                            <div class="paper-doll__slot slot-shield" data-slot="offhand">Щит</div>
-                                            <div class="paper-doll__slot slot-amulet" data-slot="amulet">Амулет</div>
-                                            <div class="paper-doll__slot slot-ring" data-slot="ring">Кільце</div>
+                                        <div class="inventory-panel panel-secondary lobby-panel">
+                                            <div class="panel-header">
+                                                <span class="panel-title">{{ user.nickname or 'KING' }}</span>
+                                                <span class="panel-tag">-BACKPACK-</span>
                                             </div>
-                                        </section>
-
-                                        <section class="inventory-section inventory-section--stats">
-                                            <h3 class="inventory-section__title">Статистика</h3>
-                                            <div class="stats-grid">
-                                                <div class="stat-card">
-                                                    <span class="stat-card__label">STR</span>
-                                                    <strong>14</strong>
-                                                    <span class="stat-card__mod">+2</span>
-                                                </div>
-                                                <div class="stat-card">
-                                                    <span class="stat-card__label">DEX</span>
-                                                    <strong>12</strong>
-                                                    <span class="stat-card__mod">+1</span>
-                                                </div>
-                                                <div class="stat-card">
-                                                    <span class="stat-card__label">CON</span>
-                                                    <strong>13</strong>
-                                                    <span class="stat-card__mod">+1</span>
-                                                </div>
-                                                <div class="stat-card">
-                                                    <span class="stat-card__label">INT</span>
-                                                    <strong>10</strong>
-                                                    <span class="stat-card__mod">+0</span>
-                                                </div>
-                                                <div class="stat-card">
-                                                    <span class="stat-card__label">WIS</span>
-                                                    <strong>11</strong>
-                                                    <span class="stat-card__mod">+0</span>
-                                                </div>
-                                                <div class="stat-card">
-                                                    <span class="stat-card__label">CHA</span>
-                                                    <strong>16</strong>
-                                                    <span class="stat-card__mod">+3</span>
-                                                </div>
+                                            <div class="inventory-tabs" role="tablist" aria-label="Режими інвентаря">
+                                                <button class="tab-button is-active" data-tab="equipment" type="button" role="tab">Екіпіровка</button>
+                                                <button class="tab-button" data-tab="stats" type="button" role="tab">Stats</button>
                                             </div>
 
-                                            <div class="stats-extra">
-                                                <div class="stat-pill">HP: 38</div>
-                                                <div class="stat-pill">Stamina: 22</div>
-                                                <div class="stat-pill">Mana: 18</div>
-                                                <div class="stat-pill">Armor Class: 15</div>
-                                                <div class="stat-pill">Resistances: fire, poison</div>
-                                                <div class="stat-pill">Carry Capacity: 80</div>
+                                            <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
+                                                <div class="equipment-board" aria-label="Екіпіровка">
+                                                    <div class="equipment-board__column">
+                                                        <div class="equipment-group">
+                                                            <span class="equipment-group__label">HEAD</span>
+                                                            <div class="equipment-slot-grid">
+                                                                {% for _ in range(8) %}
+                                                                    <span class="slot-grid__cell"></span>
+                                                                {% endfor %}
+                                                            </div>
+                                                        </div>
+                                                        <div class="equipment-group">
+                                                            <span class="equipment-group__label">PANTS</span>
+                                                            <div class="equipment-slot-grid equipment-slot-grid--tall">
+                                                                {% for _ in range(12) %}
+                                                                    <span class="slot-grid__cell"></span>
+                                                                {% endfor %}
+                                                            </div>
+                                                        </div>
+                                                        <div class="equipment-group">
+                                                            <span class="equipment-group__label">WEAPON I</span>
+                                                            <div class="equipment-slot-grid equipment-slot-grid--wide">
+                                                                {% for _ in range(10) %}
+                                                                    <span class="slot-grid__cell"></span>
+                                                                {% endfor %}
+                                                            </div>
+                                                        </div>
+                                                        <div class="equipment-group">
+                                                            <span class="equipment-group__label">BELT</span>
+                                                            <div class="equipment-slot-grid equipment-slot-grid--belt">
+                                                                {% for _ in range(12) %}
+                                                                    <span class="slot-grid__cell"></span>
+                                                                {% endfor %}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="equipment-board__column">
+                                                        <div class="equipment-group">
+                                                            <span class="equipment-group__label">SHIRT</span>
+                                                            <div class="equipment-slot-grid">
+                                                                {% for _ in range(8) %}
+                                                                    <span class="slot-grid__cell"></span>
+                                                                {% endfor %}
+                                                            </div>
+                                                        </div>
+                                                        <div class="equipment-group">
+                                                            <span class="equipment-group__label">ARMOR</span>
+                                                            <div class="equipment-slot-grid equipment-slot-grid--tall">
+                                                                {% for _ in range(12) %}
+                                                                    <span class="slot-grid__cell"></span>
+                                                                {% endfor %}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="equipment-board__column equipment-board__preview">
+                                                        <div class="equipment-preview">
+                                                            <span class="equipment-group__label">EQUIPMENT</span>
+                                                            <div class="equipment-preview__frame">
+                                                                <div class="equipment-preview__placeholder">Броня персонажа</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </section>
+
+                                            <div class="tab-content" data-panel="stats" role="tabpanel">
+                                                <div class="stats-grid" data-stat-group data-lobby-id="{{ membership.lobby.id }}">
+                                                    <label class="stat-card">
+                                                        <span class="stat-card__label">STR</span>
+                                                        <input type="number" value="14" min="0" data-stat-key="str">
+                                                        <span class="stat-card__mod">+2</span>
+                                                    </label>
+                                                    <label class="stat-card">
+                                                        <span class="stat-card__label">DEX</span>
+                                                        <input type="number" value="12" min="0" data-stat-key="dex">
+                                                        <span class="stat-card__mod">+1</span>
+                                                    </label>
+                                                    <label class="stat-card">
+                                                        <span class="stat-card__label">CON</span>
+                                                        <input type="number" value="13" min="0" data-stat-key="con">
+                                                        <span class="stat-card__mod">+1</span>
+                                                    </label>
+                                                    <label class="stat-card">
+                                                        <span class="stat-card__label">INT</span>
+                                                        <input type="number" value="10" min="0" data-stat-key="int">
+                                                        <span class="stat-card__mod">+0</span>
+                                                    </label>
+                                                    <label class="stat-card">
+                                                        <span class="stat-card__label">WIS</span>
+                                                        <input type="number" value="11" min="0" data-stat-key="wis">
+                                                        <span class="stat-card__mod">+0</span>
+                                                    </label>
+                                                    <label class="stat-card">
+                                                        <span class="stat-card__label">CHA</span>
+                                                        <input type="number" value="16" min="0" data-stat-key="cha">
+                                                        <span class="stat-card__mod">+3</span>
+                                                    </label>
+                                                </div>
+
+                                                <div class="stats-extra" data-stat-group data-lobby-id="{{ membership.lobby.id }}">
+                                                    <label class="stat-pill">
+                                                        <span>HP</span>
+                                                        <input type="number" value="38" min="0" data-stat-key="hp">
+                                                    </label>
+                                                    <label class="stat-pill">
+                                                        <span>Stamina</span>
+                                                        <input type="number" value="22" min="0" data-stat-key="stamina">
+                                                    </label>
+                                                    <label class="stat-pill">
+                                                        <span>Mana</span>
+                                                        <input type="number" value="18" min="0" data-stat-key="mana">
+                                                    </label>
+                                                    <label class="stat-pill">
+                                                        <span>Armor Class</span>
+                                                        <input type="number" value="15" min="0" data-stat-key="armor_class">
+                                                    </label>
+                                                    <label class="stat-pill">
+                                                        <span>Resistances</span>
+                                                        <input type="text" value="fire, poison" data-stat-key="resistances">
+                                                    </label>
+                                                    <label class="stat-pill">
+                                                        <span>Carry Capacity</span>
+                                                        <input type="number" value="80" min="0" data-stat-key="carry_capacity">
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
                                     {% endif %}
-                                </div>
-                            {% endif %}
-
+                                </section>
+                            </div>
                         </section>
 
                         <div class="context-menu" id="context-menu" aria-hidden="true">
@@ -337,4 +460,5 @@
     window.TRANSFER_PLAYERS = {{ transfer_players | tojson }};
 </script>
 <script src="{{ url_for('static', filename='inventory.js') }}" defer></script>
+<script src="{{ url_for('static', filename='lobby.js') }}" defer></script>
 {% endblock %}
