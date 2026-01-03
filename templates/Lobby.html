@@ -131,31 +131,33 @@
                             data-lobby-id="{{ membership.lobby.id }}"
                             data-can-view="{{ 'true' if membership.role in ['master', 'spectator'] else 'false' }}"
                         >
-                            <div class="inventory-panel">
-                                <div class="inventory-panel__header">
-                                    <h2 class="inventory-title">
-                                        {% if membership.role == 'master' %}
-                                            Майстер
-                                        {% else %}
-                                            Персонаж
-                                        {% endif %}
-                                    </h2>
-                                    {% if membership.role in ['master', 'spectator'] %}
-                                        <div class="character-switcher">
-                                            {% for member in membership.lobby.members if member.user %}
+                            <div class="inventory-panel__header inventory-panel__header--wide">
+                                <h2 class="inventory-title">
+                                    {% if membership.role == 'master' %}
+                                        Майстер
+                                    {% else %}
+                                        Персонаж
+                                    {% endif %}
+                                </h2>
+                                {% if membership.role in ['master', 'spectator'] %}
+                                    <div class="character-switcher">
+                                        {% for member in membership.lobby.members %}
+                                            {% if member.user %}
                                                 <button class="chip character-switcher__chip" type="button" data-player-id="{{ member.user.id }}">
                                                     {{ member.user.nickname }}
                                                 </button>
-                                            {% endfor %}
-                                        </div>
-                                    {% endif %}
-                                </div>
-                                <div class="inventory-tabs" role="tablist" aria-label="Режими інвентаря">
-                                    <button class="tab-button is-active" data-tab="equipment" type="button" role="tab">Екіпировка</button>
-                                    <button class="tab-button" data-tab="stats" type="button" role="tab">Stats</button>
-                                </div>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
 
-                                {% if membership.role == 'master' %}
+                            {% if membership.role == 'master' %}
+                                <div class="inventory-panel">
+                                    <div class="inventory-tabs" role="tablist" aria-label="Режими інвентаря">
+                                        <button class="tab-button is-active" data-tab="equipment" type="button" role="tab">Екіпировка</button>
+                                        <button class="tab-button" data-tab="stats" type="button" role="tab">Stats</button>
+                                    </div>
                                     <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
                                         <div class="master-panel">
                                             <h3>Створення предмета</h3>
@@ -197,8 +199,10 @@
                                                 <input type="file" id="item_image_{{ membership.lobby.id }}" accept="image/*">
                                                 <label for="item_target_{{ membership.lobby.id }}">Передати</label>
                                                 <select id="item_target_{{ membership.lobby.id }}">
-                                                    {% for member in membership.lobby.members if member.user %}
-                                                        <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
+                                                    {% for member in membership.lobby.members %}
+                                                        {% if member.user %}
+                                                            <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
+                                                        {% endif %}
                                                     {% endfor %}
                                                 </select>
                                                 <button type="button" class="button">Створити та передати</button>
@@ -244,75 +248,181 @@
                                             </div>
                                         </div>
                                     </div>
-                                {% else %}
-                                    <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
-                                        <div class="paper-doll">
-                                            <img src="/static/images/default_avatar.png" alt="Персонаж" class="paper-doll__image">
-                                            <div class="paper-doll__slot slot-head" data-slot="head">Голова</div>
-                                            <div class="paper-doll__slot slot-body" data-slot="body">Тіло</div>
-                                            <div class="paper-doll__slot slot-hands" data-slot="hands">Руки</div>
-                                            <div class="paper-doll__slot slot-legs" data-slot="legs">Ноги</div>
-                                            <div class="paper-doll__slot slot-weapon" data-slot="weapon">Зброя</div>
-                                            <div class="paper-doll__slot slot-shield" data-slot="offhand">Щит</div>
-                                            <div class="paper-doll__slot slot-amulet" data-slot="amulet">Амулет</div>
-                                            <div class="paper-doll__slot slot-ring" data-slot="ring">Кільце</div>
-                                        </div>
-                                    </div>
-                                {% endif %}
-
-                                <div class="tab-content" data-panel="stats" role="tabpanel">
-                                    <div class="stats-grid">
-                                        <div class="stat-card">
-                                            <span class="stat-card__label">STR</span>
-                                            <strong>14</strong>
-                                            <span class="stat-card__mod">+2</span>
-                                        </div>
-                                        <div class="stat-card">
-                                            <span class="stat-card__label">DEX</span>
-                                            <strong>12</strong>
-                                            <span class="stat-card__mod">+1</span>
-                                        </div>
-                                        <div class="stat-card">
-                                            <span class="stat-card__label">CON</span>
-                                            <strong>13</strong>
-                                            <span class="stat-card__mod">+1</span>
-                                        </div>
-                                        <div class="stat-card">
-                                            <span class="stat-card__label">INT</span>
-                                            <strong>10</strong>
-                                            <span class="stat-card__mod">+0</span>
-                                        </div>
-                                        <div class="stat-card">
-                                            <span class="stat-card__label">WIS</span>
-                                            <strong>11</strong>
-                                            <span class="stat-card__mod">+0</span>
-                                        </div>
-                                        <div class="stat-card">
-                                            <span class="stat-card__label">CHA</span>
-                                            <strong>16</strong>
-                                            <span class="stat-card__mod">+3</span>
-                                        </div>
-                                    </div>
-
-                                    <div class="stats-extra">
-                                        <div class="stat-pill">HP: 38</div>
-                                        <div class="stat-pill">Stamina: 22</div>
-                                        <div class="stat-pill">Mana: 18</div>
-                                        <div class="stat-pill">Armor Class: 15</div>
-                                        <div class="stat-pill">Resistances: fire, poison</div>
-                                        <div class="stat-pill">Carry Capacity: 80</div>
-                                    </div>
                                 </div>
-                            </div>
+                            {% else %}
+                                <div class="lobby-inventory-layout">
+                                    <div class="lobby-inventory__character inventory-panel panel-main">
+                                        <div class="panel-header">
+                                            <span class="panel-title">Персонаж</span>
+                                            <span class="panel-tag">model</span>
+                                        </div>
+                                        <div class="character-frame">
+                                            <img src="/static/images/default_avatar.png" alt="Персонаж" class="character-frame__image">
+                                        </div>
+                                        <div class="character-stats">
+                                            <div class="stat-pill">HP: 38</div>
+                                            <div class="stat-pill">Stamina: 22</div>
+                                            <div class="stat-pill">Mana: 18</div>
+                                            <div class="stat-pill">Armor Class: 15</div>
+                                        </div>
+                                        <div class="character-storage">
+                                            <div class="slot-grid slot-grid--compact">
+                                                {% for slot in range(10) %}
+                                                    <span class="slot-grid__cell"></span>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
 
-                            <div class="inventory-grid-panel">
-                                <div class="inventory-actions">
-                                    <button class="button ghost" type="button" id="auto-pack">Auto-pack</button>
-                                    <button class="button" type="button" id="rotate-item">Rotate (R)</button>
+                                    <div class="lobby-inventory__inventory inventory-grid-panel panel-main">
+                                        <div class="panel-header">
+                                            <span class="panel-title">Інвентар</span>
+                                            <span class="panel-tag">Backpack</span>
+                                        </div>
+                                        <div class="inventory-actions">
+                                            <button class="button ghost" type="button" id="auto-pack">Auto-pack</button>
+                                            <button class="button" type="button" id="rotate-item">Rotate (R)</button>
+                                        </div>
+                                        <div class="tetris-grid" id="tetris-grid" aria-label="Рюкзак"></div>
+                                        <div class="inventory-subgrids">
+                                            <div class="slot-grid slot-grid--wide">
+                                                {% for slot in range(24) %}
+                                                    <span class="slot-grid__cell"></span>
+                                                {% endfor %}
+                                            </div>
+                                            <div class="slot-grid slot-grid--wide">
+                                                {% for slot in range(24) %}
+                                                    <span class="slot-grid__cell"></span>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                        <p class="muted inventory-hint">Перетягуйте предмети, натискайте R для повороту та ПКМ для контекстного меню.</p>
+                                    </div>
+
+                                    <aside class="lobby-inventory__equipment inventory-panel">
+                                        <div class="panel-header">
+                                            <span class="panel-title">KING</span>
+                                            <span class="panel-tag">equipment</span>
+                                        </div>
+                                        <div class="inventory-tabs" role="tablist" aria-label="Режими інвентаря">
+                                            <button class="tab-button is-active" data-tab="equipment" type="button" role="tab">Екіпіровка</button>
+                                            <button class="tab-button" data-tab="stats" type="button" role="tab">Stats</button>
+                                        </div>
+                                        <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
+                                            <div class="equipment-board">
+                                                <div class="equipment-board__column">
+                                                    <div class="equipment-group">
+                                                        <span class="equipment-group__label">Head</span>
+                                                        <div class="paper-doll__slot equipment-slot-grid" data-slot="head">
+                                                            {% for slot in range(8) %}
+                                                                <span class="slot-grid__cell"></span>
+                                                            {% endfor %}
+                                                            Head
+                                                        </div>
+                                                    </div>
+                                                    <div class="equipment-group">
+                                                        <span class="equipment-group__label">Pants</span>
+                                                        <div class="paper-doll__slot equipment-slot-grid" data-slot="legs">
+                                                            {% for slot in range(12) %}
+                                                                <span class="slot-grid__cell"></span>
+                                                            {% endfor %}
+                                                            Pants
+                                                        </div>
+                                                    </div>
+                                                    <div class="equipment-group">
+                                                        <span class="equipment-group__label">Weapon I</span>
+                                                        <div class="paper-doll__slot equipment-slot-grid equipment-slot-grid--wide" data-slot="weapon">
+                                                            {% for slot in range(10) %}
+                                                                <span class="slot-grid__cell"></span>
+                                                            {% endfor %}
+                                                            Weapon
+                                                        </div>
+                                                    </div>
+                                                    <div class="equipment-group">
+                                                        <span class="equipment-group__label">Belt</span>
+                                                        <div class="paper-doll__slot equipment-slot-grid equipment-slot-grid--belt" data-slot="hands">
+                                                            {% for slot in range(12) %}
+                                                                <span class="slot-grid__cell"></span>
+                                                            {% endfor %}
+                                                            Belt
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="equipment-board__column">
+                                                    <div class="equipment-group">
+                                                        <span class="equipment-group__label">Shirt</span>
+                                                        <div class="paper-doll__slot equipment-slot-grid" data-slot="body">
+                                                            {% for slot in range(8) %}
+                                                                <span class="slot-grid__cell"></span>
+                                                            {% endfor %}
+                                                            Shirt
+                                                        </div>
+                                                    </div>
+                                                    <div class="equipment-group">
+                                                        <span class="equipment-group__label">Armor</span>
+                                                        <div class="paper-doll__slot equipment-slot-grid equipment-slot-grid--tall" data-slot="offhand">
+                                                            {% for slot in range(12) %}
+                                                                <span class="slot-grid__cell"></span>
+                                                            {% endfor %}
+                                                            Armor
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="equipment-board__armor">
+                                                    <div class="armor-preview">
+                                                        <div class="armor-preview__plate"></div>
+                                                        <div class="armor-preview__strap"></div>
+                                                        <div class="armor-preview__shin"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="tab-content" data-panel="stats" role="tabpanel">
+                                            <div class="stats-grid">
+                                                <div class="stat-card">
+                                                    <span class="stat-card__label">STR</span>
+                                                    <strong>14</strong>
+                                                    <span class="stat-card__mod">+2</span>
+                                                </div>
+                                                <div class="stat-card">
+                                                    <span class="stat-card__label">DEX</span>
+                                                    <strong>12</strong>
+                                                    <span class="stat-card__mod">+1</span>
+                                                </div>
+                                                <div class="stat-card">
+                                                    <span class="stat-card__label">CON</span>
+                                                    <strong>13</strong>
+                                                    <span class="stat-card__mod">+1</span>
+                                                </div>
+                                                <div class="stat-card">
+                                                    <span class="stat-card__label">INT</span>
+                                                    <strong>10</strong>
+                                                    <span class="stat-card__mod">+0</span>
+                                                </div>
+                                                <div class="stat-card">
+                                                    <span class="stat-card__label">WIS</span>
+                                                    <strong>11</strong>
+                                                    <span class="stat-card__mod">+0</span>
+                                                </div>
+                                                <div class="stat-card">
+                                                    <span class="stat-card__label">CHA</span>
+                                                    <strong>16</strong>
+                                                    <span class="stat-card__mod">+3</span>
+                                                </div>
+                                            </div>
+                                            <div class="stats-extra">
+                                                <div class="stat-pill">HP: 38</div>
+                                                <div class="stat-pill">Stamina: 22</div>
+                                                <div class="stat-pill">Mana: 18</div>
+                                                <div class="stat-pill">Armor Class: 15</div>
+                                                <div class="stat-pill">Resistances: fire, poison</div>
+                                                <div class="stat-pill">Carry Capacity: 80</div>
+                                            </div>
+                                        </div>
+                                    </aside>
                                 </div>
-                                <div class="tetris-grid" id="tetris-grid" aria-label="Рюкзак"></div>
-                                <p class="muted inventory-hint">Перетягуйте предмети, натискайте R для повороту та ПКМ для контекстного меню.</p>
-                            </div>
+                            {% endif %}
+
                         </section>
 
                         <div class="context-menu" id="context-menu" aria-hidden="true">
