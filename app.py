@@ -19,6 +19,9 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'supersecretkey')
 
 UPLOAD_SUBDIR = 'uploads'
 RESET_DB_ENV = 'RESET_DB_ON_START'
+ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
+ALLOWED_IMAGE_MIME_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
+MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024
 
 
 db = SQLAlchemy(app)
@@ -230,6 +233,27 @@ def save_upload(file, subdir: str, filename_prefix: str) -> Optional[str]:
     file_path = os.path.join(upload_folder, saved_filename)
     file.save(file_path)
     return os.path.join(UPLOAD_SUBDIR, subdir, saved_filename).replace(os.path.sep, "/")
+
+
+def validate_avatar_upload(file) -> Optional[str]:
+    if not file or not file.filename:
+        return None
+    filename = secure_filename(file.filename)
+    if not filename:
+        return 'Некоректна назва файлу.'
+    _, ext = os.path.splitext(filename)
+    ext = ext.lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        return 'Дозволені лише файли JPG, PNG або WEBP.'
+    mimetype = (file.mimetype or '').lower()
+    if mimetype and mimetype not in ALLOWED_IMAGE_MIME_TYPES:
+        return 'Невірний тип файлу. Завантажте JPG, PNG або WEBP.'
+    file.stream.seek(0, os.SEEK_END)
+    size = file.stream.tell()
+    file.stream.seek(0)
+    if size > MAX_AVATAR_SIZE_BYTES:
+        return 'Файл завеликий. Максимум 2MB.'
+    return None
 
 
 def current_user() -> Optional[User]:
@@ -613,12 +637,22 @@ def profile():
     if request.method == 'POST':
         user.description = request.form.get('description', '').strip() or None
         avatar_path = None
+        upload_error = None
         if 'avatar' in request.files:
-            avatar_path = save_upload(request.files['avatar'], 'avatars', f'user{user.id}')
+            avatar_file = request.files['avatar']
+            error = validate_avatar_upload(avatar_file)
+            if error:
+                upload_error = error
+                flash(error, 'danger')
+            else:
+                avatar_path = save_upload(avatar_file, 'avatars', f'user{user.id}')
         if avatar_path:
             user.userImage = avatar_path
         db.session.commit()
-        flash('Профіль оновлено.', 'success')
+        if upload_error:
+            flash('Профіль оновлено, але аватар не змінено.', 'warning')
+        else:
+            flash('Профіль оновлено.', 'success')
         return redirect(url_for('profile'))
 
     return render_template('profile.html', user=user)
