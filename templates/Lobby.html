@@ -140,24 +140,11 @@
                                             Персонаж
                                         {% endif %}
                                     </h2>
-                                    {% if membership.role in ['master', 'spectator'] %}
-                                        <div class="character-switcher">
-                                            {% for member in membership.lobby.members if member.user %}
-                                                <button class="chip character-switcher__chip" type="button" data-player-id="{{ member.user.id }}">
-                                                    {{ member.user.nickname }}
-                                                </button>
-                                            {% endfor %}
-                                        </div>
-                                    {% endif %}
                                 </div>
-                                <div class="inventory-tabs" role="tablist" aria-label="Режими інвентаря">
-                                    <button class="tab-button is-active" data-tab="equipment" type="button" role="tab">Екіпировка</button>
-                                    <button class="tab-button" data-tab="stats" type="button" role="tab">Stats</button>
-                                </div>
-
-                                {% if membership.role == 'master' %}
-                                    <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
-                                        <div class="master-panel">
+                                <div class="inventory-panel__content">
+                                    {% if membership.role == 'master' %}
+                                        <section class="inventory-section inventory-section--master">
+                                            <div class="master-panel">
                                             <h3>Створення предмета</h3>
                                             <form class="form">
                                                 <label for="item_name_{{ membership.lobby.id }}">Назва</label>
@@ -242,11 +229,12 @@
                                                     </ul>
                                                 </div>
                                             </div>
-                                        </div>
-                                    </div>
-                                {% else %}
-                                    <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
-                                        <div class="paper-doll">
+                                            </div>
+                                        </section>
+                                    {% else %}
+                                        <section class="inventory-section inventory-section--equipment">
+                                            <h3 class="inventory-section__title">Екіпіровка</h3>
+                                            <div class="paper-doll">
                                             <img src="/static/images/default_avatar.png" alt="Персонаж" class="paper-doll__image">
                                             <div class="paper-doll__slot slot-head" data-slot="head">Голова</div>
                                             <div class="paper-doll__slot slot-body" data-slot="body">Тіло</div>
@@ -256,63 +244,57 @@
                                             <div class="paper-doll__slot slot-shield" data-slot="offhand">Щит</div>
                                             <div class="paper-doll__slot slot-amulet" data-slot="amulet">Амулет</div>
                                             <div class="paper-doll__slot slot-ring" data-slot="ring">Кільце</div>
-                                        </div>
-                                    </div>
-                                {% endif %}
+                                            </div>
+                                        </section>
 
-                                <div class="tab-content" data-panel="stats" role="tabpanel">
-                                    <div class="stats-grid">
-                                        <div class="stat-card">
-                                            <span class="stat-card__label">STR</span>
-                                            <strong>14</strong>
-                                            <span class="stat-card__mod">+2</span>
-                                        </div>
-                                        <div class="stat-card">
-                                            <span class="stat-card__label">DEX</span>
-                                            <strong>12</strong>
-                                            <span class="stat-card__mod">+1</span>
-                                        </div>
-                                        <div class="stat-card">
-                                            <span class="stat-card__label">CON</span>
-                                            <strong>13</strong>
-                                            <span class="stat-card__mod">+1</span>
-                                        </div>
-                                        <div class="stat-card">
-                                            <span class="stat-card__label">INT</span>
-                                            <strong>10</strong>
-                                            <span class="stat-card__mod">+0</span>
-                                        </div>
-                                        <div class="stat-card">
-                                            <span class="stat-card__label">WIS</span>
-                                            <strong>11</strong>
-                                            <span class="stat-card__mod">+0</span>
-                                        </div>
-                                        <div class="stat-card">
-                                            <span class="stat-card__label">CHA</span>
-                                            <strong>16</strong>
-                                            <span class="stat-card__mod">+3</span>
-                                        </div>
-                                    </div>
+                                        <section class="inventory-section inventory-section--stats">
+                                            <h3 class="inventory-section__title">Статистика</h3>
+                                            <div class="stats-grid">
+                                                <div class="stat-card">
+                                                    <span class="stat-card__label">STR</span>
+                                                    <strong>14</strong>
+                                                    <span class="stat-card__mod">+2</span>
+                                                </div>
+                                                <div class="stat-card">
+                                                    <span class="stat-card__label">DEX</span>
+                                                    <strong>12</strong>
+                                                    <span class="stat-card__mod">+1</span>
+                                                </div>
+                                                <div class="stat-card">
+                                                    <span class="stat-card__label">CON</span>
+                                                    <strong>13</strong>
+                                                    <span class="stat-card__mod">+1</span>
+                                                </div>
+                                                <div class="stat-card">
+                                                    <span class="stat-card__label">INT</span>
+                                                    <strong>10</strong>
+                                                    <span class="stat-card__mod">+0</span>
+                                                </div>
+                                                <div class="stat-card">
+                                                    <span class="stat-card__label">WIS</span>
+                                                    <strong>11</strong>
+                                                    <span class="stat-card__mod">+0</span>
+                                                </div>
+                                                <div class="stat-card">
+                                                    <span class="stat-card__label">CHA</span>
+                                                    <strong>16</strong>
+                                                    <span class="stat-card__mod">+3</span>
+                                                </div>
+                                            </div>
 
-                                    <div class="stats-extra">
-                                        <div class="stat-pill">HP: 38</div>
-                                        <div class="stat-pill">Stamina: 22</div>
-                                        <div class="stat-pill">Mana: 18</div>
-                                        <div class="stat-pill">Armor Class: 15</div>
-                                        <div class="stat-pill">Resistances: fire, poison</div>
-                                        <div class="stat-pill">Carry Capacity: 80</div>
-                                    </div>
+                                            <div class="stats-extra">
+                                                <div class="stat-pill">HP: 38</div>
+                                                <div class="stat-pill">Stamina: 22</div>
+                                                <div class="stat-pill">Mana: 18</div>
+                                                <div class="stat-pill">Armor Class: 15</div>
+                                                <div class="stat-pill">Resistances: fire, poison</div>
+                                                <div class="stat-pill">Carry Capacity: 80</div>
+                                            </div>
+                                        </section>
+                                    {% endif %}
                                 </div>
-                            </div>
+                            {% endif %}
 
-                            <div class="inventory-grid-panel">
-                                <div class="inventory-actions">
-                                    <button class="button ghost" type="button" id="auto-pack">Auto-pack</button>
-                                    <button class="button" type="button" id="rotate-item">Rotate (R)</button>
-                                </div>
-                                <div class="tetris-grid" id="tetris-grid" aria-label="Рюкзак"></div>
-                                <p class="muted inventory-hint">Перетягуйте предмети, натискайте R для повороту та ПКМ для контекстного меню.</p>
-                            </div>
                         </section>
 
                         <div class="context-menu" id="context-menu" aria-hidden="true">
