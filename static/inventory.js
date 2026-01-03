@@ -11,7 +11,8 @@
     const embeddedInventory = document.querySelector('.inventory--embedded');
     const characterSwitcher = document.querySelector('.character-switcher');
 
-    const gridConfig = { columns: 12, rows: 8 };
+    const gridConfig = { columns: 6, rows: 9 };
+    const interactionsEnabled = false;
     const storagePrefix = 'dra_inventory_';
 
     const defaultItems = [
@@ -41,7 +42,7 @@
             weight: 5.4,
             description: 'Легка броня для мандрівника.',
             equipSlot: 'body',
-            entry: { qty: 1, rotation: 0, position: { x: 3, y: 1 } },
+            entry: { qty: 1, rotation: 0, position: { x: 2, y: 1 } },
         },
         {
             id: 'potion_heal',
@@ -55,7 +56,7 @@
             weight: 0.3,
             description: 'Відновлює 12 HP.',
             equipSlot: null,
-            entry: { qty: 3, rotation: 0, position: { x: 6, y: 1 } },
+            entry: { qty: 3, rotation: 0, position: { x: 4, y: 1 } },
         },
         {
             id: 'coin_pouch',
@@ -69,7 +70,7 @@
             weight: 0.01,
             description: 'Золоті монети. Використовуються як предмет.',
             equipSlot: null,
-            entry: { qty: 280, rotation: 0, position: { x: 8, y: 2 } },
+            entry: { qty: 280, rotation: 0, position: { x: 5, y: 1 } },
         },
         {
             id: 'arrow_bundle',
@@ -83,7 +84,7 @@
             weight: 0.1,
             description: 'Пучок стріл для лука.',
             equipSlot: null,
-            entry: { qty: 20, rotation: 0, position: { x: 1, y: 5 } },
+            entry: { qty: 20, rotation: 0, position: { x: 4, y: 3 } },
         },
     ];
 
@@ -262,7 +263,7 @@
                 return;
             }
             const element = document.createElement('div');
-            element.className = `inventory-item inventory-item--${item.type}`;
+            element.className = `inventory-item inventory-item--${item.type} inventory-item--quality-${item.quality}`;
             element.dataset.itemId = item.id;
             const size = getItemSize(item);
             const { x, y } = item.entry.position;
@@ -275,8 +276,10 @@
                 <div class="inventory-item__label">${item.name}</div>
                 ${item.stackable ? `<div class="inventory-item__qty">x${item.entry.qty}</div>` : ''}
             `;
-            element.addEventListener('pointerdown', (event) => startDrag(event, item.id));
-            element.addEventListener('contextmenu', (event) => openContextMenu(event, item.id));
+            if (interactionsEnabled) {
+                element.addEventListener('pointerdown', (event) => startDrag(event, item.id));
+                element.addEventListener('contextmenu', (event) => openContextMenu(event, item.id));
+            }
             grid.appendChild(element);
         });
     };
@@ -584,59 +587,61 @@
         }
     }
 
-    document.addEventListener('keydown', (event) => {
-        if (event.key.toLowerCase() === 'r') {
-            rotateDragging();
-        }
-    });
-
-    rotateButton?.addEventListener('click', rotateDragging);
-    autoPackButton?.addEventListener('click', () => {
-        alert('Auto-pack поки що недоступний у демо.');
-    });
-    transferClose?.addEventListener('click', closeTransferModal);
-    transferModal?.addEventListener('click', (event) => {
-        if (event.target === transferModal) closeTransferModal();
-    });
-    transferPlayers?.addEventListener('click', async (event) => {
-        const button = event.target.closest('button[data-player-id]');
-        if (!button) return;
-        const recipientId = button.dataset.playerId;
-        const item = getItemById(state.transferItemId);
-        if (!item) return;
-        let amount = item.entry.qty;
-        if (item.stackable && item.entry.qty > 1) {
-            const input = window.prompt(`Скільки передати? (1-${item.entry.qty})`, `${item.entry.qty}`);
-            if (!input) return;
-            const parsed = Number.parseInt(input, 10);
-            if (Number.isNaN(parsed) || parsed < 1 || parsed > item.entry.qty) {
-                alert('Некоректна кількість.');
-                return;
+    if (interactionsEnabled) {
+        document.addEventListener('keydown', (event) => {
+            if (event.key.toLowerCase() === 'r') {
+                rotateDragging();
             }
-            amount = parsed;
-        }
-        const response = await fetch('/api/transfers', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                recipient_id: recipientId,
-                item_id: item.id,
-                amount,
-            }),
         });
-        if (response.ok) {
-            closeTransferModal();
-        } else {
-            const payload = await response.json().catch(() => ({}));
-            alert(payload.error || 'Не вдалося передати предмет.');
-        }
-    });
 
-    document.addEventListener('click', (event) => {
-        if (contextMenu && !contextMenu.contains(event.target)) {
-            closeContextMenu();
-        }
-    });
+        rotateButton?.addEventListener('click', rotateDragging);
+        autoPackButton?.addEventListener('click', () => {
+            alert('Auto-pack поки що недоступний у демо.');
+        });
+        transferClose?.addEventListener('click', closeTransferModal);
+        transferModal?.addEventListener('click', (event) => {
+            if (event.target === transferModal) closeTransferModal();
+        });
+        transferPlayers?.addEventListener('click', async (event) => {
+            const button = event.target.closest('button[data-player-id]');
+            if (!button) return;
+            const recipientId = button.dataset.playerId;
+            const item = getItemById(state.transferItemId);
+            if (!item) return;
+            let amount = item.entry.qty;
+            if (item.stackable && item.entry.qty > 1) {
+                const input = window.prompt(`Скільки передати? (1-${item.entry.qty})`, `${item.entry.qty}`);
+                if (!input) return;
+                const parsed = Number.parseInt(input, 10);
+                if (Number.isNaN(parsed) || parsed < 1 || parsed > item.entry.qty) {
+                    alert('Некоректна кількість.');
+                    return;
+                }
+                amount = parsed;
+            }
+            const response = await fetch('/api/transfers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    recipient_id: recipientId,
+                    item_id: item.id,
+                    amount,
+                }),
+            });
+            if (response.ok) {
+                closeTransferModal();
+            } else {
+                const payload = await response.json().catch(() => ({}));
+                alert(payload.error || 'Не вдалося передати предмет.');
+            }
+        });
+
+        document.addEventListener('click', (event) => {
+            if (contextMenu && !contextMenu.contains(event.target)) {
+                closeContextMenu();
+            }
+        });
+    }
 
     if (characterSwitcher) {
         const chips = characterSwitcher.querySelectorAll('.character-switcher__chip');
@@ -656,28 +661,32 @@
         }
     }
 
-    window.addEventListener('inventory-transfer-updated', () => {
-        const currentUserId = window.CURRENT_USER_ID;
-        if (!currentUserId) return;
-        if (embeddedInventory && selectedPlayerId === String(currentUserId)) {
-            loadInventoryForPlayer(selectedPlayerId);
-            return;
-        }
-        if (!embeddedInventory && grid && String(currentUserId)) {
-            fetch(`/api/inventory/${currentUserId}`)
-                .then((response) => (response.ok ? response.json() : []))
-                .then((data) => {
-                    items = Array.isArray(data) ? data : [];
-                    renderItems();
-                })
-                .catch(() => {});
-        }
-    });
+    if (interactionsEnabled) {
+        window.addEventListener('inventory-transfer-updated', () => {
+            const currentUserId = window.CURRENT_USER_ID;
+            if (!currentUserId) return;
+            if (embeddedInventory && selectedPlayerId === String(currentUserId)) {
+                loadInventoryForPlayer(selectedPlayerId);
+                return;
+            }
+            if (!embeddedInventory && grid && String(currentUserId)) {
+                fetch(`/api/inventory/${currentUserId}`)
+                    .then((response) => (response.ok ? response.json() : []))
+                    .then((data) => {
+                        items = Array.isArray(data) ? data : [];
+                        renderItems();
+                    })
+                    .catch(() => {});
+            }
+        });
+    }
 
     createGridCells();
     renderItems();
     setupTabs();
-    setupContextActions();
-    setupEquipSlots();
-    setupMasterPanel();
+    if (interactionsEnabled) {
+        setupContextActions();
+        setupEquipSlots();
+        setupMasterPanel();
+    }
 })();
