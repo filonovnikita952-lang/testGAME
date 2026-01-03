@@ -184,8 +184,10 @@
                                                 <input type="file" id="item_image_{{ membership.lobby.id }}" accept="image/*">
                                                 <label for="item_target_{{ membership.lobby.id }}">Передати</label>
                                                 <select id="item_target_{{ membership.lobby.id }}">
-                                                    {% for member in membership.lobby.members if member.user %}
-                                                        <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
+                                                    {% for member in membership.lobby.members %}
+                                                        {% if member.user %}
+                                                            <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
+                                                        {% endif %}
                                                     {% endfor %}
                                                 </select>
                                                 <button type="button" class="button">Створити та передати</button>
