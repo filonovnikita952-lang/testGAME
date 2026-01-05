@@ -308,7 +308,11 @@
             if (targetGrid && allowed) {
                 targetPosition = this.getDropPosition(targetGrid, targetContainer, item, event);
             }
-            await this.submitMove(item, targetContainer, targetPosition);
+            if (targetGrid && allowed && targetPosition) {
+                await this.submitMove(item, targetContainer, targetPosition);
+            } else {
+                this.renderItems();
+            }
             this.cleanupDrag(item.id);
         };
 
@@ -350,6 +354,7 @@
         isContainerAllowed(item, containerId) {
             if (!containerId) return false;
             if (containerId === 'inv_main') return true;
+            if (containerId === 'hands') return true;
             if (containerId.startsWith('bag:')) return true;
             const allowed = containerTypeMap[containerId];
             if (!allowed) return false;
@@ -423,6 +428,7 @@
 
         toggleRotation(item) {
             if (!item.rotatable || !this.permissions.can_edit) return;
+            if (!this.canRotateItem(item)) return;
             item.rotated = item.rotated === 90 ? 0 : 90;
             this.renderItems();
             if (this.dragState?.lastPointer) {
@@ -431,6 +437,12 @@
                     clientY: this.dragState.lastPointer.y,
                 });
             }
+        }
+
+        canRotateItem(item) {
+            if (item.container_id === 'inv_main') return true;
+            if (item.container_id === 'hands') return true;
+            return item.container_id?.startsWith('bag:');
         }
 
         openContextMenu(event, item) {
