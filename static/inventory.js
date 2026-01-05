@@ -5,6 +5,7 @@
     const lobbyInventories = window.LOBBY_INVENTORIES || {};
     const lobbyPlayers = window.LOBBY_TRANSFER_PLAYERS || {};
     const fallbackInventory = window.INVENTORY_DATA || null;
+    const DEBUG_INVENTORY = String(window.DEBUG_INVENTORY || '') === '1';
 
     const containerTypeMap = {
         equip_head: ['head'],
@@ -276,17 +277,33 @@
             event.preventDefault();
             const originGrid = this.gridElements.find((grid) => grid.dataset.containerId === item.container_id);
             if (!originGrid) return;
+            const element = originGrid.querySelector(`[data-item-id="${item.id}"]`);
+            const elementRect = element?.getBoundingClientRect();
             this.dragState = {
                 item,
                 originGrid,
                 originContainer: item.container_id,
                 ghost: document.createElement('div'),
                 lastPointer: { x: event.clientX, y: event.clientY },
+                preview: null,
+                previewOffset: elementRect
+                    ? { x: event.clientX - elementRect.left, y: event.clientY - elementRect.top }
+                    : { x: 0, y: 0 },
             };
             this.dragState.ghost.className = 'inventory-ghost';
             originGrid.appendChild(this.dragState.ghost);
-            const element = originGrid.querySelector(`[data-item-id="${item.id}"]`);
             element?.classList.add('is-dragging');
+            if (element) {
+                this.dragState.preview = element.cloneNode(true);
+                this.dragState.preview.classList.add('inventory-drag-preview');
+                this.dragState.preview.classList.remove('is-dragging');
+                document.body.appendChild(this.dragState.preview);
+                if (elementRect) {
+                    this.dragState.preview.style.width = `${elementRect.width}px`;
+                    this.dragState.preview.style.height = `${elementRect.height}px`;
+                }
+                this.updateDragPreviewPosition(event);
+            }
             window.addEventListener('pointermove', this.onDragMove);
             window.addEventListener('pointerup', this.onDragEnd);
             this.updateGhost(event);
@@ -296,6 +313,7 @@
             if (!this.dragState) return;
             this.dragState.lastPointer = { x: event.clientX, y: event.clientY };
             this.updateGhost(event);
+            this.updateDragPreviewPosition(event);
         };
 
         onDragEnd = async (event) => {
@@ -346,6 +364,9 @@
             if (this.dragState?.ghost) {
                 this.dragState.ghost.remove();
             }
+            if (this.dragState?.preview) {
+                this.dragState.preview.remove();
+            }
             this.dragState = null;
             window.removeEventListener('pointermove', this.onDragMove);
             window.removeEventListener('pointerup', this.onDragEnd);
@@ -395,6 +416,39 @@
             return !overlaps;
         }
 
+        updateDragPreviewPosition(event) {
+            if (!this.dragState?.preview) return;
+            const { preview, previewOffset } = this.dragState;
+            preview.style.left = `${event.clientX - previewOffset.x}px`;
+            preview.style.top = `${event.clientY - previewOffset.y}px`;
+        }
+
+        updateDragPreviewSize() {
+            if (!this.dragState?.preview) return;
+            const { item, originGrid, originContainer, preview } = this.dragState;
+            const container = this.containers.get(originContainer);
+            if (!container) return;
+            const size = this.getItemSize(item);
+            const metrics = this.cellSize(originGrid, container);
+            preview.style.width = `${size.w * metrics.width + metrics.gapX * (size.w - 1) - 4}px`;
+            preview.style.height = `${size.h * metrics.height + metrics.gapY * (size.h - 1) - 4}px`;
+        }
+
+        logConflict(action, item, payload = {}) {
+            if (!DEBUG_INVENTORY) return;
+            console.debug('[Inventory] Conflict detected', {
+                action,
+                instance_id: item?.instance_id ?? item?.id ?? null,
+                local_version: item?.version ?? null,
+                server_version: payload?.version ?? payload?.server_version ?? null,
+            });
+        }
+
+        async handleConflict(action, item, payload = {}) {
+            this.logConflict(action, item, payload);
+            await this.refreshInventory(this.selectedPlayerId);
+        }
+
         async submitMove(item, containerId, position) {
             if (!this.permissions.can_edit) return;
             if (!containerId || !this.isContainerAllowed(item, containerId)) {
@@ -419,8 +473,7 @@
             }
             const payload = await response.json().catch(() => ({}));
             if (response.status === 409) {
-                alert('Конфлікт оновлення. Оновлюємо інвентар.');
-                await this.refreshInventory(this.selectedPlayerId);
+                await this.handleConflict('move', item, payload);
                 return;
             }
             alert(payload.error || 'Не вдалося перемістити предмет.');
@@ -436,6 +489,11 @@
                     clientX: this.dragState.lastPointer.x,
                     clientY: this.dragState.lastPointer.y,
                 });
+                this.updateDragPreviewPosition({
+                    clientX: this.dragState.lastPointer.x,
+                    clientY: this.dragState.lastPointer.y,
+                });
+                this.updateDragPreviewSize();
             }
         }
 
@@ -530,7 +588,7 @@
             }
             const payload = await response.json().catch(() => ({}));
             if (response.status === 409) {
-                await this.refreshInventory(this.selectedPlayerId);
+                await this.handleConflict('rotate', item, payload);
                 return;
             }
             alert(payload.error || 'Не вдалося повернути предмет.');
@@ -553,6 +611,10 @@
                 return;
             }
             const payload = await response.json().catch(() => ({}));
+            if (response.status === 409) {
+                await this.handleConflict('split', item, payload);
+                return;
+            }
             alert(payload.error || 'Не вдалося розділити.');
         }
 
@@ -568,6 +630,10 @@
                 return;
             }
             const payload = await response.json().catch(() => ({}));
+            if (response.status === 409) {
+                await this.handleConflict('drop', item, payload);
+                return;
+            }
             alert(payload.error || 'Не вдалося скинути предмет.');
         }
 
@@ -624,6 +690,10 @@
                 return;
             }
             const payload = await response.json().catch(() => ({}));
+            if (response.status === 409) {
+                await this.handleConflict('transfer', item, payload);
+                return;
+            }
             alert(payload.error || 'Не вдалося передати предмет.');
         }
 
