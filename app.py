@@ -22,6 +22,50 @@ RESET_DB_ENV = 'RESET_DB_ON_START'
 ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 ALLOWED_IMAGE_MIME_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
 MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024
+MAIN_GRID_WIDTH = 12
+MAIN_GRID_HEIGHT = 8
+BACKPACK_GRID_WIDTH = 8
+BACKPACK_GRID_HEIGHT = 6
+EQUIPMENT_GRIDS = {
+    'equip_head': (2, 2),
+    'equip_shirt': (3, 3),
+    'equip_pants': (3, 3),
+    'equip_armor': (4, 4),
+    'equip_boots': (2, 2),
+    'equip_weapon': (5, 2),
+    'equip_back': (4, 4),
+    'equip_amulet': (1, 2),
+}
+SPECIAL_GRIDS = {
+    'slot_weapon_main': (5, 2),
+    'slot_shield': (3, 3),
+}
+CONTAINER_LABELS = {
+    'inv_main': 'Main Inventory',
+    'equip_head': 'Head',
+    'equip_shirt': 'Shirt',
+    'equip_pants': 'Pants',
+    'equip_armor': 'Armor',
+    'equip_boots': 'Boots',
+    'equip_weapon': 'Weapon',
+    'equip_back': 'Backpack Slot',
+    'equip_amulet': 'Amulet',
+    'slot_weapon_main': 'Ready Weapon',
+    'slot_shield': 'Ready Shield',
+}
+CONTAINER_ALLOWED_TYPES = {
+    'equip_head': {'head'},
+    'equip_shirt': {'shirt'},
+    'equip_pants': {'pants'},
+    'equip_armor': {'armor'},
+    'equip_boots': {'boots'},
+    'equip_weapon': {'weapon'},
+    'equip_back': {'backpack'},
+    'equip_amulet': {'amulet'},
+    'slot_weapon_main': {'weapon'},
+    'slot_shield': {'shield'},
+}
+QUALITY_LEVELS = {'common', 'uncommon', 'epic', 'legendary', 'mythical'}
 
 
 db = SQLAlchemy(app)
@@ -89,7 +133,7 @@ class ItemDefinition(db.Model):
     width = db.Column(db.Integer, nullable=False, default=1)
     height = db.Column(db.Integer, nullable=False, default=1)
     weight = db.Column(db.Float, nullable=False, default=0)
-    max_str = db.Column(db.Integer, nullable=False, default=0)
+    max_durability = db.Column(db.Integer, nullable=False, default=1)
     quality = db.Column(db.String(20), nullable=False, default='common')
     max_amount = db.Column(db.Integer, nullable=False, default=1)
     rotatable = db.Column(db.Boolean, default=True)
@@ -104,44 +148,21 @@ class ItemInstance(db.Model):
     __tablename__ = 'item_instance'
 
     id = db.Column(db.Integer, primary_key=True)
+    lobby_id = db.Column(db.Integer, db.ForeignKey('lobby.id'), nullable=True)
     owner_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False)
     definition_id = db.Column(db.Integer, db.ForeignKey('item_definition.id'), nullable=False)
-    current_str = db.Column(db.Integer, nullable=False, default=0)
+    container_id = db.Column(db.String(40), nullable=False, default='inv_main')
+    pos_x = db.Column(db.Integer, nullable=True)
+    pos_y = db.Column(db.Integer, nullable=True)
+    rotated = db.Column(db.Integer, nullable=False, default=0)
+    durability_current = db.Column(db.Integer, nullable=False, default=1)
     amount = db.Column(db.Integer, nullable=False, default=1)
     custom_name = db.Column(db.String(120), nullable=True)
     custom_description = db.Column(db.Text, nullable=True)
+    version = db.Column(db.Integer, nullable=False, default=1)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     definition = db.relationship('ItemDefinition', back_populates='instances')
-    slot = db.relationship('InventorySlot', back_populates='instance', uselist=False, cascade='all, delete-orphan')
-
-
-class InventorySlot(db.Model):
-    __tablename__ = 'inventory_slot'
-
-    id = db.Column(db.Integer, primary_key=True)
-    instance_id = db.Column(db.Integer, db.ForeignKey('item_instance.id'), nullable=False, unique=True)
-    owner_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False)
-    x = db.Column(db.Integer, nullable=False, default=1)
-    y = db.Column(db.Integer, nullable=False, default=1)
-    rotation = db.Column(db.Integer, nullable=False, default=0)
-
-    instance = db.relationship('ItemInstance', back_populates='slot')
-
-
-class TransferRequest(db.Model):
-    __tablename__ = 'transfer_request'
-
-    id = db.Column(db.Integer, primary_key=True)
-    sender_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False)
-    recipient_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False)
-    item_instance_id = db.Column(db.Integer, db.ForeignKey('item_instance.id'), nullable=False)
-    amount = db.Column(db.Integer, nullable=False, default=1)
-    status = db.Column(db.String(20), nullable=False, default='pending')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    sender = db.relationship('User', foreign_keys=[sender_id])
-    recipient = db.relationship('User', foreign_keys=[recipient_id])
-    item_instance = db.relationship('ItemInstance')
 
 
 def _should_reset_database(db_uri: str) -> bool:
@@ -312,6 +333,13 @@ def seed_item_definitions() -> list[ItemDefinition]:
         return definitions
     type_weapon = get_or_create_item_type('weapon')
     type_armor = get_or_create_item_type('armor')
+    type_shield = get_or_create_item_type('shield')
+    type_backpack = get_or_create_item_type('backpack')
+    type_head = get_or_create_item_type('head')
+    type_shirt = get_or_create_item_type('shirt')
+    type_pants = get_or_create_item_type('pants')
+    type_boots = get_or_create_item_type('boots')
+    type_amulet = get_or_create_item_type('amulet')
     type_food = get_or_create_item_type('food')
     type_ammo = get_or_create_item_type('ammo')
     type_other = get_or_create_item_type('other')
@@ -324,11 +352,10 @@ def seed_item_definitions() -> list[ItemDefinition]:
             width=1,
             height=3,
             weight=3.2,
-            max_str=100,
+            max_durability=100,
             quality='uncommon',
             max_amount=1,
             rotatable=True,
-            equip_slot='weapon',
             item_type=type_weapon,
         ),
         ItemDefinition(
@@ -338,12 +365,102 @@ def seed_item_definitions() -> list[ItemDefinition]:
             width=2,
             height=3,
             weight=5.4,
-            max_str=120,
+            max_durability=120,
             quality='common',
             max_amount=1,
             rotatable=False,
-            equip_slot='body',
             item_type=type_armor,
+        ),
+        ItemDefinition(
+            name='Баклер',
+            description='Невеликий щит для захисту від атак.',
+            image='images/1_bionic-eye.png',
+            width=2,
+            height=2,
+            weight=2.6,
+            max_durability=90,
+            quality='common',
+            max_amount=1,
+            rotatable=True,
+            item_type=type_shield,
+        ),
+        ItemDefinition(
+            name='Дорожній рюкзак',
+            description='Складається з жорсткого каркасу та ременів.',
+            image='images/1_bionic-eye.png',
+            width=3,
+            height=3,
+            weight=1.8,
+            max_durability=80,
+            quality='uncommon',
+            max_amount=1,
+            rotatable=False,
+            item_type=type_backpack,
+        ),
+        ItemDefinition(
+            name='Шолом розвідника',
+            description='Захищає голову та очі від ударів.',
+            image='images/1_bionic-eye.png',
+            width=2,
+            height=2,
+            weight=1.2,
+            max_durability=60,
+            quality='common',
+            max_amount=1,
+            rotatable=False,
+            item_type=type_head,
+        ),
+        ItemDefinition(
+            name='Подорожня сорочка',
+            description='Проста тканинна сорочка.',
+            image='images/1_bionic-eye.png',
+            width=2,
+            height=2,
+            weight=0.8,
+            max_durability=40,
+            quality='common',
+            max_amount=1,
+            rotatable=False,
+            item_type=type_shirt,
+        ),
+        ItemDefinition(
+            name='Штани шукача',
+            description='Зручні штани для походів.',
+            image='images/1_bionic-eye.png',
+            width=2,
+            height=2,
+            weight=0.9,
+            max_durability=40,
+            quality='common',
+            max_amount=1,
+            rotatable=False,
+            item_type=type_pants,
+        ),
+        ItemDefinition(
+            name='Черевики мандрівника',
+            description='Довговічне взуття для мандрів.',
+            image='images/1_bionic-eye.png',
+            width=2,
+            height=2,
+            weight=0.9,
+            max_durability=50,
+            quality='common',
+            max_amount=1,
+            rotatable=False,
+            item_type=type_boots,
+        ),
+        ItemDefinition(
+            name='Амулет вітру',
+            description='Магічний амулет для захисту.',
+            image='images/1_bionic-eye.png',
+            width=1,
+            height=2,
+            weight=0.2,
+            max_durability=45,
+            quality='uncommon',
+            max_amount=1,
+            rotatable=True,
+            item_type=type_amulet,
         ),
         ItemDefinition(
             name='Зілля лікування',
@@ -352,11 +469,10 @@ def seed_item_definitions() -> list[ItemDefinition]:
             width=1,
             height=2,
             weight=0.3,
-            max_str=1,
+            max_durability=1,
             quality='uncommon',
             max_amount=5,
             rotatable=True,
-            equip_slot=None,
             item_type=type_food,
         ),
         ItemDefinition(
@@ -366,11 +482,10 @@ def seed_item_definitions() -> list[ItemDefinition]:
             width=2,
             height=1,
             weight=0.1,
-            max_str=1,
+            max_durability=1,
             quality='common',
             max_amount=30,
             rotatable=True,
-            equip_slot=None,
             item_type=type_ammo,
         ),
         ItemDefinition(
@@ -380,11 +495,10 @@ def seed_item_definitions() -> list[ItemDefinition]:
             width=1,
             height=1,
             weight=0.01,
-            max_str=1,
+            max_durability=1,
             quality='common',
             max_amount=9999,
             rotatable=False,
-            equip_slot=None,
             item_type=type_other,
         ),
     ]
@@ -393,220 +507,377 @@ def seed_item_definitions() -> list[ItemDefinition]:
     return definitions
 
 
-def seed_user_inventory(user: User) -> list[ItemInstance]:
-    existing = ItemInstance.query.filter_by(owner_id=user.id).all()
+def seed_user_inventory(user: User, lobby_id: Optional[int]) -> list[ItemInstance]:
+    existing = ItemInstance.query.filter_by(owner_id=user.id, lobby_id=lobby_id).all()
     if existing:
         return existing
     definitions = seed_item_definitions()
     instances = [
         ItemInstance(
             owner_id=user.id,
+            lobby_id=lobby_id,
             definition=definitions[0],
-            current_str=86,
+            container_id='inv_main',
+            pos_x=1,
+            pos_y=1,
+            rotated=0,
+            durability_current=86,
             amount=1,
         ),
         ItemInstance(
             owner_id=user.id,
+            lobby_id=lobby_id,
             definition=definitions[1],
-            current_str=110,
+            container_id='inv_main',
+            pos_x=3,
+            pos_y=1,
+            rotated=0,
+            durability_current=110,
             amount=1,
         ),
         ItemInstance(
             owner_id=user.id,
+            lobby_id=lobby_id,
             definition=definitions[2],
-            current_str=1,
+            container_id='inv_main',
+            pos_x=6,
+            pos_y=1,
+            rotated=0,
+            durability_current=85,
+            amount=1,
+        ),
+        ItemInstance(
+            owner_id=user.id,
+            lobby_id=lobby_id,
+            definition=definitions[3],
+            container_id='inv_main',
+            pos_x=8,
+            pos_y=1,
+            rotated=0,
+            durability_current=80,
+            amount=1,
+        ),
+        ItemInstance(
+            owner_id=user.id,
+            lobby_id=lobby_id,
+            definition=definitions[4],
+            container_id='inv_main',
+            pos_x=10,
+            pos_y=1,
+            rotated=0,
+            durability_current=50,
+            amount=1,
+        ),
+        ItemInstance(
+            owner_id=user.id,
+            lobby_id=lobby_id,
+            definition=definitions[9],
+            container_id='inv_main',
+            pos_x=1,
+            pos_y=5,
+            rotated=0,
+            durability_current=1,
             amount=3,
         ),
         ItemInstance(
             owner_id=user.id,
-            definition=definitions[4],
-            current_str=1,
+            lobby_id=lobby_id,
+            definition=definitions[11],
+            container_id='inv_main',
+            pos_x=4,
+            pos_y=5,
+            rotated=0,
+            durability_current=1,
             amount=280,
         ),
         ItemInstance(
             owner_id=user.id,
-            definition=definitions[3],
-            current_str=1,
+            lobby_id=lobby_id,
+            definition=definitions[10],
+            container_id='inv_main',
+            pos_x=6,
+            pos_y=5,
+            rotated=0,
+            durability_current=1,
             amount=20,
         ),
     ]
     db.session.add_all(instances)
-    db.session.flush()
-    slots = [
-        InventorySlot(instance_id=instances[0].id, owner_id=user.id, x=1, y=1, rotation=0),
-        InventorySlot(instance_id=instances[1].id, owner_id=user.id, x=3, y=1, rotation=0),
-        InventorySlot(instance_id=instances[2].id, owner_id=user.id, x=6, y=1, rotation=0),
-        InventorySlot(instance_id=instances[3].id, owner_id=user.id, x=8, y=2, rotation=0),
-        InventorySlot(instance_id=instances[4].id, owner_id=user.id, x=1, y=5, rotation=0),
-    ]
-    db.session.add_all(slots)
     db.session.commit()
     return instances
 
 
-def build_inventory_payload(user: Optional[User]) -> list[dict]:
-    if not user:
-        definitions = seed_item_definitions()
-        sample = []
-        for definition in definitions:
-            sample.append({
-                'id': f'def-{definition.id}',
-                'name': definition.name,
-                'type': definition.item_type.name,
-                'size': {'w': definition.width, 'h': definition.height},
-                'rotatable': definition.rotatable,
-                'stackable': definition.max_amount > 1,
-                'quality': definition.quality,
-                'maxStack': definition.max_amount,
-                'weight': definition.weight,
-                'description': definition.description,
-                'equipSlot': definition.equip_slot,
-                'entry': {'qty': 1, 'rotation': 0, 'position': None},
-            })
-        return sample
-    instances = seed_user_inventory(user)
-    payload = []
-    for instance in instances:
-        definition = instance.definition
-        slot = instance.slot
-        entry_position = {'x': slot.x, 'y': slot.y} if slot else None
-        payload.append({
-            'id': str(instance.id),
-            'name': instance.custom_name or definition.name,
-            'type': definition.item_type.name,
-            'size': {'w': definition.width, 'h': definition.height},
-            'rotatable': definition.rotatable,
-            'stackable': definition.max_amount > 1,
-            'quality': definition.quality,
-            'maxStack': definition.max_amount,
-            'weight': definition.weight,
-            'description': instance.custom_description or definition.description,
-            'equipSlot': definition.equip_slot,
-            'entry': {
-                'qty': instance.amount,
-                'rotation': slot.rotation if slot else 0,
-                'position': entry_position,
-            },
-        })
-    return payload
+def get_membership(user: User, lobby_id: Optional[int]) -> Optional[LobbyMember]:
+    if not lobby_id:
+        return None
+    return LobbyMember.query.filter_by(lobby_id=lobby_id, user_id=user.id).first()
+
+
+def is_master(user: User, lobby_id: Optional[int]) -> bool:
+    if user.is_admin:
+        return True
+    membership = get_membership(user, lobby_id)
+    if membership and membership.role == 'master':
+        return True
+    lobby = Lobby.query.get(lobby_id) if lobby_id else None
+    return bool(lobby and lobby.admin_id == user.id)
 
 
 def can_view_inventory(current: User, target_user_id: int, lobby_id: Optional[int]) -> bool:
-    if current.is_admin or current.id == target_user_id:
+    if current.id == target_user_id or current.is_admin:
         return True
-    if not lobby_id:
-        return False
-    membership = LobbyMember.query.filter_by(lobby_id=lobby_id, user_id=current.id).first()
+    membership = get_membership(current, lobby_id)
     if not membership or membership.role not in {'master', 'spectator'}:
         return False
     target_membership = LobbyMember.query.filter_by(lobby_id=lobby_id, user_id=target_user_id).first()
     return target_membership is not None
 
 
-def build_transfer_players(user: Optional[User]) -> list[dict]:
+def can_edit_inventory(current: User, target_user_id: int, lobby_id: Optional[int]) -> bool:
+    membership = get_membership(current, lobby_id)
+    if membership and membership.role == 'spectator':
+        return False
+    return current.id == target_user_id or is_master(current, lobby_id)
+
+
+def get_backpack_container_id(owner_id: int, lobby_id: Optional[int]) -> Optional[str]:
+    backpack = (
+        ItemInstance.query.join(ItemDefinition, ItemInstance.definition_id == ItemDefinition.id)
+        .join(ItemType, ItemDefinition.type_id == ItemType.id)
+        .filter(
+            ItemInstance.owner_id == owner_id,
+            ItemInstance.lobby_id == lobby_id,
+            ItemInstance.container_id == 'equip_back',
+            ItemType.name == 'backpack',
+        )
+        .first()
+    )
+    if not backpack:
+        return None
+    return f'bag:{backpack.id}'
+
+
+def container_size(container_id: str) -> Optional[tuple[int, int]]:
+    if container_id == 'inv_main':
+        return MAIN_GRID_WIDTH, MAIN_GRID_HEIGHT
+    if container_id in EQUIPMENT_GRIDS:
+        return EQUIPMENT_GRIDS[container_id]
+    if container_id in SPECIAL_GRIDS:
+        return SPECIAL_GRIDS[container_id]
+    if container_id.startswith('bag:'):
+        return BACKPACK_GRID_WIDTH, BACKPACK_GRID_HEIGHT
+    return None
+
+
+def container_label(container_id: str) -> str:
+    if container_id.startswith('bag:'):
+        return 'Backpack'
+    return CONTAINER_LABELS.get(container_id, container_id)
+
+
+def build_inventory_payload(
+    user: Optional[User],
+    lobby_id: Optional[int],
+    viewer: Optional[User] = None,
+) -> dict:
     if not user:
+        return {
+            'user': None,
+            'containers': [],
+            'items': [],
+            'weight': {'current': 0, 'capacity': 5},
+            'permissions': {'can_edit': False, 'is_master': False},
+        }
+    membership = get_membership(user, lobby_id)
+    if lobby_id and membership:
+        seed_user_inventory(user, lobby_id)
+    instances = ItemInstance.query.filter_by(owner_id=user.id, lobby_id=lobby_id).all()
+    backpack_container_id = get_backpack_container_id(user.id, lobby_id)
+    containers = [
+        {
+            'id': 'inv_main',
+            'label': container_label('inv_main'),
+            'w': MAIN_GRID_WIDTH,
+            'h': MAIN_GRID_HEIGHT,
+        },
+    ]
+    for container_id, (width, height) in EQUIPMENT_GRIDS.items():
+        containers.append({
+            'id': container_id,
+            'label': container_label(container_id),
+            'w': width,
+            'h': height,
+        })
+    for container_id, (width, height) in SPECIAL_GRIDS.items():
+        containers.append({
+            'id': container_id,
+            'label': container_label(container_id),
+            'w': width,
+            'h': height,
+        })
+    if backpack_container_id:
+        containers.append({
+            'id': backpack_container_id,
+            'label': container_label(backpack_container_id),
+            'w': BACKPACK_GRID_WIDTH,
+            'h': BACKPACK_GRID_HEIGHT,
+            'is_backpack': True,
+        })
+    items_payload = []
+    current_weight = 0.0
+    for instance in instances:
+        definition = instance.definition
+        item_weight = definition.weight * instance.amount
+        current_weight += item_weight
+        items_payload.append({
+            'id': instance.id,
+            'template_id': definition.id,
+            'owner_id': instance.owner_id,
+            'name': instance.custom_name or definition.name,
+            'type': definition.item_type.name,
+            'quality': definition.quality,
+            'description': instance.custom_description or definition.description,
+            'image': definition.image,
+            'size': {'w': definition.width, 'h': definition.height},
+            'rotatable': definition.rotatable,
+            'stackable': definition.max_amount > 1,
+            'max_stack': definition.max_amount,
+            'weight': definition.weight,
+            'max_durability': definition.max_durability,
+            'durability_current': instance.durability_current,
+            'amount': instance.amount,
+            'container_id': instance.container_id,
+            'pos_x': instance.pos_x,
+            'pos_y': instance.pos_y,
+            'rotated': instance.rotated,
+            'version': instance.version,
+        })
+    viewer = viewer or user
+    permissions = {
+        'can_edit': can_edit_inventory(viewer, user.id, lobby_id),
+        'is_master': is_master(viewer, lobby_id),
+    }
+    capacity = max(5, 5 + 5 * 0)
+    return {
+        'user': {'id': user.id, 'name': user.nickname},
+        'containers': containers,
+        'items': items_payload,
+        'weight': {'current': round(current_weight, 2), 'capacity': capacity},
+        'permissions': permissions,
+    }
+
+
+def build_transfer_players(lobby_id: Optional[int]) -> list[dict]:
+    if not lobby_id:
         return []
-    memberships = LobbyMember.query.filter_by(user_id=user.id).all()
-    if not memberships:
-        return []
-    lobby = memberships[0].lobby
+    lobby = Lobby.query.get(lobby_id)
     if not lobby:
         return []
     return [
-        {'id': member.user.id, 'name': member.user.nickname}
+        {'id': member.user.id, 'name': member.user.nickname, 'role': member.role}
         for member in lobby.members
         if member.user
     ]
 
 
-def sync_inventory_state(user: User, items_data: list[dict], removed_ids: list[str]) -> None:
-    owned_instances = {
-        str(instance.id): instance
-        for instance in ItemInstance.query.filter_by(owner_id=user.id).all()
-    }
-    removed_set = {str(item_id) for item_id in removed_ids if item_id}
-    for item_id in removed_set:
-        instance = owned_instances.get(item_id)
-        if not instance:
-            continue
-        if instance.slot:
-            db.session.delete(instance.slot)
-        db.session.delete(instance)
-    for item in items_data:
-        item_id = str(item.get('id'))
-        if item_id in removed_set:
-            continue
-        instance = owned_instances.get(item_id)
-        if not instance:
-            continue
-        entry = item.get('entry') or {}
-        qty = parse_int(entry.get('qty'), instance.amount, minimum=0)
-        definition = instance.definition
-        if qty <= 0:
-            if instance.slot:
-                db.session.delete(instance.slot)
-            db.session.delete(instance)
-            continue
-        instance.amount = min(qty, definition.max_amount)
-        rotation = parse_int(entry.get('rotation'), 0)
-        rotation = 90 if rotation == 90 and definition.rotatable else 0
-        position = entry.get('position')
-        if isinstance(position, dict):
-            x = min(parse_int(position.get('x'), 1, minimum=1), 12)
-            y = min(parse_int(position.get('y'), 1, minimum=1), 8)
-            if instance.slot:
-                instance.slot.x = x
-                instance.slot.y = y
-                instance.slot.rotation = rotation
-                instance.slot.owner_id = user.id
-            else:
-                db.session.add(
-                    InventorySlot(
-                        instance_id=instance.id,
-                        owner_id=user.id,
-                        x=x,
-                        y=y,
-                        rotation=rotation,
-                    )
-                )
-        else:
-            if instance.slot:
-                db.session.delete(instance.slot)
-    db.session.commit()
+def item_dimensions(definition: ItemDefinition, rotated: int) -> tuple[int, int]:
+    width = definition.width
+    height = definition.height
+    if rotated == 90:
+        return height, width
+    return width, height
 
 
-def find_first_fit_slot(owner_id: int, definition: ItemDefinition) -> Optional[tuple[int, int]]:
-    occupied = set()
-    slots = (
-        InventorySlot.query.join(ItemInstance, InventorySlot.instance_id == ItemInstance.id)
-        .filter(InventorySlot.owner_id == owner_id)
-        .all()
+def normalize_rotation(definition: ItemDefinition, rotated: Optional[int]) -> int:
+    if rotated == 90 and definition.rotatable:
+        return 90
+    return 0
+
+
+def get_container_items(
+    owner_id: int,
+    lobby_id: Optional[int],
+    container_id: str,
+    exclude_id: Optional[int] = None,
+) -> list[ItemInstance]:
+    query = ItemInstance.query.filter_by(
+        owner_id=owner_id,
+        lobby_id=lobby_id,
+        container_id=container_id,
     )
-    for slot in slots:
-        instance = slot.instance
-        if not instance:
+    if exclude_id:
+        query = query.filter(ItemInstance.id != exclude_id)
+    return query.all()
+
+
+def is_container_allowed(
+    instance: ItemInstance,
+    container_id: str,
+    owner_id: int,
+    lobby_id: Optional[int],
+) -> tuple[bool, str]:
+    if container_id == 'inv_main':
+        return True, ''
+    if container_id.startswith('bag:'):
+        backpack_id = container_id.split(':', 1)[1]
+        active_bag = get_backpack_container_id(owner_id, lobby_id)
+        if not active_bag or active_bag.split(':', 1)[1] != backpack_id:
+            return False, 'missing_backpack'
+        return True, ''
+    if container_id in EQUIPMENT_GRIDS or container_id in SPECIAL_GRIDS:
+        allowed_types = CONTAINER_ALLOWED_TYPES.get(container_id)
+        if allowed_types and instance.definition.item_type.name not in allowed_types:
+            return False, 'type_mismatch'
+        return True, ''
+    return False, 'invalid_container'
+
+
+def can_place_item(
+    instance: ItemInstance,
+    container_id: str,
+    pos_x: int,
+    pos_y: int,
+    rotated: int,
+) -> tuple[bool, Optional[str]]:
+    size = container_size(container_id)
+    if not size:
+        return False, 'invalid_container'
+    width, height = size
+    item_w, item_h = item_dimensions(instance.definition, rotated)
+    if pos_x < 1 or pos_y < 1:
+        return False, 'out_of_bounds'
+    if pos_x + item_w - 1 > width or pos_y + item_h - 1 > height:
+        return False, 'out_of_bounds'
+    occupied = set()
+    for other in get_container_items(instance.owner_id, instance.lobby_id, container_id, exclude_id=instance.id):
+        if other.pos_x is None or other.pos_y is None:
             continue
-        item_def = instance.definition
-        width = item_def.width
-        height = item_def.height
-        if slot.rotation == 90:
-            width, height = height, width
-        for dx in range(width):
-            for dy in range(height):
-                occupied.add((slot.x + dx, slot.y + dy))
-    max_x = 12
-    max_y = 8
-    for y in range(1, max_y - definition.height + 2):
-        for x in range(1, max_x - definition.width + 2):
-            fits = True
-            for dx in range(definition.width):
-                for dy in range(definition.height):
-                    if (x + dx, y + dy) in occupied:
-                        fits = False
-                        break
-                if not fits:
-                    break
-            if fits:
+        other_rotated = normalize_rotation(other.definition, other.rotated)
+        other_w, other_h = item_dimensions(other.definition, other_rotated)
+        for dx in range(other_w):
+            for dy in range(other_h):
+                occupied.add((other.pos_x + dx, other.pos_y + dy))
+    for dx in range(item_w):
+        for dy in range(item_h):
+            if (pos_x + dx, pos_y + dy) in occupied:
+                return False, 'overlap'
+    return True, None
+
+
+def find_first_fit(
+    instance: ItemInstance,
+    container_id: str,
+    rotated: int,
+) -> Optional[tuple[int, int]]:
+    size = container_size(container_id)
+    if not size:
+        return None
+    width, height = size
+    item_w, item_h = item_dimensions(instance.definition, rotated)
+    for y in range(1, height - item_h + 2):
+        for x in range(1, width - item_w + 2):
+            valid, _reason = can_place_item(instance, container_id, x, y, rotated)
+            if valid:
                 return x, y
     return None
 
@@ -738,12 +1009,16 @@ def news():
 @app.route('/Inventory')
 def inventory():
     user = current_user()
-    inventory_data = build_inventory_payload(user)
+    lobby_id = None
+    if user:
+        membership = LobbyMember.query.filter_by(user_id=user.id).first()
+        lobby_id = membership.lobby_id if membership else None
+    inventory_data = build_inventory_payload(user, lobby_id, viewer=user)
     return render_template(
         'Inventory.html',
         user=user,
         inventory_data=inventory_data,
-        transfer_players=build_transfer_players(user),
+        transfer_players=build_transfer_players(lobby_id),
     )
 
 
@@ -814,14 +1089,21 @@ def lobby_page():
 
     owned_lobbies = Lobby.query.filter_by(admin_id=user.id).order_by(Lobby.created_at.desc()).all()
     member_lobbies = LobbyMember.query.filter_by(user_id=user.id).all()
-    transfer_players = build_transfer_players(user)
+    inventory_payloads = {}
+    transfer_players = {}
+    for membership in member_lobbies:
+        lobby = membership.lobby
+        if not lobby:
+            continue
+        inventory_payloads[str(lobby.id)] = build_inventory_payload(user, lobby.id, viewer=user)
+        transfer_players[str(lobby.id)] = build_transfer_players(lobby.id)
 
     return render_template(
         'Lobby.html',
         user=user,
         owned_lobbies=owned_lobbies,
         member_lobbies=member_lobbies,
-        inventory_data=build_inventory_payload(user),
+        inventory_payloads=inventory_payloads,
         transfer_players=transfer_players,
     )
 
@@ -829,163 +1111,391 @@ def lobby_page():
 @app.route('/api/inventory/<int:user_id>')
 def inventory_api(user_id: int):
     user = require_user()
-    lobby_id = parse_int(request.args.get('lobby_id'), 0)
-    lobby_id = lobby_id or None
+    lobby_id = parse_int(request.args.get('lobby_id'), 0) or None
+    if not lobby_id:
+        membership = LobbyMember.query.filter_by(user_id=user.id).first()
+        lobby_id = membership.lobby_id if membership else None
+    if lobby_id and not can_view_inventory(user, user_id, lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    target = User.query.get(user_id)
+    if not target:
+        return jsonify({'error': 'not_found'}), 404
+    return jsonify(build_inventory_payload(target, lobby_id, viewer=user))
+
+
+@app.route('/api/lobby/<int:lobby_id>/inventory/<int:user_id>')
+def lobby_inventory_api(lobby_id: int, user_id: int):
+    user = require_user()
     if not can_view_inventory(user, user_id, lobby_id):
         return jsonify({'error': 'forbidden'}), 403
     target = User.query.get(user_id)
     if not target:
         return jsonify({'error': 'not_found'}), 404
-    return jsonify(build_inventory_payload(target))
+    return jsonify(build_inventory_payload(target, lobby_id, viewer=user))
 
 
-@app.route('/api/inventory/sync', methods=['POST'])
-def inventory_sync():
+def _assert_version(instance: ItemInstance, version: int) -> bool:
+    if version and instance.version != version:
+        app.logger.warning(
+            'Inventory lock conflict for item %s: expected=%s actual=%s',
+            instance.id,
+            version,
+            instance.version,
+        )
+        return False
+    return True
+
+
+@app.route('/api/inventory/move', methods=['POST'])
+def move_inventory_item():
     user = require_user()
     data = request.get_json(silent=True) or {}
-    items = data.get('items')
-    if not isinstance(items, list):
-        return jsonify({'error': 'invalid_payload'}), 400
-    removed_ids = data.get('removed_ids')
-    if not isinstance(removed_ids, list):
-        removed_ids = []
-    sync_inventory_state(user, items, removed_ids)
+    item_id = parse_int(data.get('item_id'), 0)
+    container_id = (data.get('container_id') or '').strip()
+    pos_x = data.get('pos_x')
+    pos_y = data.get('pos_y')
+    rotated = data.get('rotated')
+    version = parse_int(data.get('version'), 0)
+
+    instance = ItemInstance.query.get(item_id)
+    if not instance:
+        return jsonify({'error': 'not_found'}), 404
+    if not can_edit_inventory(user, instance.owner_id, instance.lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    if not _assert_version(instance, version):
+        return jsonify({'error': 'conflict'}), 409
+    if not container_id:
+        return jsonify({'error': 'missing_container'}), 400
+
+    allowed, reason = is_container_allowed(instance, container_id, instance.owner_id, instance.lobby_id)
+    if not allowed:
+        app.logger.warning('Inventory move rejected: %s', reason)
+        return jsonify({'error': reason}), 400
+
+    if instance.container_id == 'equip_back' and container_id != 'equip_back':
+        if instance.definition.item_type.name == 'backpack':
+            bag_id = f'bag:{instance.id}'
+            bag_items = ItemInstance.query.filter_by(
+                owner_id=instance.owner_id,
+                lobby_id=instance.lobby_id,
+                container_id=bag_id,
+            ).count()
+            if bag_items:
+                app.logger.warning('Cannot unequip backpack %s with items inside', instance.id)
+                return jsonify({'error': 'backpack_not_empty'}), 400
+
+    rotation_value = normalize_rotation(instance.definition, rotated)
+    target_pos_x = parse_int(pos_x, 0, minimum=0) if pos_x is not None else None
+    target_pos_y = parse_int(pos_y, 0, minimum=0) if pos_y is not None else None
+    if target_pos_x and target_pos_y:
+        valid, reason = can_place_item(instance, container_id, target_pos_x, target_pos_y, rotation_value)
+        if not valid:
+            target_pos_x = None
+            target_pos_y = None
+    if not target_pos_x or not target_pos_y:
+        auto_pos = find_first_fit(instance, container_id, rotation_value)
+        if not auto_pos:
+            app.logger.warning('No space to auto-place item %s in %s', instance.id, container_id)
+            return jsonify({'error': 'no_space'}), 409
+        target_pos_x, target_pos_y = auto_pos
+
+    instance.container_id = container_id
+    instance.pos_x = target_pos_x
+    instance.pos_y = target_pos_y
+    instance.rotated = rotation_value
+    instance.version += 1
+    db.session.commit()
     return jsonify({'status': 'ok'})
 
 
-@app.route('/api/transfers', methods=['POST'])
-def create_transfer():
+@app.route('/api/inventory/rotate', methods=['POST'])
+def rotate_inventory_item():
     user = require_user()
     data = request.get_json(silent=True) or {}
-    recipient_id = parse_int(data.get('recipient_id'), 0)
     item_id = parse_int(data.get('item_id'), 0)
-    amount = parse_int(data.get('amount'), 1, minimum=1)
+    version = parse_int(data.get('version'), 0)
 
-    if recipient_id == user.id or not recipient_id:
-        return jsonify({'error': 'invalid_recipient'}), 400
-
-    recipient = User.query.get(recipient_id)
     instance = ItemInstance.query.get(item_id)
-    if not recipient or not instance or instance.owner_id != user.id:
-        return jsonify({'error': 'invalid_item'}), 404
+    if not instance:
+        return jsonify({'error': 'not_found'}), 404
+    if not can_edit_inventory(user, instance.owner_id, instance.lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    if not _assert_version(instance, version):
+        return jsonify({'error': 'conflict'}), 409
+    if not instance.definition.rotatable:
+        return jsonify({'error': 'not_rotatable'}), 400
+
+    new_rotation = 90 if instance.rotated == 0 else 0
+    valid, reason = can_place_item(instance, instance.container_id, instance.pos_x, instance.pos_y, new_rotation)
+    if not valid:
+        app.logger.warning('Rotation failed for item %s: %s', instance.id, reason)
+        return jsonify({'error': 'invalid_rotation'}), 409
+    instance.rotated = new_rotation
+    instance.version += 1
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/api/inventory/split', methods=['POST'])
+def split_inventory_item():
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    item_id = parse_int(data.get('item_id'), 0)
+    amount = parse_int(data.get('amount'), 0)
+    version = parse_int(data.get('version'), 0)
+
+    instance = ItemInstance.query.get(item_id)
+    if not instance:
+        return jsonify({'error': 'not_found'}), 404
+    if not can_edit_inventory(user, instance.owner_id, instance.lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    if not _assert_version(instance, version):
+        return jsonify({'error': 'conflict'}), 409
+    if instance.definition.max_amount <= 1:
+        return jsonify({'error': 'not_stackable'}), 400
+    if amount <= 0 or amount >= instance.amount:
+        return jsonify({'error': 'invalid_amount'}), 400
+
+    temp_instance = ItemInstance(
+        owner_id=instance.owner_id,
+        lobby_id=instance.lobby_id,
+        definition=instance.definition,
+    )
+    target_pos = find_first_fit(temp_instance, instance.container_id, instance.rotated)
+    if not target_pos:
+        app.logger.warning('Split failed for item %s: no space', instance.id)
+        return jsonify({'error': 'no_space'}), 409
+
+    instance.amount -= amount
+    instance.version += 1
+    new_instance = ItemInstance(
+        owner_id=instance.owner_id,
+        lobby_id=instance.lobby_id,
+        definition_id=instance.definition_id,
+        container_id=instance.container_id,
+        pos_x=target_pos[0],
+        pos_y=target_pos[1],
+        rotated=instance.rotated,
+        durability_current=instance.durability_current,
+        amount=amount,
+    )
+    db.session.add(new_instance)
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/api/inventory/drop', methods=['POST'])
+def drop_inventory_item():
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    item_id = parse_int(data.get('item_id'), 0)
+    version = parse_int(data.get('version'), 0)
+
+    instance = ItemInstance.query.get(item_id)
+    if not instance:
+        return jsonify({'error': 'not_found'}), 404
+    if not can_edit_inventory(user, instance.owner_id, instance.lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    if not _assert_version(instance, version):
+        return jsonify({'error': 'conflict'}), 409
+    db.session.delete(instance)
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/api/inventory/transfer', methods=['POST'])
+def transfer_inventory_item():
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    item_id = parse_int(data.get('item_id'), 0)
+    recipient_id = parse_int(data.get('recipient_id'), 0)
+    amount = parse_int(data.get('amount'), 1, minimum=1)
+    version = parse_int(data.get('version'), 0)
+
+    instance = ItemInstance.query.get(item_id)
+    if not instance:
+        return jsonify({'error': 'not_found'}), 404
+    if not can_edit_inventory(user, instance.owner_id, instance.lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    if not _assert_version(instance, version):
+        return jsonify({'error': 'conflict'}), 409
+    if recipient_id == instance.owner_id or not recipient_id:
+        return jsonify({'error': 'invalid_recipient'}), 400
+    recipient = User.query.get(recipient_id)
+    if not recipient:
+        return jsonify({'error': 'invalid_recipient'}), 400
+    sender_membership = get_membership(user, instance.lobby_id)
+    recipient_membership = LobbyMember.query.filter_by(
+        lobby_id=instance.lobby_id,
+        user_id=recipient_id,
+    ).first()
+    if not sender_membership or not recipient_membership:
+        return jsonify({'error': 'not_in_lobby'}), 403
     if amount > instance.amount:
         return jsonify({'error': 'invalid_amount'}), 400
 
-    transfer = TransferRequest(
-        sender_id=user.id,
-        recipient_id=recipient_id,
-        item_instance_id=instance.id,
-        amount=amount,
+    temp_instance = ItemInstance(
+        owner_id=recipient_id,
+        lobby_id=instance.lobby_id,
+        definition=instance.definition,
     )
-    db.session.add(transfer)
-    db.session.commit()
-    return jsonify({'status': 'ok', 'transfer_id': transfer.id})
+    target_pos = find_first_fit(temp_instance, 'inv_main', 0)
+    if not target_pos:
+        app.logger.warning('Transfer failed: no space for recipient %s', recipient_id)
+        return jsonify({'error': 'no_space'}), 409
 
-
-@app.route('/api/transfers/pending')
-def pending_transfers():
-    user = require_user()
-    transfers = (
-        TransferRequest.query.filter_by(recipient_id=user.id, status='pending')
-        .order_by(TransferRequest.created_at.desc())
-        .all()
-    )
-    payload = []
-    for transfer in transfers:
-        instance = transfer.item_instance
-        if not instance:
-            continue
-        definition = instance.definition
-        payload.append({
-            'id': transfer.id,
-            'item_name': definition.name,
-            'amount': transfer.amount,
-            'sender_name': transfer.sender.nickname if transfer.sender else 'Невідомо',
-        })
-    return jsonify(payload)
-
-
-def _finalize_transfer(transfer: TransferRequest, accept: bool) -> tuple[dict, int]:
-    if transfer.status != 'pending':
-        return {'error': 'already_processed'}, 400
-    instance = transfer.item_instance
-    if not instance or instance.owner_id != transfer.sender_id:
-        transfer.status = 'declined'
-        db.session.commit()
-        return {'error': 'invalid_item'}, 400
-    if transfer.amount > instance.amount:
-        transfer.status = 'declined'
-        db.session.commit()
-        return {'error': 'invalid_amount'}, 400
-    if not accept:
-        transfer.status = 'declined'
-        db.session.commit()
-        return {'status': 'declined'}, 200
-
-    definition = instance.definition
-    slot_position = find_first_fit_slot(transfer.recipient_id, definition)
-    if not slot_position:
-        return {'error': 'no_space'}, 409
-
-    if transfer.amount == instance.amount:
-        instance.owner_id = transfer.recipient_id
-        if instance.slot:
-            instance.slot.owner_id = transfer.recipient_id
-            instance.slot.x, instance.slot.y = slot_position
-            instance.slot.rotation = 0
-        else:
-            db.session.add(
-                InventorySlot(
-                    instance_id=instance.id,
-                    owner_id=transfer.recipient_id,
-                    x=slot_position[0],
-                    y=slot_position[1],
-                    rotation=0,
-                )
-            )
+    if amount == instance.amount:
+        instance.owner_id = recipient_id
+        instance.container_id = 'inv_main'
+        instance.pos_x = target_pos[0]
+        instance.pos_y = target_pos[1]
+        instance.rotated = 0
     else:
-        instance.amount -= transfer.amount
+        instance.amount -= amount
         new_instance = ItemInstance(
-            owner_id=transfer.recipient_id,
+            owner_id=recipient_id,
+            lobby_id=instance.lobby_id,
+            definition_id=instance.definition_id,
+            container_id='inv_main',
+            pos_x=target_pos[0],
+            pos_y=target_pos[1],
+            rotated=0,
+            durability_current=instance.durability_current,
+            amount=amount,
+        )
+        db.session.add(new_instance)
+    instance.version += 1
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/api/master/item_template/create', methods=['POST'])
+def create_item_template():
+    user = require_user()
+    data = request.get_json(silent=True) if request.is_json else request.form
+    lobby_id = parse_int(data.get('lobby_id'), 0)
+    if not is_master(user, lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    name = (data.get('name') or '').strip()
+    description = (data.get('description') or '').strip() or 'Опис не додано.'
+    type_name = (data.get('type') or 'other').strip().lower()
+    quality = (data.get('quality') or 'common').strip().lower()
+    width = parse_int(data.get('width'), 1, minimum=1)
+    height = parse_int(data.get('height'), 1, minimum=1)
+    weight = float(data.get('weight') or 0)
+    max_durability = parse_int(data.get('max_durability'), 1, minimum=1)
+    max_amount = parse_int(data.get('max_amount'), 1, minimum=1)
+    issue_to = parse_int(data.get('issue_to'), 0)
+
+    if not name:
+        return jsonify({'error': 'missing_name'}), 400
+    if quality not in QUALITY_LEVELS:
+        quality = 'common'
+
+    image_path = None
+    if 'image' in request.files:
+        image_file = request.files['image']
+        image_path = save_upload(image_file, 'items', f'item_{secrets.token_hex(4)}')
+
+    item_type = get_or_create_item_type(type_name)
+    definition = ItemDefinition(
+        name=name,
+        description=description,
+        image=image_path,
+        width=width,
+        height=height,
+        weight=weight,
+        max_durability=max_durability,
+        quality=quality,
+        max_amount=max_amount,
+        rotatable=True,
+        item_type=item_type,
+    )
+    db.session.add(definition)
+    db.session.flush()
+
+    issued_instance_id = None
+    if issue_to:
+        recipient_membership = LobbyMember.query.filter_by(
+            lobby_id=lobby_id,
+            user_id=issue_to,
+        ).first()
+        if not recipient_membership:
+            db.session.rollback()
+            return jsonify({'error': 'invalid_recipient'}), 400
+        temp_instance = ItemInstance(
+            owner_id=issue_to,
+            lobby_id=lobby_id,
+            definition=definition,
+        )
+        target_pos = find_first_fit(temp_instance, 'inv_main', 0)
+        if not target_pos:
+            db.session.rollback()
+            return jsonify({'error': 'no_space'}), 409
+        new_instance = ItemInstance(
+            owner_id=issue_to,
+            lobby_id=lobby_id,
             definition_id=definition.id,
-            current_str=instance.current_str,
-            amount=transfer.amount,
+            container_id='inv_main',
+            pos_x=target_pos[0],
+            pos_y=target_pos[1],
+            rotated=0,
+            durability_current=definition.max_durability,
+            amount=1,
         )
         db.session.add(new_instance)
         db.session.flush()
-        db.session.add(
-            InventorySlot(
-                instance_id=new_instance.id,
-                owner_id=transfer.recipient_id,
-                x=slot_position[0],
-                y=slot_position[1],
-                rotation=0,
-            )
-        )
+        issued_instance_id = new_instance.id
 
-    transfer.status = 'accepted'
     db.session.commit()
-    return {'status': 'accepted'}, 200
+    return jsonify({'status': 'ok', 'template_id': definition.id, 'instance_id': issued_instance_id})
 
 
-@app.route('/api/transfers/<int:transfer_id>/accept', methods=['POST'])
-def accept_transfer(transfer_id: int):
+@app.route('/api/master/issue_by_id', methods=['POST'])
+def issue_item_by_id():
     user = require_user()
-    transfer = TransferRequest.query.get(transfer_id)
-    if not transfer or transfer.recipient_id != user.id:
-        return jsonify({'error': 'not_found'}), 404
-    payload, status = _finalize_transfer(transfer, accept=True)
-    return jsonify(payload), status
+    data = request.get_json(silent=True) or {}
+    lobby_id = parse_int(data.get('lobby_id'), 0)
+    if not is_master(user, lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    template_id = parse_int(data.get('template_id'), 0)
+    target_user_id = parse_int(data.get('target_user_id'), 0)
+    amount = parse_int(data.get('amount'), 1, minimum=1)
 
-
-@app.route('/api/transfers/<int:transfer_id>/decline', methods=['POST'])
-def decline_transfer(transfer_id: int):
-    user = require_user()
-    transfer = TransferRequest.query.get(transfer_id)
-    if not transfer or transfer.recipient_id != user.id:
+    definition = ItemDefinition.query.get(template_id)
+    if not definition:
         return jsonify({'error': 'not_found'}), 404
-    payload, status = _finalize_transfer(transfer, accept=False)
-    return jsonify(payload), status
+    target_membership = LobbyMember.query.filter_by(
+        lobby_id=lobby_id,
+        user_id=target_user_id,
+    ).first()
+    if not target_membership:
+        return jsonify({'error': 'invalid_recipient'}), 400
+    amount = min(amount, definition.max_amount)
+    temp_instance = ItemInstance(
+        owner_id=target_user_id,
+        lobby_id=lobby_id,
+        definition=definition,
+    )
+    target_pos = find_first_fit(temp_instance, 'inv_main', 0)
+    if not target_pos:
+        app.logger.warning('Issue by ID failed: no space for user %s', target_user_id)
+        return jsonify({'error': 'no_space'}), 409
+
+    new_instance = ItemInstance(
+        owner_id=target_user_id,
+        lobby_id=lobby_id,
+        definition_id=definition.id,
+        container_id='inv_main',
+        pos_x=target_pos[0],
+        pos_y=target_pos[1],
+        rotated=0,
+        durability_current=definition.max_durability,
+        amount=amount,
+    )
+    db.session.add(new_instance)
+    db.session.commit()
+    return jsonify({'status': 'ok', 'instance_id': new_instance.id})
 
 
 if __name__ == '__main__':

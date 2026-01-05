@@ -1610,10 +1610,15 @@ textarea {
 }
 
 .inventory-actions {
-    display: none;
+    display: flex;
     gap: 8px;
     justify-content: flex-end;
     margin-bottom: 12px;
+}
+
+.inventory-actions.is-disabled {
+    opacity: 0.5;
+    pointer-events: none;
 }
 
 .tetris-grid {
@@ -1631,6 +1636,26 @@ textarea {
     height: fit-content;
     padding: 4px;
     box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.65);
+}
+
+.tetris-grid--compact {
+    --cell-size: 20px;
+}
+
+.tetris-grid--shield {
+    --cell-size: 22px;
+}
+
+.tetris-grid--equip {
+    --cell-size: 22px;
+}
+
+.tetris-grid--backpack {
+    --cell-size: 20px;
+}
+
+.tetris-grid.is-hidden {
+    display: none;
 }
 
 .tetris-cell {
@@ -1675,6 +1700,11 @@ textarea {
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
 }
 
+.inventory-item__meta {
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.6);
+}
+
 .inventory-item__qty {
     font-size: 0.7rem;
     color: rgba(255, 255, 255, 0.7);
@@ -1709,8 +1739,12 @@ textarea {
     box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.6), 0 10px 18px rgba(200, 170, 90, 0.3);
 }
 
-.inventory-item,
-.paper-doll__slot {
+.inventory-item.is-broken {
+    border-color: rgba(255, 90, 90, 0.8);
+    box-shadow: inset 0 0 12px rgba(80, 0, 0, 0.6), 0 8px 12px rgba(160, 40, 40, 0.4);
+}
+
+.inventory.is-readonly .inventory-item {
     pointer-events: none;
 }
 
@@ -1733,8 +1767,8 @@ textarea {
 
 .context-menu {
     position: fixed;
-    right: 24px;
-    bottom: 24px;
+    right: auto;
+    bottom: auto;
     width: min(320px, 90vw);
     border-radius: 16px;
     border: 1px solid var(--border);
@@ -1808,6 +1842,17 @@ textarea {
     border-radius: 12px;
     padding: 8px 12px;
     background: rgba(255, 255, 255, 0.04);
+}
+
+.roster-card.is-selected {
+    border-color: rgba(180, 152, 96, 0.7);
+    box-shadow: 0 0 12px rgba(180, 152, 96, 0.25);
+}
+
+.divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 12px 0;
 }
 
 .header__toggle-button {

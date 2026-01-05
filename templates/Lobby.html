@@ -78,10 +78,10 @@
                             <h3>Склад команди</h3>
                             <p class="muted">Натисніть на учасника, щоб побачити деталі.</p>
                         </div>
-                        <div class="lobby-roster__list">
+                        <div class="lobby-roster__list" data-lobby-id="{{ membership.lobby.id }}">
                             {% for member in membership.lobby.members %}
                                 {% if member.user %}
-                                    <details class="roster-card">
+                                    <details class="roster-card" data-player-id="{{ member.user.id }}">
                                         <summary class="roster-card__summary">
                                             {% if member.user.userImage %}
                                                 <img src="{{ url_for('static', filename=static_path(member.user.userImage)) }}" alt="avatar" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
@@ -127,16 +127,19 @@
                     <div class="lobby-room__workspace card" aria-label="Поле для роботи">
                         <section
                             class="inventory inventory--embedded"
+                            data-inventory-root
                             data-player-id="{{ user.id }}"
+                            data-current-user-id="{{ user.id }}"
                             data-lobby-id="{{ membership.lobby.id }}"
-                            data-can-view="{{ 'true' if membership.role in ['master', 'spectator'] else 'false' }}"
+                            data-role="{{ membership.role }}"
+                            data-is-master="{{ 'true' if membership.role == 'master' or membership.lobby.admin_id == user.id else 'false' }}"
                         >
                             <div class="lobby-inventory-layout">
                                 <section class="lobby-inventory__character">
                                     <div class="inventory-panel panel-secondary lobby-panel">
                                         <div class="panel-header">
-                                            <span class="panel-title">{{ user.nickname or 'KING' }}</span>
-                                            <span class="panel-tag">-AVATAR-</span>
+                                            <span class="panel-title" data-player-name>{{ user.nickname or 'KING' }}</span>
+                                            <span class="panel-tag" data-player-role>Власний</span>
                                         </div>
                                         <div class="character-frame">
                                             {% if user.userImage %}
@@ -153,17 +156,9 @@
                                         </div>
                                         <div class="character-storage">
                                             <h4 class="inventory-section__title">Швидкі слоти</h4>
-                                            <div class="slot-grid slot-grid--compact">
-                                                {% for _ in range(10) %}
-                                                    <span class="slot-grid__cell"></span>
-                                                {% endfor %}
-                                            </div>
+                                            <div class="tetris-grid tetris-grid--compact" data-container-id="slot_weapon_main"></div>
                                             <h4 class="inventory-section__title">Пояс</h4>
-                                            <div class="slot-grid slot-grid--wide">
-                                                {% for _ in range(12) %}
-                                                    <span class="slot-grid__cell"></span>
-                                                {% endfor %}
-                                            </div>
+                                            <div class="tetris-grid tetris-grid--shield" data-container-id="slot_shield"></div>
                                         </div>
                                     </div>
                                 </section>
@@ -171,35 +166,67 @@
                                 <section class="lobby-inventory__inventory">
                                     <div class="inventory-grid-panel panel-main">
                                         <div class="panel-header">
-                                            <span class="panel-title">INVENTORY</span>
-                                            <span class="panel-tag">THIEVES BACKPACK</span>
+                                            <span class="panel-title">Inventory</span>
+                                            <span class="panel-tag" data-weight-display>Вага: 0 / 5 kg</span>
                                         </div>
-                                        <div class="inventory-actions">
-                                            <button class="button ghost" type="button" id="auto-pack">Auto-pack</button>
-                                            <button class="button" type="button" id="rotate-item">Rotate (R)</button>
+                                        <div class="inventory-actions" data-inventory-actions>
+                                            <button class="button ghost" type="button" data-action="auto-pack">Auto-pack</button>
+                                            <button class="button" type="button" data-action="rotate-item">Rotate (R)</button>
                                         </div>
-                                        <div class="tetris-grid" id="tetris-grid" aria-label="Рюкзак"></div>
+                                        <div class="tetris-grid" data-container-id="inv_main" aria-label="Рюкзак"></div>
                                         <p class="muted inventory-hint">Перетягуйте предмети, натискайте R для повороту та ПКМ для контекстного меню.</p>
                                     </div>
                                     <div class="inventory-subgrids">
                                         <div class="inventory-grid-panel">
                                             <div class="panel-header">
-                                                <span class="panel-title">СХОВИЩЕ</span>
+                                                <span class="panel-title">Backpack</span>
+                                                <span class="panel-tag">Додатковий рюкзак</span>
                                             </div>
-                                            <div class="slot-grid slot-grid--wide">
-                                                {% for _ in range(12) %}
-                                                    <span class="slot-grid__cell"></span>
-                                                {% endfor %}
-                                            </div>
+                                            <div class="tetris-grid tetris-grid--backpack" data-container-role="backpack"></div>
                                         </div>
                                         <div class="inventory-grid-panel">
                                             <div class="panel-header">
-                                                <span class="panel-title">ДОДАТКОВІ СЛОТИ</span>
+                                                <span class="panel-title">Equipment</span>
                                             </div>
-                                            <div class="slot-grid slot-grid--wide">
-                                                {% for _ in range(12) %}
-                                                    <span class="slot-grid__cell"></span>
-                                                {% endfor %}
+                                            <div class="equipment-board">
+                                                <div class="equipment-board__column">
+                                                    <div class="equipment-group">
+                                                        <span class="equipment-group__label">Head</span>
+                                                        <div class="tetris-grid tetris-grid--equip" data-container-id="equip_head"></div>
+                                                    </div>
+                                                    <div class="equipment-group">
+                                                        <span class="equipment-group__label">Shirt</span>
+                                                        <div class="tetris-grid tetris-grid--equip" data-container-id="equip_shirt"></div>
+                                                    </div>
+                                                    <div class="equipment-group">
+                                                        <span class="equipment-group__label">Pants</span>
+                                                        <div class="tetris-grid tetris-grid--equip" data-container-id="equip_pants"></div>
+                                                    </div>
+                                                </div>
+                                                <div class="equipment-board__column">
+                                                    <div class="equipment-group">
+                                                        <span class="equipment-group__label">Armor</span>
+                                                        <div class="tetris-grid tetris-grid--equip" data-container-id="equip_armor"></div>
+                                                    </div>
+                                                    <div class="equipment-group">
+                                                        <span class="equipment-group__label">Boots</span>
+                                                        <div class="tetris-grid tetris-grid--equip" data-container-id="equip_boots"></div>
+                                                    </div>
+                                                    <div class="equipment-group">
+                                                        <span class="equipment-group__label">Amulet</span>
+                                                        <div class="tetris-grid tetris-grid--equip" data-container-id="equip_amulet"></div>
+                                                    </div>
+                                                </div>
+                                                <div class="equipment-board__column">
+                                                    <div class="equipment-group">
+                                                        <span class="equipment-group__label">Weapon</span>
+                                                        <div class="tetris-grid tetris-grid--equip" data-container-id="equip_weapon"></div>
+                                                    </div>
+                                                    <div class="equipment-group">
+                                                        <span class="equipment-group__label">Back</span>
+                                                        <div class="tetris-grid tetris-grid--equip" data-container-id="equip_back"></div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -215,15 +242,23 @@
                                             <section class="inventory-section inventory-section--master">
                                                 <div class="master-panel">
                                                     <h3>Створення предмета</h3>
-                                                    <form class="form">
+                                                    <form class="form" data-master-create>
                                                         <label for="item_name_{{ membership.lobby.id }}">Назва</label>
                                                         <input type="text" id="item_name_{{ membership.lobby.id }}" placeholder="Наприклад: Зілля">
+                                                        <label for="item_description_{{ membership.lobby.id }}">Опис</label>
+                                                        <textarea id="item_description_{{ membership.lobby.id }}" rows="3" placeholder="Короткий опис"></textarea>
                                                         <label for="item_type_{{ membership.lobby.id }}">Тип</label>
                                                         <select id="item_type_{{ membership.lobby.id }}">
                                                             <option value="weapon">Weapon</option>
                                                             <option value="armor">Armor</option>
-                                                            <option value="ammunition">Ammunition</option>
-                                                            <option value="material">Material</option>
+                                                            <option value="shield">Shield</option>
+                                                            <option value="backpack">Backpack</option>
+                                                            <option value="head">Head</option>
+                                                            <option value="shirt">Shirt</option>
+                                                            <option value="pants">Pants</option>
+                                                            <option value="boots">Boots</option>
+                                                            <option value="amulet">Amulet</option>
+                                                            <option value="ammo">Ammo</option>
                                                             <option value="food">Food</option>
                                                             <option value="other">Other</option>
                                                         </select>
@@ -249,6 +284,16 @@
                                                                 <input type="number" id="item_weight_{{ membership.lobby.id }}" min="0" step="0.1" value="0">
                                                             </div>
                                                         </div>
+                                                        <div class="form inline">
+                                                            <div>
+                                                                <label for="item_durability_{{ membership.lobby.id }}">Max durability</label>
+                                                                <input type="number" id="item_durability_{{ membership.lobby.id }}" min="1" value="10">
+                                                            </div>
+                                                            <div>
+                                                                <label for="item_max_amount_{{ membership.lobby.id }}">Stack max</label>
+                                                                <input type="number" id="item_max_amount_{{ membership.lobby.id }}" min="1" value="1">
+                                                            </div>
+                                                        </div>
                                                         <label for="item_image_{{ membership.lobby.id }}">Фото предмета</label>
                                                         <input type="file" id="item_image_{{ membership.lobby.id }}" accept="image/*">
                                                         <label for="item_target_{{ membership.lobby.id }}">Передати</label>
@@ -260,6 +305,23 @@
                                                             {% endfor %}
                                                         </select>
                                                         <button type="button" class="button">Створити та передати</button>
+                                                    </form>
+                                                    <div class="divider"></div>
+                                                    <form class="form" data-master-issue>
+                                                        <h4>Видати за ID</h4>
+                                                        <label for="issue_template_{{ membership.lobby.id }}">Template ID</label>
+                                                        <input type="number" id="issue_template_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону">
+                                                        <label for="issue_target_{{ membership.lobby.id }}">Отримувач</label>
+                                                        <select id="issue_target_{{ membership.lobby.id }}">
+                                                            {% for member in membership.lobby.members %}
+                                                                {% if member.user %}
+                                                                    <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
+                                                                {% endif %}
+                                                            {% endfor %}
+                                                        </select>
+                                                        <label for="issue_amount_{{ membership.lobby.id }}">Кількість</label>
+                                                        <input type="number" id="issue_amount_{{ membership.lobby.id }}" min="1" value="1">
+                                                        <button type="button" class="button ghost">Видати</button>
                                                     </form>
                                                 </div>
                                             </section>
@@ -372,6 +434,7 @@
                                 <button class="button ghost" type="button" data-action="split">Split</button>
                                 <button class="button ghost" type="button" data-action="drop">Drop</button>
                                 <button class="button" type="button" data-action="transfer">Transfer to…</button>
+                                <button class="button ghost" type="button" data-action="issue-by-id" data-master-only="true">Issue by ID</button>
                             </div>
                         </div>
 
@@ -390,8 +453,8 @@
 </section>
 
 <script>
-    window.INVENTORY_DATA = {{ inventory_data | tojson }};
-    window.TRANSFER_PLAYERS = {{ transfer_players | tojson }};
+    window.LOBBY_INVENTORIES = {{ inventory_payloads | tojson }};
+    window.LOBBY_TRANSFER_PLAYERS = {{ transfer_players | tojson }};
 </script>
 <script src="{{ url_for('static', filename='inventory.js') }}" defer></script>
 <script src="{{ url_for('static', filename='lobby.js') }}" defer></script>
