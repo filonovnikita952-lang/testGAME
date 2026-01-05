@@ -5,11 +5,19 @@
 {% block page_class %}page--inventory{% endblock %}
 
 {% block content %}
-<section class="inventory">
+<section
+    class="inventory"
+    data-inventory-root
+    data-player-id="{{ user.id if user else '' }}"
+    data-current-user-id="{{ user.id if user else '' }}"
+    data-lobby-id=""
+    data-role="player"
+    data-is-master="false"
+>
     <div class="inventory-panel panel-secondary">
         <div class="panel-header">
-            <span class="panel-title">KING</span>
-            <span class="panel-tag">-BACKPACK-</span>
+            <span class="panel-title" data-player-name>KING</span>
+            <span class="panel-tag" data-player-role>Inventory</span>
         </div>
         <div class="inventory-tabs" role="tablist" aria-label="Режими інвентаря">
             <button class="tab-button is-active" data-tab="equipment" type="button" role="tab">Екіпировка</button>
@@ -17,33 +25,44 @@
         </div>
 
         <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
-            <div class="equipment-grid" aria-label="Екіпіровка">
-                <div class="equipment-slot equipment-slot--weapon" data-slot="weapon">
-                    <span>Основне озброєння</span>
+            <div class="equipment-board">
+                <div class="equipment-board__column">
+                    <div class="equipment-group">
+                        <span class="equipment-group__label">Head</span>
+                        <div class="tetris-grid tetris-grid--equip" data-container-id="equip_head"></div>
+                    </div>
+                    <div class="equipment-group">
+                        <span class="equipment-group__label">Shirt</span>
+                        <div class="tetris-grid tetris-grid--equip" data-container-id="equip_shirt"></div>
+                    </div>
+                    <div class="equipment-group">
+                        <span class="equipment-group__label">Pants</span>
+                        <div class="tetris-grid tetris-grid--equip" data-container-id="equip_pants"></div>
+                    </div>
                 </div>
-                <div class="equipment-slot equipment-slot--shield" data-slot="offhand">
-                    <span>Щит</span>
+                <div class="equipment-board__column">
+                    <div class="equipment-group">
+                        <span class="equipment-group__label">Armor</span>
+                        <div class="tetris-grid tetris-grid--equip" data-container-id="equip_armor"></div>
+                    </div>
+                    <div class="equipment-group">
+                        <span class="equipment-group__label">Boots</span>
+                        <div class="tetris-grid tetris-grid--equip" data-container-id="equip_boots"></div>
+                    </div>
+                    <div class="equipment-group">
+                        <span class="equipment-group__label">Amulet</span>
+                        <div class="tetris-grid tetris-grid--equip" data-container-id="equip_amulet"></div>
+                    </div>
                 </div>
-                <div class="equipment-slot equipment-slot--shirt" data-slot="shirt">
-                    <span>Кофта</span>
-                </div>
-                <div class="equipment-slot equipment-slot--pants" data-slot="pants">
-                    <span>Штани</span>
-                </div>
-                <div class="equipment-slot equipment-slot--boots" data-slot="boots">
-                    <span>Сапоги</span>
-                </div>
-                <div class="equipment-slot equipment-slot--armor" data-slot="armor">
-                    <span>Броня</span>
-                </div>
-                <div class="equipment-slot equipment-slot--head" data-slot="head">
-                    <span>Голова</span>
-                </div>
-                <div class="equipment-slot equipment-slot--jewelry" data-slot="jewelry">
-                    <span>Украшения</span>
-                </div>
-                <div class="equipment-slot equipment-slot--cloak" data-slot="cloak">
-                    <span>Плащ/Рюкзак</span>
+                <div class="equipment-board__column">
+                    <div class="equipment-group">
+                        <span class="equipment-group__label">Weapon</span>
+                        <div class="tetris-grid tetris-grid--equip" data-container-id="equip_weapon"></div>
+                    </div>
+                    <div class="equipment-group">
+                        <span class="equipment-group__label">Back</span>
+                        <div class="tetris-grid tetris-grid--equip" data-container-id="equip_back"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -96,13 +115,13 @@
     <div class="inventory-grid-panel panel-main">
         <div class="panel-header">
             <span class="panel-title">INVENTORY</span>
-            <span class="panel-tag">THIEVES BACKPACK</span>
+            <span class="panel-tag" data-weight-display>Вага: 0 / 5 kg</span>
         </div>
-        <div class="inventory-actions">
-            <button class="button ghost" type="button" id="auto-pack">Auto-pack</button>
-            <button class="button" type="button" id="rotate-item">Rotate (R)</button>
+        <div class="inventory-actions" data-inventory-actions>
+            <button class="button ghost" type="button" data-action="auto-pack">Auto-pack</button>
+            <button class="button" type="button" data-action="rotate-item">Rotate (R)</button>
         </div>
-        <div class="tetris-grid" id="tetris-grid" aria-label="Рюкзак"></div>
+        <div class="tetris-grid" data-container-id="inv_main" aria-label="Рюкзак"></div>
         <p class="muted inventory-hint">Перетягуйте предмети, натискайте R для повороту та ПКМ для контекстного меню.</p>
     </div>
 </section>
