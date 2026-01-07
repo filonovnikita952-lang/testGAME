@@ -39,8 +39,7 @@ const handleAction = async (event) => {
         await fetchTransfers();
         window.dispatchEvent(new CustomEvent('inventory-transfer-updated'));
     } else {
-        const payload = await response.json().catch(() => ({}));
-        alert(payload.error || 'Не вдалося виконати дію.');
+        await response.json().catch(() => ({}));
     }
 };
 

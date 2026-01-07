@@ -160,7 +160,7 @@
                                     <div class="inventory-grid-panel panel-main">
                                         <div class="panel-header">
                                             <span class="panel-title">Inventory</span>
-                                            <span class="panel-tag" data-weight-display>Вага: 0 / 5 kg</span>
+                                            <span class="panel-tag" data-weight-display>0 / 5</span>
                                         </div>
                                         <div class="inventory-actions" data-inventory-actions>
                                             <button class="button ghost" type="button" data-action="auto-pack">Auto-pack</button>
@@ -232,6 +232,18 @@
                                         <strong data-player-name>{{ user.nickname or 'KING' }}</strong>
                                         <span class="viewing-banner__role" data-player-role>Власний</span>
                                     </div>
+                                    <div class="inventory-panel panel-secondary lobby-panel">
+                                        <div class="panel-header">
+                                            <span class="panel-title">Деталі предмета</span>
+                                        </div>
+                                        <div class="item-detail">
+                                            <img src="/static/images/default_avatar.png" alt="Item" class="item-detail__image" data-item-detail-image>
+                                            <div>
+                                                <strong class="item-detail__name" data-item-detail-name>Оберіть предмет</strong>
+                                                <p class="muted item-detail__description" data-item-detail-description></p>
+                                            </div>
+                                        </div>
+                                    </div>
                                     {% if membership.role == 'master' %}
                                         <div class="inventory-panel panel-secondary lobby-panel lobby-panel--scroll">
                                             <div class="panel-header">
@@ -259,6 +271,7 @@
                                                             <option value="amulet">Amulet</option>
                                                             <option value="ammo">Ammo</option>
                                                             <option value="food">Food</option>
+                                                            <option value="map">Map</option>
                                                             <option value="other">Other</option>
                                                         </select>
                                                         <label for="item_quality_{{ membership.lobby.id }}">Редкість</label>
@@ -289,8 +302,18 @@
                                                                 <input type="number" id="item_durability_{{ membership.lobby.id }}" min="1" value="10">
                                                             </div>
                                                             <div>
+                                                                <label for="item_durability_current_{{ membership.lobby.id }}">Durability</label>
+                                                                <input type="number" id="item_durability_current_{{ membership.lobby.id }}" min="0" value="">
+                                                                <input type="hidden" id="item_random_durability_{{ membership.lobby.id }}" value="0">
+                                                                <button type="button" class="button ghost" data-random-durability>Random</button>
+                                                            </div>
+                                                            <div>
                                                                 <label for="item_max_amount_{{ membership.lobby.id }}">Stack max</label>
                                                                 <input type="number" id="item_max_amount_{{ membership.lobby.id }}" min="1" value="1">
+                                                            </div>
+                                                            <div>
+                                                                <label for="item_issue_amount_{{ membership.lobby.id }}">Кількість</label>
+                                                                <input type="number" id="item_issue_amount_{{ membership.lobby.id }}" min="1" value="1">
                                                             </div>
                                                         </div>
                                                         <label for="item_image_{{ membership.lobby.id }}">Фото предмета</label>
@@ -320,7 +343,20 @@
                                                         </select>
                                                         <label for="issue_amount_{{ membership.lobby.id }}">Кількість</label>
                                                         <input type="number" id="issue_amount_{{ membership.lobby.id }}" min="1" value="1">
+                                                        <label for="issue_durability_current_{{ membership.lobby.id }}">Durability</label>
+                                                        <input type="number" id="issue_durability_current_{{ membership.lobby.id }}" min="0" value="">
+                                                        <input type="hidden" id="issue_random_durability_{{ membership.lobby.id }}" value="0">
+                                                        <button type="button" class="button ghost" data-random-durability>Random</button>
                                                         <button type="button" class="button ghost">Видати</button>
+                                                    </form>
+                                                    <div class="divider"></div>
+                                                    <form class="form" data-master-image-update>
+                                                        <h4>Оновити фото</h4>
+                                                        <label for="image_template_{{ membership.lobby.id }}">Template ID</label>
+                                                        <input type="number" id="image_template_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону">
+                                                        <label for="item_image_update_{{ membership.lobby.id }}">Фото предмета</label>
+                                                        <input type="file" id="item_image_update_{{ membership.lobby.id }}" accept="image/*">
+                                                        <button type="button" class="button ghost">Оновити</button>
                                                     </form>
                                                 </div>
                                             </section>
@@ -369,7 +405,16 @@
                                 <button class="button ghost" type="button" data-action="use">Use</button>
                                 <button class="button ghost" type="button" data-action="equip">Equip</button>
                                 <button class="button ghost" type="button" data-action="rotate">Rotate</button>
-                                <button class="button ghost" type="button" data-action="split">Split</button>
+                                <div class="context-menu__field" data-split-field>
+                                    <label for="context-split-amount">Split</label>
+                                    <input type="number" id="context-split-amount" min="1" data-split-amount>
+                                    <button class="button ghost" type="button" data-action="split">Split</button>
+                                </div>
+                                <div class="context-menu__field" data-durability-field data-master-only="true">
+                                    <label for="context-durability">Durability</label>
+                                    <input type="number" id="context-durability" min="0" data-durability-input>
+                                    <button class="button ghost" type="button" data-action="set-durability">Set</button>
+                                </div>
                                 <button class="button ghost" type="button" data-action="drop">Drop</button>
                                 <button class="button" type="button" data-action="transfer">Transfer to…</button>
                                 <button class="button ghost" type="button" data-action="issue-by-id" data-master-only="true">Issue by ID</button>
@@ -379,6 +424,9 @@
                         <div class="transfer-modal" id="transfer-modal" aria-hidden="true">
                             <div class="transfer-modal__content">
                                 <h3>Передати предмет</h3>
+                                <p class="muted" data-transfer-item-name id="transfer-item-name">—</p>
+                                <label for="transfer-amount" class="muted">Кількість</label>
+                                <input type="number" id="transfer-amount" min="1" value="1">
                                 <div class="transfer-modal__players" id="transfer-players"></div>
                                 <button class="button ghost" type="button" id="transfer-close">Скасувати</button>
                             </div>

@@ -1880,6 +1880,16 @@ textarea {
     gap: 8px;
 }
 
+.context-menu__field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.context-menu__field input {
+    width: 100%;
+}
+
 .chip--quality {
     background: rgba(109, 211, 255, 0.15);
 }
@@ -1906,6 +1916,25 @@ textarea {
     padding: 20px;
     display: grid;
     gap: 12px;
+}
+
+.item-detail {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.item-detail__image {
+    width: 72px;
+    height: 72px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    object-fit: cover;
+    background: rgba(18, 22, 32, 0.8);
+}
+
+.item-detail__description {
+    margin-top: 6px;
 }
 
 .transfer-modal__players {
