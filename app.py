@@ -144,6 +144,11 @@ class ItemType(db.Model):
     name = db.Column(db.String(40), nullable=False, unique=True)
     stackable = db.Column(db.Boolean, default=False)
     max_amount = db.Column(db.Integer, nullable=False, default=1)
+    has_durability = db.Column(db.Boolean, default=False)
+    usable = db.Column(db.Boolean, default=False)
+    consumable = db.Column(db.Boolean, default=False)
+    equip_rules = db.Column(db.Text, nullable=True)
+    linked_weapon_type = db.Column(db.String(40), nullable=True)
 
     definitions = db.relationship('ItemDefinition', back_populates='item_type')
 
@@ -154,15 +159,12 @@ class ItemDefinition(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
     description = db.Column(db.Text, nullable=False)
-    image = db.Column(db.String(255), nullable=True)
-    width = db.Column(db.Integer, nullable=False, default=1)
-    height = db.Column(db.Integer, nullable=False, default=1)
+    image_path = db.Column('image', db.String(255), nullable=True)
+    w = db.Column('width', db.Integer, nullable=False, default=1)
+    h = db.Column('height', db.Integer, nullable=False, default=1)
     weight = db.Column(db.Float, nullable=False, default=0)
-    max_durability = db.Column(db.Integer, nullable=False, default=1)
+    max_str = db.Column('max_durability', db.Integer, nullable=True)
     quality = db.Column(db.String(20), nullable=False, default='common')
-    max_amount = db.Column(db.Integer, nullable=False, default=1)
-    rotatable = db.Column(db.Boolean, default=True)
-    equip_slot = db.Column(db.String(30), nullable=True)
     bag_width = db.Column(db.Integer, nullable=True)
     bag_height = db.Column(db.Integer, nullable=True)
     type_id = db.Column(db.Integer, db.ForeignKey('item_type.id'), nullable=False)
@@ -177,12 +179,12 @@ class ItemInstance(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     lobby_id = db.Column(db.Integer, db.ForeignKey('lobby.id'), nullable=True)
     owner_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False)
-    definition_id = db.Column(db.Integer, db.ForeignKey('item_definition.id'), nullable=False)
-    container_id = db.Column(db.String(40), nullable=False, default='inv_main')
+    template_id = db.Column('definition_id', db.Integer, db.ForeignKey('item_definition.id'), nullable=False)
+    container_i = db.Column('container_id', db.String(40), nullable=False, default='inv_main')
     pos_x = db.Column(db.Integer, nullable=True)
     pos_y = db.Column(db.Integer, nullable=True)
     rotated = db.Column(db.Integer, nullable=False, default=0)
-    durability_current = db.Column(db.Integer, nullable=False, default=1)
+    str_current = db.Column('durability_current', db.Integer, nullable=True, default=None)
     amount = db.Column(db.Integer, nullable=False, default=1)
     custom_name = db.Column(db.String(120), nullable=True)
     custom_description = db.Column(db.Text, nullable=True)
@@ -235,6 +237,21 @@ def _ensure_item_type_columns():
             db.session.commit()
         if 'max_amount' not in columns:
             db.session.execute(text('ALTER TABLE item_type ADD COLUMN max_amount INTEGER DEFAULT 1'))
+            db.session.commit()
+        if 'has_durability' not in columns:
+            db.session.execute(text('ALTER TABLE item_type ADD COLUMN has_durability BOOLEAN DEFAULT 0'))
+            db.session.commit()
+        if 'usable' not in columns:
+            db.session.execute(text('ALTER TABLE item_type ADD COLUMN usable BOOLEAN DEFAULT 0'))
+            db.session.commit()
+        if 'consumable' not in columns:
+            db.session.execute(text('ALTER TABLE item_type ADD COLUMN consumable BOOLEAN DEFAULT 0'))
+            db.session.commit()
+        if 'equip_rules' not in columns:
+            db.session.execute(text('ALTER TABLE item_type ADD COLUMN equip_rules TEXT'))
+            db.session.commit()
+        if 'linked_weapon_type' not in columns:
+            db.session.execute(text('ALTER TABLE item_type ADD COLUMN linked_weapon_type VARCHAR(40)'))
             db.session.commit()
 
 
@@ -380,195 +397,235 @@ def parse_int(value: Optional[str], default: int, minimum: int = 0) -> int:
     return max(parsed, minimum)
 
 
-def get_or_create_item_type(name: str) -> ItemType:
+def get_or_create_item_type(
+    name: str,
+    *,
+    stackable: bool = False,
+    max_amount: int = 1,
+    has_durability: bool = False,
+    usable: bool = False,
+    consumable: bool = False,
+    equip_rules: Optional[str] = None,
+    linked_weapon_type: Optional[str] = None,
+) -> ItemType:
     item_type = ItemType.query.filter_by(name=name).first()
     if item_type:
         return item_type
-    item_type = ItemType(name=name)
+    item_type = ItemType(
+        name=name,
+        stackable=stackable,
+        max_amount=max_amount,
+        has_durability=has_durability,
+        usable=usable,
+        consumable=consumable,
+        equip_rules=equip_rules,
+        linked_weapon_type=linked_weapon_type,
+    )
     db.session.add(item_type)
     db.session.flush()
     return item_type
 
 
+def normalize_rotation_value(rotated: Optional[int]) -> int:
+    if rotated in {1, 90, True, '1', '90'}:
+        return 1
+    return 0
+
+
+def has_durability(definition: ItemDefinition) -> bool:
+    return bool(definition.item_type and definition.item_type.has_durability)
+
+
+def stackable_type(definition: ItemDefinition) -> bool:
+    return bool(definition.item_type and definition.item_type.stackable)
+
+
+def normalized_max_amount(definition: ItemDefinition) -> int:
+    if not stackable_type(definition):
+        return 1
+    max_amount = definition.item_type.max_amount or 1
+    return max(max_amount, 1)
+
+
+def normalize_stack_amount(definition: ItemDefinition, amount: int) -> int:
+    if not stackable_type(definition):
+        return 1
+    return min(max(amount, 1), normalized_max_amount(definition))
+
+
+def initial_str_current(definition: ItemDefinition) -> int:
+    if has_durability(definition):
+        return max(definition.max_str or 1, 1)
+    return 0
+
+
 def seed_item_definitions() -> list[ItemDefinition]:
     definitions = ItemDefinition.query.all()
-    if definitions:
-        return definitions
-    type_weapon = get_or_create_item_type('weapon')
-    type_armor = get_or_create_item_type('armor')
-    type_shield = get_or_create_item_type('shield')
-    type_backpack = get_or_create_item_type('backpack')
-    type_head = get_or_create_item_type('head')
-    type_shirt = get_or_create_item_type('shirt')
-    type_pants = get_or_create_item_type('pants')
-    type_boots = get_or_create_item_type('boots')
-    type_amulet = get_or_create_item_type('amulet')
-    type_food = get_or_create_item_type('food')
-    type_ammo = get_or_create_item_type('ammo')
-    type_other = get_or_create_item_type('other')
+    type_weapon = get_or_create_item_type('weapon', has_durability=True, usable=True)
+    type_armor = get_or_create_item_type('armor', has_durability=True)
+    type_shield = get_or_create_item_type('shield', has_durability=True)
+    type_backpack = get_or_create_item_type('backpack', has_durability=True)
+    type_head = get_or_create_item_type('head', has_durability=True)
+    type_shirt = get_or_create_item_type('shirt', has_durability=True)
+    type_pants = get_or_create_item_type('pants', has_durability=True)
+    type_boots = get_or_create_item_type('boots', has_durability=True)
+    type_amulet = get_or_create_item_type('amulet', has_durability=True)
+    type_food = get_or_create_item_type('food', stackable=True, max_amount=5, usable=True, consumable=True)
+    type_ammo = get_or_create_item_type(
+        'ammo',
+        stackable=True,
+        max_amount=30,
+        consumable=True,
+        linked_weapon_type='weapon',
+    )
+    type_other = get_or_create_item_type('other', stackable=True, max_amount=9999)
 
     type_food.stackable = True
     type_food.max_amount = 5
+    type_food.usable = True
+    type_food.consumable = True
     type_ammo.stackable = True
     type_ammo.max_amount = 30
+    type_ammo.consumable = True
+    type_ammo.linked_weapon_type = type_ammo.linked_weapon_type or 'weapon'
     type_other.stackable = True
     type_other.max_amount = 9999
+
+    db.session.commit()
+    if definitions:
+        return definitions
 
     definitions = [
         ItemDefinition(
             name='Меч найманця',
             description='Балансований клинок для ближнього бою.',
-            image='images/1_skull.png',
-            width=1,
-            height=3,
+            image_path='images/1_skull.png',
+            w=1,
+            h=3,
             weight=3.2,
-            max_durability=100,
+            max_str=100,
             quality='uncommon',
-            max_amount=1,
-            rotatable=True,
             item_type=type_weapon,
         ),
         ItemDefinition(
             name='Шкіряна броня',
             description='Легка броня для мандрівника.',
-            image='images/2_boots.png',
-            width=2,
-            height=3,
+            image_path='images/2_boots.png',
+            w=2,
+            h=3,
             weight=5.4,
-            max_durability=120,
+            max_str=120,
             quality='common',
-            max_amount=1,
-            rotatable=False,
             item_type=type_armor,
         ),
         ItemDefinition(
             name='Баклер',
             description='Невеликий щит для захисту від атак.',
-            image='images/1_bionic-eye.png',
-            width=2,
-            height=2,
+            image_path='images/1_bionic-eye.png',
+            w=2,
+            h=2,
             weight=2.6,
-            max_durability=90,
+            max_str=90,
             quality='common',
-            max_amount=1,
-            rotatable=True,
             item_type=type_shield,
         ),
         ItemDefinition(
             name='Дорожній рюкзак',
             description='Складається з жорсткого каркасу та ременів.',
-            image='images/1_bionic-eye.png',
-            width=3,
-            height=3,
+            image_path='images/1_bionic-eye.png',
+            w=3,
+            h=3,
             weight=1.8,
-            max_durability=80,
+            max_str=80,
             quality='uncommon',
-            max_amount=1,
-            rotatable=False,
             item_type=type_backpack,
         ),
         ItemDefinition(
             name='Шолом розвідника',
             description='Захищає голову та очі від ударів.',
-            image='images/1_bionic-eye.png',
-            width=2,
-            height=2,
+            image_path='images/1_bionic-eye.png',
+            w=2,
+            h=2,
             weight=1.2,
-            max_durability=60,
+            max_str=60,
             quality='common',
-            max_amount=1,
-            rotatable=False,
             item_type=type_head,
         ),
         ItemDefinition(
             name='Подорожня сорочка',
             description='Проста тканинна сорочка.',
-            image='images/1_bionic-eye.png',
-            width=2,
-            height=2,
+            image_path='images/1_bionic-eye.png',
+            w=2,
+            h=2,
             weight=0.8,
-            max_durability=40,
+            max_str=40,
             quality='common',
-            max_amount=1,
-            rotatable=False,
             item_type=type_shirt,
         ),
         ItemDefinition(
             name='Штани шукача',
             description='Зручні штани для походів.',
-            image='images/1_bionic-eye.png',
-            width=2,
-            height=2,
+            image_path='images/1_bionic-eye.png',
+            w=2,
+            h=2,
             weight=0.9,
-            max_durability=40,
+            max_str=40,
             quality='common',
-            max_amount=1,
-            rotatable=False,
             item_type=type_pants,
         ),
         ItemDefinition(
             name='Черевики мандрівника',
             description='Довговічне взуття для мандрів.',
-            image='images/1_bionic-eye.png',
-            width=2,
-            height=2,
+            image_path='images/1_bionic-eye.png',
+            w=2,
+            h=2,
             weight=0.9,
-            max_durability=50,
+            max_str=50,
             quality='common',
-            max_amount=1,
-            rotatable=False,
             item_type=type_boots,
         ),
         ItemDefinition(
             name='Амулет вітру',
             description='Магічний амулет для захисту.',
-            image='images/1_bionic-eye.png',
-            width=1,
-            height=2,
+            image_path='images/1_bionic-eye.png',
+            w=1,
+            h=2,
             weight=0.2,
-            max_durability=45,
+            max_str=45,
             quality='uncommon',
-            max_amount=1,
-            rotatable=True,
             item_type=type_amulet,
         ),
         ItemDefinition(
             name='Зілля лікування',
             description='Відновлює 12 HP.',
-            image='images/1_bionic-eye.png',
-            width=1,
-            height=2,
+            image_path='images/1_bionic-eye.png',
+            w=1,
+            h=2,
             weight=0.3,
-            max_durability=1,
+            max_str=None,
             quality='uncommon',
-            max_amount=5,
-            rotatable=True,
             item_type=type_food,
         ),
         ItemDefinition(
             name='Стрілковий набір',
             description='Пучок стріл для лука.',
-            image='images/1_bionic-eye.png',
-            width=2,
-            height=1,
+            image_path='images/1_bionic-eye.png',
+            w=2,
+            h=1,
             weight=0.1,
-            max_durability=1,
+            max_str=None,
             quality='common',
-            max_amount=30,
-            rotatable=True,
             item_type=type_ammo,
         ),
         ItemDefinition(
             name='Мішечок монет',
             description='Золоті монети. Використовуються як предмет.',
-            image='images/1_bionic-eye.png',
-            width=1,
-            height=1,
+            image_path='images/1_bionic-eye.png',
+            w=1,
+            h=1,
             weight=0.01,
-            max_durability=1,
+            max_str=None,
             quality='common',
-            max_amount=9999,
-            rotatable=False,
             item_type=type_other,
         ),
     ]
@@ -586,81 +643,81 @@ def seed_user_inventory(user: User, lobby_id: Optional[int]) -> list[ItemInstanc
         ItemInstance(
             owner_id=user.id,
             definition=definitions[0],
-            container_id='inv_main',
+            container_i='inv_main',
             pos_x=1,
             pos_y=1,
             rotated=0,
-            durability_current=86,
+            str_current=86,
             amount=1,
         ),
         ItemInstance(
             owner_id=user.id,
             definition=definitions[1],
-            container_id='inv_main',
+            container_i='inv_main',
             pos_x=3,
             pos_y=1,
             rotated=0,
-            durability_current=110,
+            str_current=110,
             amount=1,
         ),
         ItemInstance(
             owner_id=user.id,
             definition=definitions[2],
-            container_id='inv_main',
+            container_i='inv_main',
             pos_x=6,
             pos_y=1,
             rotated=0,
-            durability_current=85,
+            str_current=85,
             amount=1,
         ),
         ItemInstance(
             owner_id=user.id,
             definition=definitions[3],
-            container_id='inv_main',
+            container_i='inv_main',
             pos_x=8,
             pos_y=1,
             rotated=0,
-            durability_current=80,
+            str_current=80,
             amount=1,
         ),
         ItemInstance(
             owner_id=user.id,
             definition=definitions[4],
-            container_id='inv_main',
+            container_i='inv_main',
             pos_x=10,
             pos_y=1,
             rotated=0,
-            durability_current=50,
+            str_current=50,
             amount=1,
         ),
         ItemInstance(
             owner_id=user.id,
             definition=definitions[9],
-            container_id='inv_main',
+            container_i='inv_main',
             pos_x=1,
             pos_y=5,
             rotated=0,
-            durability_current=1,
+            str_current=0,
             amount=3,
         ),
         ItemInstance(
             owner_id=user.id,
             definition=definitions[11],
-            container_id='inv_main',
+            container_i='inv_main',
             pos_x=4,
             pos_y=5,
             rotated=0,
-            durability_current=1,
+            str_current=0,
             amount=280,
         ),
         ItemInstance(
             owner_id=user.id,
             definition=definitions[10],
-            container_id='inv_main',
+            container_i='inv_main',
             pos_x=6,
             pos_y=5,
             rotated=0,
-            durability_current=1,
+            str_current=0,
             amount=20,
         ),
     ]
@@ -704,11 +761,11 @@ def can_edit_inventory(current: User, target_user_id: int, lobby_id: Optional[in
 
 def get_backpack_container(owner_id: int) -> Optional[ItemInstance]:
     return (
-        ItemInstance.query.join(ItemDefinition, ItemInstance.definition_id == ItemDefinition.id)
+        ItemInstance.query.join(ItemDefinition, ItemInstance.template_id == ItemDefinition.id)
         .join(ItemType, ItemDefinition.type_id == ItemType.id)
         .filter(
             ItemInstance.owner_id == owner_id,
-            ItemInstance.container_id == 'equip_back',
+            ItemInstance.container_i == 'equip_back',
             ItemType.name == 'backpack',
         )
         .first()
@@ -801,27 +858,38 @@ def build_inventory_payload(
         definition = instance.definition
         item_weight = definition.weight * instance.amount
         current_weight += item_weight
+        max_amount = normalized_max_amount(definition)
+        stackable = stackable_type(definition)
+        durability_enabled = has_durability(definition)
+        visible_custom_description = None
+        if viewer and (viewer.id == user.id or is_master(viewer, lobby_id)):
+            visible_custom_description = instance.custom_description
         items_payload.append({
             'id': instance.id,
             'template_id': definition.id,
             'owner_id': instance.owner_id,
             'name': instance.custom_name or definition.name,
+            'base_name': definition.name,
+            'custom_name': instance.custom_name,
             'type': definition.item_type.name,
+            'type_id': definition.type_id,
             'quality': definition.quality,
-            'description': instance.custom_description or definition.description,
-            'image': definition.image,
-            'size': {'w': definition.width, 'h': definition.height},
-            'rotatable': definition.rotatable,
-            'stackable': definition.item_type.stackable and definition.max_durability <= 1,
-            'max_stack': definition.item_type.max_amount,
+            'description': definition.description,
+            'custom_description': visible_custom_description,
+            'image_path': definition.image_path,
+            'size': {'w': definition.w, 'h': definition.h},
+            'rotatable': True,
+            'stackable': stackable,
+            'max_stack': max_amount,
             'weight': definition.weight,
-            'max_durability': definition.max_durability,
-            'durability_current': instance.durability_current,
-            'amount': instance.amount,
-            'container_id': instance.container_id,
+            'max_str': definition.max_str if durability_enabled else None,
+            'str_current': max(instance.str_current or 0, 0) if durability_enabled else None,
+            'has_durability': durability_enabled,
+            'amount': normalize_stack_amount(definition, instance.amount),
+            'container_id': instance.container_i,
             'pos_x': instance.pos_x,
             'pos_y': instance.pos_y,
-            'rotated': instance.rotated,
+            'rotated': normalize_rotation_value(instance.rotated),
             'version': instance.version,
         })
     viewer = viewer or user
@@ -859,17 +927,15 @@ def build_transfer_players(lobby_id: Optional[int]) -> list[dict]:
 
 
 def item_dimensions(definition: ItemDefinition, rotated: int) -> tuple[int, int]:
-    width = definition.width
-    height = definition.height
-    if rotated == 90:
+    width = definition.w
+    height = definition.h
+    if normalize_rotation_value(rotated) == 1:
         return height, width
     return width, height
 
 
 def normalize_rotation(definition: ItemDefinition, rotated: Optional[int]) -> int:
-    if rotated == 90 and definition.rotatable:
-        return 90
-    return 0
+    return normalize_rotation_value(rotated)
 
 
 def get_container_items(
@@ -879,7 +945,7 @@ def get_container_items(
 ) -> list[ItemInstance]:
     query = ItemInstance.query.filter_by(
         owner_id=owner_id,
-        container_id=container_id,
+        container_i=container_id,
     )
     if exclude_id:
         query = query.filter(ItemInstance.id != exclude_id)
@@ -929,7 +995,7 @@ def can_place_item(
     for other in get_container_items(instance.owner_id, container_id, exclude_id=instance.id):
         if other.pos_x is None or other.pos_y is None:
             continue
-        other_rotated = normalize_rotation(other.definition, other.rotated)
+        other_rotated = normalize_rotation_value(other.rotated)
         other_w, other_h = item_dimensions(other.definition, other_rotated)
         for dx in range(other_w):
             for dy in range(other_h):
@@ -1196,7 +1262,7 @@ def lobby_inventory_api(lobby_id: int, user_id: int):
 
 
 def _assert_version(instance: ItemInstance, version: int) -> bool:
-    if version and instance.version != version:
+    if instance.version != version:
         inventory_logger.warning(
             'Inventory lock conflict for item %s: expected=%s actual=%s',
             instance.id,
@@ -1207,13 +1273,41 @@ def _assert_version(instance: ItemInstance, version: int) -> bool:
     return True
 
 
+def _require_version(version: int) -> bool:
+    return version > 0
+
+
 def rotation_allowed(container_id: str) -> bool:
-    return container_id == 'inv_main' or container_id == 'hands' or container_id.startswith('bag:')
+    return container_size(container_id) is not None
 
 
 def current_lobby_id_for(user: User) -> Optional[int]:
     membership = LobbyMember.query.filter_by(user_id=user.id).first()
     return membership.lobby_id if membership else None
+
+
+def master_user_id(lobby_id: Optional[int]) -> Optional[int]:
+    if not lobby_id:
+        return None
+    lobby = Lobby.query.get(lobby_id)
+    if not lobby:
+        return None
+    return lobby.admin_id
+
+
+def auto_place_item(
+    instance: ItemInstance,
+    container_id: str,
+    *,
+    prefer_rotation: Optional[int] = None,
+) -> Optional[tuple[int, int, int]]:
+    rotations = [normalize_rotation_value(prefer_rotation)]
+    rotations.append(1 - rotations[0])
+    for rotation in rotations:
+        position = find_first_fit(instance, container_id, rotation)
+        if position:
+            return position[0], position[1], rotation
+    return None
 
 
 @app.route('/api/inventory/move', methods=['POST'])
@@ -1233,6 +1327,8 @@ def move_inventory_item():
     lobby_id = current_lobby_id_for(user)
     if not can_edit_inventory(user, instance.owner_id, lobby_id):
         return jsonify({'error': 'forbidden'}), 403
+    if not _require_version(version):
+        return jsonify({'error': 'missing_version'}), 400
     if not _assert_version(instance, version):
         return jsonify({'error': 'conflict'}), 409
     if not container_id:
@@ -1243,12 +1339,12 @@ def move_inventory_item():
         inventory_logger.warning('Inventory move rejected: %s', reason)
         return jsonify({'error': reason}), 400
 
-    if instance.container_id == 'equip_back' and container_id != 'equip_back':
+    if instance.container_i == 'equip_back' and container_id != 'equip_back':
         if instance.definition.item_type.name == 'backpack':
             bag_id = f'bag:{instance.id}'
             bag_items = ItemInstance.query.filter_by(
                 owner_id=instance.owner_id,
-                container_id=bag_id,
+                container_i=bag_id,
             ).count()
             if bag_items:
                 inventory_logger.warning('Cannot unequip backpack %s with items inside', instance.id)
@@ -1260,6 +1356,10 @@ def move_inventory_item():
         return jsonify({'error': 'rotation_not_allowed'}), 400
     target_pos_x = parse_int(pos_x, 0, minimum=0) if pos_x is not None else None
     target_pos_y = parse_int(pos_y, 0, minimum=0) if pos_y is not None else None
+    if target_pos_x is not None and target_pos_x < 1:
+        return jsonify({'error': 'out_of_bounds'}), 400
+    if target_pos_y is not None and target_pos_y < 1:
+        return jsonify({'error': 'out_of_bounds'}), 400
     if target_pos_x is not None and target_pos_y is not None:
         valid, reason = can_place_item(instance, container_id, target_pos_x, target_pos_y, rotation_value)
         if not valid:
@@ -1272,7 +1372,7 @@ def move_inventory_item():
             return jsonify({'error': 'no_space'}), 409
         target_pos_x, target_pos_y = auto_pos
 
-    instance.container_id = container_id
+    instance.container_i = container_id
     instance.pos_x = target_pos_x
     instance.pos_y = target_pos_y
     instance.rotated = rotation_value
@@ -1294,15 +1394,15 @@ def rotate_inventory_item():
     lobby_id = current_lobby_id_for(user)
     if not can_edit_inventory(user, instance.owner_id, lobby_id):
         return jsonify({'error': 'forbidden'}), 403
+    if not _require_version(version):
+        return jsonify({'error': 'missing_version'}), 400
     if not _assert_version(instance, version):
         return jsonify({'error': 'conflict'}), 409
-    if not instance.definition.rotatable:
-        return jsonify({'error': 'not_rotatable'}), 400
-    if not rotation_allowed(instance.container_id):
+    if not rotation_allowed(instance.container_i):
         return jsonify({'error': 'rotation_not_allowed'}), 400
 
-    new_rotation = 90 if instance.rotated == 0 else 0
-    valid, reason = can_place_item(instance, instance.container_id, instance.pos_x, instance.pos_y, new_rotation)
+    new_rotation = 1 if normalize_rotation_value(instance.rotated) == 0 else 0
+    valid, reason = can_place_item(instance, instance.container_i, instance.pos_x, instance.pos_y, new_rotation)
     if not valid:
         inventory_logger.warning('Rotation failed for item %s: %s', instance.id, reason)
         return jsonify({'error': 'invalid_rotation'}), 409
@@ -1326,11 +1426,16 @@ def split_inventory_item():
     lobby_id = current_lobby_id_for(user)
     if not can_edit_inventory(user, instance.owner_id, lobby_id):
         return jsonify({'error': 'forbidden'}), 403
+    if not _require_version(version):
+        return jsonify({'error': 'missing_version'}), 400
     if not _assert_version(instance, version):
         return jsonify({'error': 'conflict'}), 409
-    if not instance.definition.item_type.stackable or instance.definition.max_durability > 1:
+    if not stackable_type(instance.definition):
         return jsonify({'error': 'not_stackable'}), 400
+    max_amount = normalized_max_amount(instance.definition)
     if amount <= 0 or amount >= instance.amount:
+        return jsonify({'error': 'invalid_amount'}), 400
+    if amount > max_amount or instance.amount - amount > max_amount:
         return jsonify({'error': 'invalid_amount'}), 400
 
     temp_instance = ItemInstance(
@@ -1338,22 +1443,24 @@ def split_inventory_item():
         lobby_id=instance.lobby_id,
         definition=instance.definition,
     )
-    target_pos = find_first_fit(temp_instance, instance.container_id, instance.rotated)
+    target_pos = find_first_fit(temp_instance, instance.container_i, normalize_rotation_value(instance.rotated))
     if not target_pos:
         inventory_logger.warning('Split failed for item %s: no space', instance.id)
         return jsonify({'error': 'no_space'}), 409
 
-    instance.amount -= amount
+    instance.amount = normalize_stack_amount(instance.definition, instance.amount - amount)
     instance.version += 1
     new_instance = ItemInstance(
         owner_id=instance.owner_id,
-        definition_id=instance.definition_id,
-        container_id=instance.container_id,
+        template_id=instance.template_id,
+        container_i=instance.container_i,
         pos_x=target_pos[0],
         pos_y=target_pos[1],
-        rotated=instance.rotated,
-        durability_current=instance.durability_current,
+        rotated=normalize_rotation_value(instance.rotated),
+        str_current=instance.str_current,
         amount=amount,
+        custom_name=instance.custom_name,
+        custom_description=instance.custom_description,
     )
     db.session.add(new_instance)
     db.session.commit()
@@ -1373,9 +1480,27 @@ def drop_inventory_item():
     lobby_id = current_lobby_id_for(user)
     if not can_edit_inventory(user, instance.owner_id, lobby_id):
         return jsonify({'error': 'forbidden'}), 403
+    if not _require_version(version):
+        return jsonify({'error': 'missing_version'}), 400
     if not _assert_version(instance, version):
         return jsonify({'error': 'conflict'}), 409
-    db.session.delete(instance)
+    master_id = master_user_id(lobby_id)
+    if not master_id:
+        return jsonify({'error': 'missing_master'}), 400
+    target_container = 'inv_main'
+    temp_instance = ItemInstance(
+        owner_id=master_id,
+        definition=instance.definition,
+    )
+    auto_pos = auto_place_item(temp_instance, target_container, prefer_rotation=instance.rotated)
+    if not auto_pos:
+        inventory_logger.warning('Drop failed: no space in master inventory for item %s', instance.id)
+        return jsonify({'error': 'no_space'}), 409
+    instance.owner_id = master_id
+    instance.container_i = target_container
+    instance.pos_x, instance.pos_y, rotation_value = auto_pos
+    instance.rotated = rotation_value
+    instance.version += 1
     db.session.commit()
     return jsonify({'status': 'ok'})
 
@@ -1395,6 +1520,8 @@ def transfer_inventory_item():
     lobby_id = current_lobby_id_for(user)
     if not can_edit_inventory(user, instance.owner_id, lobby_id):
         return jsonify({'error': 'forbidden'}), 403
+    if not _require_version(version):
+        return jsonify({'error': 'missing_version'}), 400
     if not _assert_version(instance, version):
         return jsonify({'error': 'conflict'}), 409
     if recipient_id == instance.owner_id or not recipient_id:
@@ -1411,33 +1538,39 @@ def transfer_inventory_item():
         return jsonify({'error': 'not_in_lobby'}), 403
     if amount > instance.amount:
         return jsonify({'error': 'invalid_amount'}), 400
+    if amount < instance.amount and not stackable_type(instance.definition):
+        return jsonify({'error': 'invalid_amount'}), 400
+    max_amount = normalized_max_amount(instance.definition)
+    if amount > max_amount and stackable_type(instance.definition):
+        return jsonify({'error': 'invalid_amount'}), 400
 
     temp_instance = ItemInstance(
         owner_id=recipient_id,
         definition=instance.definition,
     )
-    target_pos = find_first_fit(temp_instance, 'inv_main', 0)
+    target_pos = auto_place_item(temp_instance, 'inv_main', prefer_rotation=instance.rotated)
     if not target_pos:
         inventory_logger.warning('Transfer failed: no space for recipient %s', recipient_id)
         return jsonify({'error': 'no_space'}), 409
 
     if amount == instance.amount:
         instance.owner_id = recipient_id
-        instance.container_id = 'inv_main'
-        instance.pos_x = target_pos[0]
-        instance.pos_y = target_pos[1]
-        instance.rotated = 0
+        instance.container_i = 'inv_main'
+        instance.pos_x, instance.pos_y, rotation_value = target_pos
+        instance.rotated = rotation_value
     else:
-        instance.amount -= amount
+        instance.amount = normalize_stack_amount(instance.definition, instance.amount - amount)
         new_instance = ItemInstance(
             owner_id=recipient_id,
-            definition_id=instance.definition_id,
-            container_id='inv_main',
+            template_id=instance.template_id,
+            container_i='inv_main',
             pos_x=target_pos[0],
             pos_y=target_pos[1],
-            rotated=0,
-            durability_current=instance.durability_current,
+            rotated=target_pos[2],
+            str_current=instance.str_current,
             amount=amount,
+            custom_name=instance.custom_name,
+            custom_description=instance.custom_description,
         )
         db.session.add(new_instance)
     instance.version += 1
@@ -1474,22 +1607,28 @@ def create_item_template():
         image_path = save_upload(image_file, 'items', f'item_{secrets.token_hex(4)}')
 
     item_type = get_or_create_item_type(type_name)
-    if max_durability <= 1 and max_amount > 1:
-        item_type.stackable = True
-        item_type.max_amount = max_amount
-    elif not item_type.stackable:
-        item_type.max_amount = 1
+    if item_type.stackable and item_type.has_durability:
+        item_type.has_durability = False
+    if item_type.stackable:
+        if max_amount < 1:
+            return jsonify({'error': 'invalid_max_amount'}), 400
+        item_type.max_amount = max(item_type.max_amount or 1, max_amount)
+        max_str = None
+    else:
+        if item_type.has_durability:
+            max_str = max(max_durability, 1)
+        else:
+            max_str = None
+        max_amount = 1
     definition = ItemDefinition(
         name=name,
         description=description,
-        image=image_path,
-        width=width,
-        height=height,
+        image_path=image_path,
+        w=width,
+        h=height,
         weight=weight,
-        max_durability=max_durability,
+        max_str=max_str,
         quality=quality,
-        max_amount=max_amount,
-        rotatable=True,
         item_type=item_type,
     )
     db.session.add(definition)
@@ -1508,18 +1647,18 @@ def create_item_template():
             owner_id=issue_to,
             definition=definition,
         )
-        target_pos = find_first_fit(temp_instance, 'inv_main', 0)
+        target_pos = auto_place_item(temp_instance, 'inv_main')
         if not target_pos:
             db.session.rollback()
             return jsonify({'error': 'no_space'}), 409
         new_instance = ItemInstance(
             owner_id=issue_to,
-            definition_id=definition.id,
-            container_id='inv_main',
+            template_id=definition.id,
+            container_i='inv_main',
             pos_x=target_pos[0],
             pos_y=target_pos[1],
-            rotated=0,
-            durability_current=definition.max_durability,
+            rotated=target_pos[2],
+            str_current=initial_str_current(definition),
             amount=1,
         )
         db.session.add(new_instance)
@@ -1550,24 +1689,27 @@ def issue_item_by_id():
     ).first()
     if not target_membership:
         return jsonify({'error': 'invalid_recipient'}), 400
-    amount = min(amount, definition.max_amount)
+    max_amount = normalized_max_amount(definition)
+    if amount > max_amount:
+        return jsonify({'error': 'invalid_amount'}), 400
+    amount = normalize_stack_amount(definition, amount)
     temp_instance = ItemInstance(
         owner_id=target_user_id,
         definition=definition,
     )
-    target_pos = find_first_fit(temp_instance, 'inv_main', 0)
+    target_pos = auto_place_item(temp_instance, 'inv_main')
     if not target_pos:
         inventory_logger.warning('Issue by ID failed: no space for user %s', target_user_id)
         return jsonify({'error': 'no_space'}), 409
 
     new_instance = ItemInstance(
         owner_id=target_user_id,
-        definition_id=definition.id,
-        container_id='inv_main',
+        template_id=definition.id,
+        container_i='inv_main',
         pos_x=target_pos[0],
         pos_y=target_pos[1],
-        rotated=0,
-        durability_current=definition.max_durability,
+        rotated=target_pos[2],
+        str_current=initial_str_current(definition),
         amount=amount,
     )
     db.session.add(new_instance)
