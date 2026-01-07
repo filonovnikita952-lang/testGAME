@@ -228,7 +228,7 @@
                 const element = document.createElement('div');
                 const qualityClass = `inventory-item--quality-${item.quality}`;
                 element.className = `inventory-item inventory-item--${item.type} ${qualityClass}`;
-                if (item.durability_current <= 0) {
+                if (item.has_durability && item.str_current <= 0) {
                     element.classList.add('is-broken');
                 }
                 element.dataset.itemId = item.id;
@@ -238,9 +238,9 @@
                 element.style.top = `${metrics.paddingY + (item.pos_y - 1) * (metrics.height + metrics.gapY)}px`;
                 element.style.width = `${size.w * metrics.width + metrics.gapX * (size.w - 1) - 4}px`;
                 element.style.height = `${size.h * metrics.height + metrics.gapY * (size.h - 1) - 4}px`;
-                const durabilityLabel = item.durability_current <= 0
-                    ? 'Broken'
-                    : `${item.durability_current}/${item.max_durability}`;
+                const durabilityLabel = item.has_durability
+                    ? (item.str_current <= 0 ? 'Broken' : `${item.str_current}/${item.max_str}`)
+                    : '—';
                 element.innerHTML = `
                     <div class="inventory-item__label">${item.name}</div>
                     <div class="inventory-item__meta">${durabilityLabel}</div>
@@ -267,7 +267,7 @@
         }
 
         getItemSize(item) {
-            if (item.rotated === 90) {
+            if (item.rotated === 1) {
                 return { w: item.size.h, h: item.size.w };
             }
             return { w: item.size.w, h: item.size.h };
@@ -482,7 +482,7 @@
         toggleRotation(item) {
             if (!item.rotatable || !this.permissions.can_edit) return;
             if (!this.canRotateItem(item)) return;
-            item.rotated = item.rotated === 90 ? 0 : 90;
+            item.rotated = item.rotated === 1 ? 0 : 1;
             this.renderItems();
             if (this.dragState?.lastPointer) {
                 this.updateGhost({
@@ -498,9 +498,7 @@
         }
 
         canRotateItem(item) {
-            if (item.container_id === 'inv_main') return true;
-            if (item.container_id === 'hands') return true;
-            return item.container_id?.startsWith('bag:');
+            return Boolean(item.container_id);
         }
 
         openContextMenu(event, item) {
@@ -516,6 +514,16 @@
             document.getElementById('context-size').textContent = `Розмір: ${size.w}×${size.h}`;
             document.getElementById('context-weight').textContent = `Вага: ${(item.weight * item.amount).toFixed(2)} кг`;
             document.getElementById('context-description').textContent = item.description || '';
+            const notes = document.getElementById('context-notes');
+            if (notes) {
+                notes.textContent = item.custom_description || '';
+                notes.style.display = item.custom_description ? 'block' : 'none';
+            }
+            const templateMeta = document.getElementById('context-template');
+            if (templateMeta) {
+                templateMeta.textContent = `Template ID: ${item.template_id}`;
+                templateMeta.style.display = this.permissions.is_master ? 'block' : 'none';
+            }
             const masterOnly = this.contextMenu.querySelector('[data-master-only]');
             if (masterOnly) {
                 masterOnly.style.display = this.permissions.is_master ? 'block' : 'none';
