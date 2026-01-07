@@ -732,19 +732,19 @@ textarea {
 
 .lobby-room {
     display: grid;
-    gap: 24px;
+    gap: 16px;
+    min-height: calc(100vh - 220px);
 }
 
 .lobby-room__header {
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
-    gap: 16px;
-    padding: 20px 24px;
-    border-radius: 18px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: linear-gradient(180deg, rgba(33, 36, 48, 0.92), rgba(16, 18, 26, 0.95));
-    box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.55);
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(30, 34, 48, 0.95), rgba(16, 18, 26, 0.98));
+    box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.55);
 }
 
 .lobby-room__title h2 {
@@ -768,19 +768,18 @@ textarea {
 
 .lobby-room__grid {
     display: grid;
-    grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
-    gap: 12px;
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+    gap: 10px;
     align-items: stretch;
 }
 
 .lobby-roster {
     display: grid;
-    gap: 10px;
-    padding: 12px;
-    border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: linear-gradient(180deg, rgba(34, 38, 52, 0.95), rgba(16, 18, 26, 0.95));
-    box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.6);
+    gap: 8px;
+    padding: 10px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(30, 34, 46, 0.96), rgba(14, 16, 22, 0.98));
+    box-shadow: inset 0 0 16px rgba(0, 0, 0, 0.6);
 }
 
 .lobby-roster__header h3 {
@@ -789,14 +788,46 @@ textarea {
 
 .lobby-roster__list {
     display: grid;
-    gap: 12px;
+    gap: 8px;
+}
+
+.lobby-info {
+    display: grid;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 12px;
+    background: rgba(12, 14, 20, 0.65);
+}
+
+.lobby-info__meta {
+    display: grid;
+    gap: 6px;
+    font-size: 0.8rem;
+}
+
+.lobby-info__meta strong {
+    display: block;
+    font-size: 0.9rem;
+    letter-spacing: 0.02em;
+}
+
+.lobby-info__label {
+    display: block;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.lobby-info__actions {
+    display: grid;
+    gap: 6px;
 }
 
 .roster-card {
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 10px 12px;
-    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.04);
 }
 
 .roster-card__summary {
@@ -814,18 +845,23 @@ textarea {
     gap: 10px;
 }
 
+.roster-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
 .roster-card__form {
     margin-top: 4px;
 }
 
 .lobby-room__workspace {
-    padding: 18px;
+    padding: 10px;
     display: flex;
     align-items: stretch;
-    border-radius: 18px;
-    background: linear-gradient(180deg, rgba(41, 45, 60, 0.9), rgba(20, 24, 34, 0.95));
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.65);
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(34, 38, 52, 0.92), rgba(18, 20, 30, 0.97));
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.65);
 }
 
 .member-status {
@@ -1015,7 +1051,6 @@ textarea {
 .inventory-panel,
 .inventory-grid-panel {
     background: linear-gradient(180deg, rgba(62, 64, 66, 0.98), rgba(30, 32, 34, 0.98));
-    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 6px;
     padding: 8px;
     box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.6), 0 12px 24px rgba(0, 0, 0, 0.5);
@@ -1023,32 +1058,35 @@ textarea {
 
 .inventory-grid-panel.panel-main {
     background: linear-gradient(180deg, rgba(74, 76, 78, 0.98), rgba(34, 36, 38, 0.98));
-    border-color: rgba(255, 255, 255, 0.14);
     box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.6), 0 18px 32px rgba(0, 0, 0, 0.55);
+}
+
+.page--lobby .inventory-panel,
+.page--lobby .inventory-grid-panel {
+    border: none;
 }
 
 .lobby-inventory-layout {
     display: grid;
-    grid-template-columns: minmax(240px, 320px) minmax(320px, 1fr) minmax(240px, 320px);
-    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+    gap: 8px;
     align-items: start;
 }
 
-.lobby-inventory__character,
 .lobby-inventory__inventory,
 .lobby-inventory__equipment {
     display: grid;
-    gap: 12px;
+    gap: 8px;
 }
 
 .character-frame {
     border-radius: 8px;
-    padding: 16px;
+    padding: 12px;
     background: rgba(12, 14, 20, 0.7);
-    border: 2px solid rgba(188, 83, 83, 0.7);
     display: grid;
     place-items: center;
     position: relative;
+    box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.6);
 }
 
 .character-frame__image {
@@ -1056,7 +1094,6 @@ textarea {
     height: 210px;
     object-fit: cover;
     border-radius: 8px;
-    border: 2px solid rgba(180, 120, 80, 0.65);
     box-shadow: inset 0 0 16px rgba(0, 0, 0, 0.6);
 }
 
@@ -1156,12 +1193,7 @@ textarea {
 
 .lobby-panel {
     display: grid;
-    gap: 10px;
-}
-
-.lobby-panel {
-    display: grid;
-    gap: 16px;
+    gap: 12px;
 }
 
 .lobby-panel--scroll {
@@ -1332,10 +1364,9 @@ textarea {
     justify-content: space-between;
     gap: 12px;
     padding: 6px 8px;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     border-radius: 4px;
-    background: linear-gradient(180deg, rgba(90, 90, 90, 0.7), rgba(40, 40, 40, 0.7));
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(22, 24, 30, 0.7);
     text-transform: uppercase;
     letter-spacing: 0.12em;
     font-size: 0.7rem;
@@ -1348,6 +1379,34 @@ textarea {
 
 .panel-tag {
     opacity: 0.6;
+}
+
+.viewing-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: rgba(12, 14, 18, 0.8);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.viewing-banner strong {
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.viewing-banner__role {
+    opacity: 0.7;
+}
+
+.inventory[data-is-master="true"] .viewing-banner__label--player,
+.inventory:not([data-is-master="true"]) .viewing-banner__label--master {
+    display: none;
 }
 
 .item-schema {

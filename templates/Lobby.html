@@ -48,27 +48,6 @@
                     <div class="lobby-room__title">
                         <p class="lobby-room__eyebrow">Ваше лобі</p>
                         <h2>{{ membership.lobby.name }}</h2>
-                        <div class="lobby-room__meta">
-                            <span>Ключ доступу: <strong>{{ membership.lobby.access_key }}</strong></span>
-                            <span>Учасників: <strong>{{ membership.lobby.members | length }}</strong></span>
-                            <span>Роль: <strong>{{ role_labels.get(membership.role, membership.role) }}</strong></span>
-                        </div>
-                    </div>
-                    <div class="lobby-room__actions">
-                        {% if membership.lobby.admin_id == user.id %}
-                            <span class="badge">Адмін</span>
-                            <form method="post">
-                                <input type="hidden" name="action" value="delete_lobby">
-                                <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
-                                <button type="submit" class="button danger">Видалити лобі</button>
-                            </form>
-                        {% else %}
-                            <form method="post">
-                                <input type="hidden" name="action" value="leave">
-                                <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
-                                <button type="submit" class="button ghost">Вийти</button>
-                            </form>
-                        {% endif %}
                     </div>
                 </header>
 
@@ -77,6 +56,43 @@
                         <div class="lobby-roster__header">
                             <h3>Склад команди</h3>
                             <p class="muted">Натисніть на учасника, щоб побачити деталі.</p>
+                        </div>
+                        <div class="lobby-info">
+                            <div class="lobby-info__meta">
+                                <div>
+                                    <span class="lobby-info__label">Лобі</span>
+                                    <strong>{{ membership.lobby.name }}</strong>
+                                </div>
+                                <div>
+                                    <span class="lobby-info__label">Ключ</span>
+                                    <strong>{{ membership.lobby.access_key }}</strong>
+                                </div>
+                                <div>
+                                    <span class="lobby-info__label">Роль</span>
+                                    <strong>{{ role_labels.get(membership.role, membership.role) }}</strong>
+                                </div>
+                                <div>
+                                    <span class="lobby-info__label">Учасників</span>
+                                    <strong>{{ membership.lobby.members | length }}</strong>
+                                </div>
+                            </div>
+                            <div class="lobby-info__actions">
+                                {% if membership.lobby.admin_id == user.id %}
+                                    <span class="badge">Адмін</span>
+                                    <form method="post">
+                                        <input type="hidden" name="action" value="delete_lobby">
+                                        <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
+                                        <button type="submit" class="button danger">Видалити лобі</button>
+                                    </form>
+                                    <button type="button" class="button ghost" disabled title="Адмін не може вийти з лобі">Вийти</button>
+                                {% else %}
+                                    <form method="post">
+                                        <input type="hidden" name="action" value="leave">
+                                        <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
+                                        <button type="submit" class="button ghost">Вийти</button>
+                                    </form>
+                                {% endif %}
+                            </div>
                         </div>
                         <div class="lobby-roster__list" data-lobby-id="{{ membership.lobby.id }}">
                             {% for member in membership.lobby.members %}
@@ -96,6 +112,11 @@
                                         <div class="roster-card__details">
                                             <strong>{{ member.user.nickname }}</strong>
                                             <p class="muted">{{ member.user.description or 'Опис ще не додано.' }}</p>
+                                            <div class="roster-card__actions">
+                                                <button class="button ghost" type="button" data-action="view-inventory">Інвентар</button>
+                                                <button class="button ghost" type="button" data-action="send-item">Передати</button>
+                                                <button class="button ghost" type="button" data-action="ping">Пінг</button>
+                                            </div>
                                             <div class="chip-grid">
                                                 <span class="chip">{{ role_labels.get(member.role, member.role) }}</span>
                                                 {% if member.user.description %}
@@ -135,36 +156,6 @@
                             data-is-master="{{ 'true' if membership.role == 'master' or membership.lobby.admin_id == user.id else 'false' }}"
                         >
                             <div class="lobby-inventory-layout">
-                                <section class="lobby-inventory__character">
-                                    <div class="inventory-panel panel-secondary lobby-panel">
-                                        <div class="panel-header">
-                                            <span class="panel-title" data-player-name>{{ user.nickname or 'KING' }}</span>
-                                            <span class="panel-tag" data-player-role>Власний</span>
-                                        </div>
-                                        <div class="character-frame">
-                                            {% if user.userImage %}
-                                                <img src="{{ url_for('static', filename=static_path(user.userImage)) }}" alt="Персонаж" class="character-frame__image">
-                                            {% else %}
-                                                <img src="/static/images/default_avatar.png" alt="Персонаж" class="character-frame__image">
-                                            {% endif %}
-                                        </div>
-                                        <div class="character-stats">
-                                            <div class="stat-pill">HP: 38</div>
-                                            <div class="stat-pill">Stamina: 22</div>
-                                            <div class="stat-pill">Mana: 18</div>
-                                            <div class="stat-pill">Armor Class: 15</div>
-                                        </div>
-                                        <div class="character-storage">
-                                            <h4 class="inventory-section__title">Швидкі слоти</h4>
-                                            <div class="tetris-grid tetris-grid--compact" data-container-id="slot_weapon_main"></div>
-                                            <h4 class="inventory-section__title">Пояс</h4>
-                                            <div class="tetris-grid tetris-grid--shield" data-container-id="slot_shield"></div>
-                                            <h4 class="inventory-section__title">Руки</h4>
-                                            <div class="tetris-grid tetris-grid--compact" data-container-id="hands"></div>
-                                        </div>
-                                    </div>
-                                </section>
-
                                 <section class="lobby-inventory__inventory">
                                     <div class="inventory-grid-panel panel-main">
                                         <div class="panel-header">
@@ -235,6 +226,12 @@
                                 </section>
 
                                 <section class="lobby-inventory__equipment">
+                                    <div class="viewing-banner">
+                                        <span class="viewing-banner__label viewing-banner__label--player">Персонаж</span>
+                                        <span class="viewing-banner__label viewing-banner__label--master">Перегляд гравця</span>
+                                        <strong data-player-name>{{ user.nickname or 'KING' }}</strong>
+                                        <span class="viewing-banner__role" data-player-role>Власний</span>
+                                    </div>
                                     {% if membership.role == 'master' %}
                                         <div class="inventory-panel panel-secondary lobby-panel lobby-panel--scroll">
                                             <div class="panel-header">
@@ -330,89 +327,26 @@
                                         </div>
                                     {% else %}
                                         <div class="inventory-panel panel-secondary lobby-panel">
-                                            <div class="panel-header">
-                                                <span class="panel-title">{{ user.nickname or 'KING' }}</span>
-                                                <span class="panel-tag">-BACKPACK-</span>
+                                            <div class="character-frame">
+                                                {% if user.userImage %}
+                                                    <img src="{{ url_for('static', filename=static_path(user.userImage)) }}" alt="Персонаж" class="character-frame__image">
+                                                {% else %}
+                                                    <img src="/static/images/default_avatar.png" alt="Персонаж" class="character-frame__image">
+                                                {% endif %}
                                             </div>
-                                            <div class="inventory-tabs" role="tablist" aria-label="Режими інвентаря">
-                                                <button class="tab-button is-active" data-tab="equipment" type="button" role="tab">Екіпіровка</button>
-                                                <button class="tab-button" data-tab="stats" type="button" role="tab">Stats</button>
+                                            <div class="character-stats">
+                                                <div class="stat-pill">HP: 38</div>
+                                                <div class="stat-pill">Stamina: 22</div>
+                                                <div class="stat-pill">Mana: 18</div>
+                                                <div class="stat-pill">Armor Class: 15</div>
                                             </div>
-
-                                            <div class="tab-content is-active" data-panel="equipment" role="tabpanel">
-                                                <div class="equipment-grid" aria-label="Екіпіровка">
-                                                    <div class="equipment-slot equipment-slot--weapon" data-slot="weapon">
-                                                        <span>Основне озброєння</span>
-                                                    </div>
-                                                    <div class="equipment-slot equipment-slot--shield" data-slot="offhand">
-                                                        <span>Щит</span>
-                                                    </div>
-                                                    <div class="equipment-slot equipment-slot--shirt" data-slot="shirt">
-                                                        <span>Кофта</span>
-                                                    </div>
-                                                    <div class="equipment-slot equipment-slot--pants" data-slot="pants">
-                                                        <span>Штани</span>
-                                                    </div>
-                                                    <div class="equipment-slot equipment-slot--boots" data-slot="boots">
-                                                        <span>Сапоги</span>
-                                                    </div>
-                                                    <div class="equipment-slot equipment-slot--armor" data-slot="armor">
-                                                        <span>Броня</span>
-                                                    </div>
-                                                    <div class="equipment-slot equipment-slot--head" data-slot="head">
-                                                        <span>Голова</span>
-                                                    </div>
-                                                    <div class="equipment-slot equipment-slot--jewelry" data-slot="jewelry">
-                                                        <span>Украшения</span>
-                                                    </div>
-                                                    <div class="equipment-slot equipment-slot--cloak" data-slot="cloak">
-                                                        <span>Плащ/Рюкзак</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div class="tab-content" data-panel="stats" role="tabpanel">
-                                                <div class="stats-grid">
-                                                    <div class="stat-card">
-                                                        <span class="stat-card__label">STR</span>
-                                                        <strong>14</strong>
-                                                        <span class="stat-card__mod">+2</span>
-                                                    </div>
-                                                    <div class="stat-card">
-                                                        <span class="stat-card__label">DEX</span>
-                                                        <strong>12</strong>
-                                                        <span class="stat-card__mod">+1</span>
-                                                    </div>
-                                                    <div class="stat-card">
-                                                        <span class="stat-card__label">CON</span>
-                                                        <strong>13</strong>
-                                                        <span class="stat-card__mod">+1</span>
-                                                    </div>
-                                                    <div class="stat-card">
-                                                        <span class="stat-card__label">INT</span>
-                                                        <strong>10</strong>
-                                                        <span class="stat-card__mod">+0</span>
-                                                    </div>
-                                                    <div class="stat-card">
-                                                        <span class="stat-card__label">WIS</span>
-                                                        <strong>11</strong>
-                                                        <span class="stat-card__mod">+0</span>
-                                                    </div>
-                                                    <div class="stat-card">
-                                                        <span class="stat-card__label">CHA</span>
-                                                        <strong>16</strong>
-                                                        <span class="stat-card__mod">+3</span>
-                                                    </div>
-                                                </div>
-
-                                                <div class="stats-extra">
-                                                    <div class="stat-pill">HP: 38</div>
-                                                    <div class="stat-pill">Stamina: 22</div>
-                                                    <div class="stat-pill">Mana: 18</div>
-                                                    <div class="stat-pill">Armor Class: 15</div>
-                                                    <div class="stat-pill">Resistances: fire, poison</div>
-                                                    <div class="stat-pill">Carry Capacity: 80</div>
-                                                </div>
+                                            <div class="character-storage">
+                                                <h4 class="inventory-section__title">Швидкі слоти</h4>
+                                                <div class="tetris-grid tetris-grid--compact" data-container-id="slot_weapon_main"></div>
+                                                <h4 class="inventory-section__title">Пояс</h4>
+                                                <div class="tetris-grid tetris-grid--shield" data-container-id="slot_shield"></div>
+                                                <h4 class="inventory-section__title">Руки</h4>
+                                                <div class="tetris-grid tetris-grid--compact" data-container-id="hands"></div>
                                             </div>
                                         </div>
                                     {% endif %}

@@ -1083,22 +1083,6 @@ def news():
     return render_template('News.html', user=current_user())
 
 
-@app.route('/Inventory')
-def inventory():
-    user = current_user()
-    lobby_id = None
-    if user:
-        membership = LobbyMember.query.filter_by(user_id=user.id).first()
-        lobby_id = membership.lobby_id if membership else None
-    inventory_data = build_inventory_payload(user, lobby_id, viewer=user)
-    return render_template(
-        'Inventory.html',
-        user=user,
-        inventory_data=inventory_data,
-        transfer_players=build_transfer_players(lobby_id),
-    )
-
-
 @app.route('/Lobby', methods=['GET', 'POST'])
 def lobby_page():
     user = require_user()
