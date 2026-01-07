@@ -48,10 +48,17 @@
             this.transferModal = document.getElementById('transfer-modal');
             this.transferPlayers = document.getElementById('transfer-players');
             this.transferClose = document.getElementById('transfer-close');
+            this.transferAmount = document.getElementById('transfer-amount');
+            this.transferItemName = document.getElementById('transfer-item-name');
+            this.transferItem = null;
             this.inventoryActions = this.root.querySelector('[data-inventory-actions]');
             this.weightDisplay = this.root.querySelector('[data-weight-display]');
             this.playerName = this.root.querySelector('[data-player-name]');
             this.playerRole = this.root.querySelector('[data-player-role]');
+            this.detailImage = this.root.querySelector('[data-item-detail-image]');
+            this.detailName = this.root.querySelector('[data-item-detail-name]');
+            this.detailDescription = this.root.querySelector('[data-item-detail-description]');
+            this.detailItemId = null;
             this.gridElements = Array.from(this.root.querySelectorAll('.tetris-grid'));
             this.rosterList = this.lobbyId
                 ? document.querySelector(`.lobby-roster__list[data-lobby-id="${this.lobbyId}"]`)
@@ -81,6 +88,10 @@
             }
 
             document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && this.dragState?.item) {
+                    this.cancelDrag();
+                    return;
+                }
                 if (event.key.toLowerCase() === 'r' && this.dragState?.item) {
                     this.toggleRotation(this.dragState.item);
                 }
@@ -134,7 +145,9 @@
                 const payload = await response.json();
                 this.applyInventory(payload);
             } catch (error) {
-                alert(error.message || 'Не вдалося завантажити інвентар.');
+                if (DEBUG_INVENTORY) {
+                    console.debug(error.message || 'Не вдалося завантажити інвентар.');
+                }
             }
         }
 
@@ -168,13 +181,19 @@
                 }
             }
             if (this.weightDisplay && payload.weight) {
-                this.weightDisplay.textContent = `Вага: ${payload.weight.current} / ${payload.weight.capacity} kg`;
+                this.weightDisplay.textContent = `${payload.weight.current} / ${payload.weight.capacity}`;
             }
             this.root.classList.toggle('is-readonly', !this.permissions.can_edit);
             if (this.inventoryActions) {
                 this.inventoryActions.classList.toggle('is-disabled', !this.permissions.can_edit);
             }
             this.syncBackpackContainer();
+            if (this.detailItemId) {
+                const detailItem = this.items.find((entry) => String(entry.id) === String(this.detailItemId));
+                this.updateDetailsPanel(detailItem || null);
+            } else {
+                this.updateDetailsPanel(null);
+            }
             this.render();
         }
 
@@ -275,6 +294,11 @@
 
         startDrag(event, item) {
             event.preventDefault();
+            if (this.dragState) {
+                this.cancelDrag();
+            }
+            this.detailItemId = item.id;
+            this.updateDetailsPanel(item);
             const originGrid = this.gridElements.find((grid) => grid.dataset.containerId === item.container_id);
             if (!originGrid) return;
             const element = originGrid.querySelector(`[data-item-id="${item.id}"]`);
@@ -326,12 +350,18 @@
             if (targetGrid && allowed) {
                 targetPosition = this.getDropPosition(targetGrid, targetContainer, item, event);
             }
-            if (targetGrid && allowed && targetPosition) {
-                await this.submitMove(item, targetContainer, targetPosition);
-            } else {
-                this.renderItems();
+            try {
+                if (targetGrid && allowed && targetPosition) {
+                    const moved = await this.submitMove(item, targetContainer, targetPosition);
+                    if (!moved) {
+                        this.renderItems();
+                    }
+                } else {
+                    this.renderItems();
+                }
+            } finally {
+                this.cleanupDrag(item.id);
             }
-            this.cleanupDrag(item.id);
         };
 
         updateGhost(event) {
@@ -370,6 +400,17 @@
             this.dragState = null;
             window.removeEventListener('pointermove', this.onDragMove);
             window.removeEventListener('pointerup', this.onDragEnd);
+        }
+
+        cancelDrag() {
+            if (!this.dragState) return;
+            const itemId = this.dragState.item?.id;
+            this.renderItems();
+            if (itemId) {
+                this.cleanupDrag(itemId);
+            } else {
+                this.cleanupDrag('0');
+            }
         }
 
         isContainerAllowed(item, containerId) {
@@ -450,10 +491,10 @@
         }
 
         async submitMove(item, containerId, position) {
-            if (!this.permissions.can_edit) return;
+            if (!this.permissions.can_edit) return false;
             if (!containerId || !this.isContainerAllowed(item, containerId)) {
                 this.renderItems();
-                return;
+                return false;
             }
             const response = await fetch('/api/inventory/move', {
                 method: 'POST',
@@ -469,14 +510,14 @@
             });
             if (response.ok) {
                 await this.refreshInventory(this.selectedPlayerId);
-                return;
+                return true;
             }
             const payload = await response.json().catch(() => ({}));
             if (response.status === 409) {
                 await this.handleConflict('move', item, payload);
-                return;
+                return false;
             }
-            alert(payload.error || 'Не вдалося перемістити предмет.');
+            return false;
         }
 
         toggleRotation(item) {
@@ -507,6 +548,7 @@
             this.contextMenu.dataset.itemId = item.id;
             this.contextMenu.dataset.itemVersion = item.version;
             this.contextMenu.dataset.itemType = item.type;
+            this.contextMenu.dataset.itemTemplateId = item.template_id;
             document.getElementById('context-name').textContent = item.name;
             document.getElementById('context-type').textContent = item.type;
             document.getElementById('context-quality').textContent = item.quality;
@@ -519,18 +561,53 @@
                 notes.textContent = item.custom_description || '';
                 notes.style.display = item.custom_description ? 'block' : 'none';
             }
+            const useButton = this.contextMenu.querySelector('[data-action="use"]');
+            if (useButton) {
+                useButton.style.display = ['food', 'map'].includes(item.type) ? 'inline-flex' : 'none';
+            }
+            const splitButton = this.contextMenu.querySelector('[data-action="split"]');
+            if (splitButton) {
+                splitButton.style.display = item.stackable && item.amount > 1 ? 'inline-flex' : 'none';
+            }
+            const equipButton = this.contextMenu.querySelector('[data-action="equip"]');
+            if (equipButton) {
+                equipButton.style.display = equipTargetMap[item.type] ? 'inline-flex' : 'none';
+            }
+            const splitField = this.contextMenu.querySelector('[data-split-field]');
+            const splitInput = this.contextMenu.querySelector('[data-split-amount]');
+            if (splitField && splitInput) {
+                if (item.stackable && item.amount > 1) {
+                    splitField.style.display = 'flex';
+                    splitInput.value = '1';
+                    splitInput.max = `${item.amount - 1}`;
+                } else {
+                    splitField.style.display = 'none';
+                }
+            }
+            const durabilityField = this.contextMenu.querySelector('[data-durability-field]');
+            const durabilityInput = this.contextMenu.querySelector('[data-durability-input]');
+            if (durabilityField && durabilityInput) {
+                if (this.permissions.is_master && item.has_durability && !item.stackable) {
+                    durabilityField.style.display = 'flex';
+                    durabilityInput.min = '0';
+                    durabilityInput.max = `${item.max_str || 0}`;
+                    durabilityInput.value = `${item.str_current ?? 0}`;
+                } else {
+                    durabilityField.style.display = 'none';
+                }
+            }
             const templateMeta = document.getElementById('context-template');
             if (templateMeta) {
                 templateMeta.textContent = `Template ID: ${item.template_id}`;
-                templateMeta.style.display = this.permissions.is_master ? 'block' : 'none';
             }
-            const masterOnly = this.contextMenu.querySelector('[data-master-only]');
-            if (masterOnly) {
-                masterOnly.style.display = this.permissions.is_master ? 'block' : 'none';
-            }
+            this.contextMenu.querySelectorAll('[data-master-only]').forEach((node) => {
+                node.style.display = this.permissions.is_master ? '' : 'none';
+            });
             this.contextMenu.style.left = `${event.clientX + 12}px`;
             this.contextMenu.style.top = `${event.clientY + 12}px`;
             this.contextMenu.classList.add('is-open');
+            this.detailItemId = item.id;
+            this.updateDetailsPanel(item);
         }
 
         closeContextMenu() {
@@ -549,7 +626,7 @@
             }
             switch (action) {
                 case 'use':
-                    alert('Використання предметів поки що не реалізовано.');
+                    await this.useItem(item, version);
                     break;
                 case 'equip':
                     await this.equipItem(item);
@@ -567,7 +644,10 @@
                     this.openTransferModal(item);
                     break;
                 case 'issue-by-id':
-                    await this.issueById();
+                    await this.issueByIdFromPanel(item);
+                    break;
+                case 'set-durability':
+                    await this.updateDurability(item, version);
                     break;
                 default:
                     break;
@@ -578,7 +658,6 @@
         async equipItem(item) {
             const targetContainer = equipTargetMap[item.type];
             if (!targetContainer) {
-                alert('Цей предмет не має відповідного слотy.');
                 return;
             }
             await this.submitMove(item, targetContainer, null);
@@ -599,16 +678,15 @@
                 await this.handleConflict('rotate', item, payload);
                 return;
             }
-            alert(payload.error || 'Не вдалося повернути предмет.');
+            await this.refreshInventory(this.selectedPlayerId);
         }
 
         async splitItem(item, version) {
-            if (!item.stackable || item.amount <= 1) {
-                alert('Цей предмет не можна розділити.');
-                return;
-            }
-            const amount = Number.parseInt(prompt(`Скільки відділити? (1-${item.amount - 1})`, '1'), 10);
+            if (!item.stackable || item.amount <= 1) return;
+            const splitInput = this.contextMenu?.querySelector('[data-split-amount]');
+            const amount = Number.parseInt(splitInput?.value || '1', 10);
             if (!amount || Number.isNaN(amount)) return;
+            if (amount < 1 || amount >= item.amount) return;
             const response = await fetch('/api/inventory/split', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -623,11 +701,10 @@
                 await this.handleConflict('split', item, payload);
                 return;
             }
-            alert(payload.error || 'Не вдалося розділити.');
+            await this.refreshInventory(this.selectedPlayerId);
         }
 
         async dropItem(item, version) {
-            if (!confirm('Скинути цей предмет?')) return;
             const response = await fetch('/api/inventory/drop', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -642,13 +719,66 @@
                 await this.handleConflict('drop', item, payload);
                 return;
             }
-            alert(payload.error || 'Не вдалося скинути предмет.');
+            await this.refreshInventory(this.selectedPlayerId);
+        }
+
+        async useItem(item, version) {
+            const response = await fetch('/api/inventory/use', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ item_id: item.id, version }),
+            });
+            if (response.ok) {
+                if (item.type === 'map' && item.image_path) {
+                    window.open(this.resolveImageUrl(item.image_path), '_blank', 'noopener');
+                }
+                await this.refreshInventory(this.selectedPlayerId);
+                return;
+            }
+            const payload = await response.json().catch(() => ({}));
+            if (response.status === 409) {
+                await this.handleConflict('use', item, payload);
+                return;
+            }
+            await this.refreshInventory(this.selectedPlayerId);
+        }
+
+        async updateDurability(item, version) {
+            const durabilityInput = this.contextMenu?.querySelector('[data-durability-input]');
+            const value = Number.parseInt(durabilityInput?.value || '0', 10);
+            if (Number.isNaN(value)) return;
+            if (value < 0 || (item.max_str != null && value > item.max_str)) return;
+            const response = await fetch('/api/inventory/durability', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ item_id: item.id, value, version }),
+            });
+            if (response.ok) {
+                await this.refreshInventory(this.selectedPlayerId);
+                return;
+            }
+            const payload = await response.json().catch(() => ({}));
+            if (response.status === 409) {
+                await this.handleConflict('durability', item, payload);
+                return;
+            }
+            await this.refreshInventory(this.selectedPlayerId);
         }
 
         openTransferModal(item) {
             if (!this.transferModal || !this.transferPlayers) return;
             this.transferModal.classList.add('is-open');
             this.transferPlayers.innerHTML = '';
+            this.transferItem = item;
+            if (this.transferItemName) {
+                this.transferItemName.textContent = item.name || 'Предмет';
+            }
+            if (this.transferAmount) {
+                this.transferAmount.value = `${item.amount || 1}`;
+                this.transferAmount.max = `${item.amount || 1}`;
+                this.transferAmount.min = '1';
+                this.transferAmount.disabled = !(item.stackable && item.amount > 1);
+            }
             const playerList = this.lobbyId ? lobbyPlayers[this.lobbyId] || [] : [];
             if (!playerList.length) {
                 this.transferPlayers.innerHTML = '<p class="muted">Немає доступних гравців.</p>';
@@ -669,16 +799,14 @@
         closeTransferModal() {
             if (!this.transferModal) return;
             this.transferModal.classList.remove('is-open');
+            this.transferItem = null;
         }
 
         async transferItem(item, recipientId) {
             let amount = item.amount;
             if (item.stackable && item.amount > 1) {
-                const input = prompt(`Скільки передати? (1-${item.amount})`, `${item.amount}`);
-                if (!input) return;
-                amount = Number.parseInt(input, 10);
+                amount = Number.parseInt(this.transferAmount?.value || `${item.amount}`, 10);
                 if (Number.isNaN(amount) || amount < 1 || amount > item.amount) {
-                    alert('Некоректна кількість.');
                     return;
                 }
             }
@@ -702,38 +830,67 @@
                 await this.handleConflict('transfer', item, payload);
                 return;
             }
-            alert(payload.error || 'Не вдалося передати предмет.');
+            await this.refreshInventory(this.selectedPlayerId);
         }
 
-        async issueById() {
+        async issueByIdFromPanel(item) {
             if (!this.permissions.is_master) return;
-            const templateId = prompt('Вкажіть ID шаблону предмета:');
-            if (!templateId) return;
-            const amount = Number.parseInt(prompt('Кількість:', '1'), 10);
-            const playerList = this.lobbyId ? lobbyPlayers[this.lobbyId] || [] : [];
-            const targetId = playerList.length ? playerList[0].id : null;
-            const recipientId = prompt('ID отримувача (за замовчуванням перший в списку):', `${targetId || ''}`);
-            const target = Number.parseInt(recipientId || `${targetId || ''}`, 10);
-            if (!target) {
-                alert('Некоректний отримувач.');
-                return;
+            const issueForm = this.root.querySelector('[data-master-issue]');
+            if (!issueForm) return;
+            const templateInput = issueForm.querySelector('input[id^="issue_template_"]');
+            const targetInput = issueForm.querySelector('select[id^="issue_target_"]');
+            const amountInput = issueForm.querySelector('input[id^="issue_amount_"]');
+            const durabilityInput = issueForm.querySelector('input[id^="issue_durability_current_"]');
+            const randomInput = issueForm.querySelector('input[id^="issue_random_durability_"]');
+            if (templateInput && item?.template_id) {
+                templateInput.value = `${item.template_id}`;
             }
+            const templateId = Number.parseInt(templateInput?.value || '0', 10);
+            const target = Number.parseInt(targetInput?.value || '0', 10);
+            const amount = Number.parseInt(amountInput?.value || '1', 10);
+            if (!templateId || !target) return;
             const response = await fetch('/api/master/issue_by_id', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     lobby_id: this.lobbyId,
-                    template_id: Number.parseInt(templateId, 10),
+                    template_id: templateId,
                     target_user_id: target,
                     amount: Number.isNaN(amount) ? 1 : amount,
+                    durability_current: durabilityInput?.value || null,
+                    random_durability: randomInput?.value || '',
                 }),
             });
             if (response.ok) {
                 await this.refreshInventory(this.selectedPlayerId);
                 return;
             }
-            const payload = await response.json().catch(() => ({}));
-            alert(payload.error || 'Не вдалося видати предмет.');
+            await response.json().catch(() => ({}));
+            await this.refreshInventory(this.selectedPlayerId);
+        }
+
+        resolveImageUrl(path) {
+            if (!path) return '';
+            if (path.startsWith('http')) return path;
+            if (path.startsWith('/')) return path;
+            const normalized = path.startsWith('static/') ? path.slice(7) : path;
+            return `/static/${normalized}`;
+        }
+
+        updateDetailsPanel(item) {
+            if (!this.detailImage || !this.detailName || !this.detailDescription) return;
+            if (!item) {
+                this.detailImage.src = '/static/images/default_avatar.png';
+                this.detailImage.alt = 'Item';
+                this.detailName.textContent = 'Оберіть предмет';
+                this.detailDescription.textContent = '';
+                return;
+            }
+            const imageUrl = this.resolveImageUrl(item.image_path);
+            this.detailImage.src = imageUrl || '/static/images/default_avatar.png';
+            this.detailImage.alt = item.name || 'Item';
+            this.detailName.textContent = item.name || 'Item';
+            this.detailDescription.textContent = item.description || '';
         }
     }
 
@@ -742,6 +899,16 @@
         root.querySelectorAll('[data-master-create]').forEach((form) => {
             const lobbyId = root.dataset.lobbyId;
             const issueButton = form.querySelector('button');
+            const randomButton = form.querySelector('[data-random-durability]');
+            const durabilityInput = form.querySelector('input[id^="item_durability_current_"]');
+            const randomInput = form.querySelector('input[id^="item_random_durability_"]');
+            randomButton?.addEventListener('click', () => {
+                if (randomInput) randomInput.value = '1';
+                if (durabilityInput) durabilityInput.value = '';
+            });
+            durabilityInput?.addEventListener('input', () => {
+                if (randomInput) randomInput.value = '0';
+            });
             issueButton?.addEventListener('click', async () => {
                 const name = form.querySelector('input[id^="item_name_"]')?.value?.trim();
                 const description = form.querySelector('textarea[id^="item_description_"]')?.value?.trim();
@@ -751,12 +918,14 @@
                 const height = Number.parseInt(form.querySelector('input[id^="item_h_"]')?.value || '1', 10);
                 const weight = parseFloat(form.querySelector('input[id^="item_weight_"]')?.value || '0');
                 const maxDurability = Number.parseInt(form.querySelector('input[id^="item_durability_"]')?.value || '1', 10);
+                const durabilityCurrent = form.querySelector('input[id^="item_durability_current_"]')?.value || '';
+                const randomDurability = form.querySelector('input[id^="item_random_durability_"]')?.value || '';
                 const maxAmount = Number.parseInt(form.querySelector('input[id^="item_max_amount_"]')?.value || '1', 10);
+                const issueAmount = Number.parseInt(form.querySelector('input[id^="item_issue_amount_"]')?.value || '1', 10);
                 const target = form.querySelector('select[id^="item_target_"]')?.value;
                 const imageInput = form.querySelector('input[type="file"]');
 
                 if (!name) {
-                    alert('Вкажіть назву предмета.');
                     return;
                 }
 
@@ -770,7 +939,10 @@
                 payload.append('height', height);
                 payload.append('weight', weight);
                 payload.append('max_durability', maxDurability);
+                payload.append('durability_current', durabilityCurrent);
+                payload.append('random_durability', randomDurability);
                 payload.append('max_amount', maxAmount);
+                payload.append('issue_amount', issueAmount);
                 payload.append('issue_to', target || '');
                 if (imageInput?.files?.length) {
                     payload.append('image', imageInput.files[0]);
@@ -785,14 +957,23 @@
                     form.reset();
                     return;
                 }
-                const data = await response.json().catch(() => ({}));
-                alert(data.error || 'Не вдалося створити предмет.');
+                await response.json().catch(() => ({}));
             });
         });
 
         root.querySelectorAll('[data-master-issue]').forEach((form) => {
             const lobbyId = root.dataset.lobbyId;
             const button = form.querySelector('button');
+            const randomButton = form.querySelector('[data-random-durability]');
+            const durabilityInput = form.querySelector('input[id^="issue_durability_current_"]');
+            const randomInput = form.querySelector('input[id^="issue_random_durability_"]');
+            randomButton?.addEventListener('click', () => {
+                if (randomInput) randomInput.value = '1';
+                if (durabilityInput) durabilityInput.value = '';
+            });
+            durabilityInput?.addEventListener('input', () => {
+                if (randomInput) randomInput.value = '0';
+            });
             button?.addEventListener('click', async () => {
                 const templateId = Number.parseInt(
                     form.querySelector('input[id^="issue_template_"]')?.value || '0',
@@ -806,8 +987,9 @@
                     form.querySelector('input[id^="issue_amount_"]')?.value || '1',
                     10,
                 );
+                const durabilityCurrent = form.querySelector('input[id^="issue_durability_current_"]')?.value || '';
+                const randomDurability = form.querySelector('input[id^="issue_random_durability_"]')?.value || '';
                 if (!templateId || !targetId) {
-                    alert('Заповніть ID шаблону та отримувача.');
                     return;
                 }
                 const response = await fetch('/api/master/issue_by_id', {
@@ -818,14 +1000,40 @@
                         template_id: templateId,
                         target_user_id: targetId,
                         amount,
+                        durability_current: durabilityCurrent,
+                        random_durability: randomDurability,
                     }),
                 });
                 if (response.ok) {
                     await controller.refreshInventory(controller.selectedPlayerId);
                     return;
                 }
-                const data = await response.json().catch(() => ({}));
-                alert(data.error || 'Не вдалося видати предмет.');
+                await response.json().catch(() => ({}));
+            });
+        });
+
+        root.querySelectorAll('[data-master-image-update]').forEach((form) => {
+            const lobbyId = root.dataset.lobbyId;
+            const button = form.querySelector('button');
+            button?.addEventListener('click', async () => {
+                const templateId = Number.parseInt(
+                    form.querySelector('input[id^="image_template_"]')?.value || '0',
+                    10,
+                );
+                const imageInput = form.querySelector('input[type="file"]');
+                if (!templateId || !imageInput?.files?.length) return;
+                const payload = new FormData();
+                payload.append('lobby_id', lobbyId);
+                payload.append('image', imageInput.files[0]);
+                const response = await fetch(`/api/master/item_template/${templateId}/image`, {
+                    method: 'POST',
+                    body: payload,
+                });
+                if (response.ok) {
+                    form.reset();
+                    return;
+                }
+                await response.json().catch(() => ({}));
             });
         });
     });

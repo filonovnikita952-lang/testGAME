@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
 import os
+import random
 import secrets
 from typing import Optional
 
@@ -25,6 +26,7 @@ INVENTORY_LOG_FILE = 'inventory_debug.log'
 ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 ALLOWED_IMAGE_MIME_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
 MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024
+MAX_ITEM_IMAGE_BYTES = 5 * 1024 * 1024
 MAIN_GRID_WIDTH = 12
 MAIN_GRID_HEIGHT = 8
 BACKPACK_GRID_WIDTH = 8
@@ -220,6 +222,9 @@ def _ensure_user_columns():
     inspector = inspect(db.engine)
     if 'userid' in inspector.get_table_names():
         columns = {column['name'] for column in inspector.get_columns('userid')}
+        if 'userImage' not in columns:
+            db.session.execute(text('ALTER TABLE userid ADD COLUMN userImage VARCHAR(255)'))
+            db.session.commit()
         if 'is_online' not in columns:
             db.session.execute(text('ALTER TABLE userid ADD COLUMN is_online BOOLEAN DEFAULT 0'))
             db.session.commit()
@@ -357,6 +362,27 @@ def validate_avatar_upload(file) -> Optional[str]:
     return None
 
 
+def validate_item_image_upload(file) -> Optional[str]:
+    if not file or not file.filename:
+        return None
+    filename = secure_filename(file.filename)
+    if not filename:
+        return 'Некоректна назва файлу.'
+    _, ext = os.path.splitext(filename)
+    ext = ext.lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        return 'Дозволені лише файли JPG, PNG або WEBP.'
+    mimetype = (file.mimetype or '').lower()
+    if mimetype and mimetype not in ALLOWED_IMAGE_MIME_TYPES:
+        return 'Невірний тип файлу. Завантажте JPG, PNG або WEBP.'
+    file.stream.seek(0, os.SEEK_END)
+    size = file.stream.tell()
+    file.stream.seek(0)
+    if size > MAX_ITEM_IMAGE_BYTES:
+        return 'Файл завеликий.'
+    return None
+
+
 def current_user() -> Optional[User]:
     user_id = session.get('user_id')
     if not user_id:
@@ -471,6 +497,7 @@ def seed_item_definitions() -> list[ItemDefinition]:
     type_boots = get_or_create_item_type('boots', has_durability=True)
     type_amulet = get_or_create_item_type('amulet', has_durability=True)
     type_food = get_or_create_item_type('food', stackable=True, max_amount=5, usable=True, consumable=True)
+    type_map = get_or_create_item_type('map', usable=True)
     type_ammo = get_or_create_item_type(
         'ammo',
         stackable=True,
@@ -484,6 +511,7 @@ def seed_item_definitions() -> list[ItemDefinition]:
     type_food.max_amount = 5
     type_food.usable = True
     type_food.consumable = True
+    type_map.usable = True
     type_ammo.stackable = True
     type_ammo.max_amount = 30
     type_ammo.consumable = True
@@ -697,7 +725,7 @@ def seed_user_inventory(user: User, lobby_id: Optional[int]) -> list[ItemInstanc
             pos_x=1,
             pos_y=5,
             rotated=0,
-            str_current=0,
+            str_current=None,
             amount=3,
         ),
         ItemInstance(
@@ -707,7 +735,7 @@ def seed_user_inventory(user: User, lobby_id: Optional[int]) -> list[ItemInstanc
             pos_x=4,
             pos_y=5,
             rotated=0,
-            str_current=0,
+            str_current=None,
             amount=280,
         ),
         ItemInstance(
@@ -717,7 +745,7 @@ def seed_user_inventory(user: User, lobby_id: Optional[int]) -> list[ItemInstanc
             pos_x=6,
             pos_y=5,
             rotated=0,
-            str_current=0,
+            str_current=None,
             amount=20,
         ),
     ]
@@ -854,9 +882,14 @@ def build_inventory_payload(
         })
     items_payload = []
     current_weight = 0.0
+    weight_logged = False
     for instance in instances:
         definition = instance.definition
-        item_weight = definition.weight * instance.amount
+        effective_amount = normalize_stack_amount(definition, instance.amount)
+        if definition.weight is None and not weight_logged:
+            log_weight_breakdown(instances, 'missing_weight')
+            weight_logged = True
+        item_weight = (definition.weight or 0) * effective_amount
         current_weight += item_weight
         max_amount = normalized_max_amount(definition)
         stackable = stackable_type(definition)
@@ -885,7 +918,7 @@ def build_inventory_payload(
             'max_str': definition.max_str if durability_enabled else None,
             'str_current': max(instance.str_current or 0, 0) if durability_enabled else None,
             'has_durability': durability_enabled,
-            'amount': normalize_stack_amount(definition, instance.amount),
+            'amount': effective_amount,
             'container_id': instance.container_i,
             'pos_x': instance.pos_x,
             'pos_y': instance.pos_y,
@@ -1263,12 +1296,13 @@ def lobby_inventory_api(lobby_id: int, user_id: int):
 
 def _assert_version(instance: ItemInstance, version: int) -> bool:
     if instance.version != version:
-        inventory_logger.warning(
-            'Inventory lock conflict for item %s: expected=%s actual=%s',
-            instance.id,
-            version,
-            instance.version,
-        )
+        if inventory_logger.handlers:
+            inventory_logger.error(
+                'Inventory lock conflict for item %s: expected=%s actual=%s',
+                instance.id,
+                version,
+                instance.version,
+            )
         return False
     return True
 
@@ -1310,6 +1344,38 @@ def auto_place_item(
     return None
 
 
+def log_weight_breakdown(instances: list[ItemInstance], reason: str) -> None:
+    if not inventory_logger.handlers:
+        return
+    inventory_logger.error('Weight calculation warning: %s', reason)
+    for instance in instances:
+        definition = instance.definition
+        amount = normalize_stack_amount(definition, instance.amount)
+        inventory_logger.error(
+            'Weight item %s template=%s amount=%s weight=%s',
+            instance.id,
+            definition.id,
+            amount,
+            definition.weight,
+        )
+
+
+def resolve_durability_value(
+    definition: ItemDefinition,
+    requested_value: Optional[int],
+    *,
+    randomize: bool = False,
+) -> Optional[int]:
+    if not has_durability(definition):
+        return None
+    max_str = max(definition.max_str or 1, 1)
+    if randomize:
+        return random.randint(1, max_str)
+    if requested_value is None:
+        return max_str
+    return min(max(requested_value, 1), max_str)
+
+
 @app.route('/api/inventory/move', methods=['POST'])
 def move_inventory_item():
     user = require_user()
@@ -1323,20 +1389,21 @@ def move_inventory_item():
 
     instance = ItemInstance.query.get(item_id)
     if not instance:
-        return jsonify({'error': 'not_found'}), 404
+        return jsonify({'ok': False, 'error': 'not_found'}), 404
     lobby_id = current_lobby_id_for(user)
     if not can_edit_inventory(user, instance.owner_id, lobby_id):
-        return jsonify({'error': 'forbidden'}), 403
+        return jsonify({'ok': False, 'error': 'forbidden'}), 403
     if not _require_version(version):
-        return jsonify({'error': 'missing_version'}), 400
+        return jsonify({'ok': False, 'error': 'missing_version'}), 400
     if not _assert_version(instance, version):
-        return jsonify({'error': 'conflict'}), 409
+        return jsonify({'ok': False, 'error': 'conflict'}), 409
     if not container_id:
         return jsonify({'error': 'missing_container'}), 400
 
     allowed, reason = is_container_allowed(instance, container_id, instance.owner_id)
     if not allowed:
-        inventory_logger.warning('Inventory move rejected: %s', reason)
+        if inventory_logger.handlers:
+            inventory_logger.error('Inventory move rejected: %s', reason)
         return jsonify({'error': reason}), 400
 
     if instance.container_i == 'equip_back' and container_id != 'equip_back':
@@ -1347,12 +1414,14 @@ def move_inventory_item():
                 container_i=bag_id,
             ).count()
             if bag_items:
-                inventory_logger.warning('Cannot unequip backpack %s with items inside', instance.id)
+                if inventory_logger.handlers:
+                    inventory_logger.error('Cannot unequip backpack %s with items inside', instance.id)
                 return jsonify({'error': 'backpack_not_empty'}), 400
 
     rotation_value = normalize_rotation(instance.definition, rotated)
     if rotation_value and not rotation_allowed(container_id):
-        inventory_logger.warning('Rotation not allowed in container %s', container_id)
+        if inventory_logger.handlers:
+            inventory_logger.error('Rotation not allowed in container %s', container_id)
         return jsonify({'error': 'rotation_not_allowed'}), 400
     target_pos_x = parse_int(pos_x, 0, minimum=0) if pos_x is not None else None
     target_pos_y = parse_int(pos_y, 0, minimum=0) if pos_y is not None else None
@@ -1363,12 +1432,14 @@ def move_inventory_item():
     if target_pos_x is not None and target_pos_y is not None:
         valid, reason = can_place_item(instance, container_id, target_pos_x, target_pos_y, rotation_value)
         if not valid:
-            inventory_logger.warning('Inventory move rejected: %s', reason)
+            if inventory_logger.handlers:
+                inventory_logger.error('Inventory move rejected: %s', reason)
             return jsonify({'error': reason}), 400
     if target_pos_x is None or target_pos_y is None:
         auto_pos = find_first_fit(instance, container_id, rotation_value)
         if not auto_pos:
-            inventory_logger.warning('No space to auto-place item %s in %s', instance.id, container_id)
+            if inventory_logger.handlers:
+                inventory_logger.error('No space to auto-place item %s in %s', instance.id, container_id)
             return jsonify({'error': 'no_space'}), 409
         target_pos_x, target_pos_y = auto_pos
 
@@ -1390,21 +1461,22 @@ def rotate_inventory_item():
 
     instance = ItemInstance.query.get(item_id)
     if not instance:
-        return jsonify({'error': 'not_found'}), 404
+        return jsonify({'ok': False, 'error': 'not_found'}), 404
     lobby_id = current_lobby_id_for(user)
     if not can_edit_inventory(user, instance.owner_id, lobby_id):
-        return jsonify({'error': 'forbidden'}), 403
+        return jsonify({'ok': False, 'error': 'forbidden'}), 403
     if not _require_version(version):
-        return jsonify({'error': 'missing_version'}), 400
+        return jsonify({'ok': False, 'error': 'missing_version'}), 400
     if not _assert_version(instance, version):
-        return jsonify({'error': 'conflict'}), 409
+        return jsonify({'ok': False, 'error': 'conflict'}), 409
     if not rotation_allowed(instance.container_i):
         return jsonify({'error': 'rotation_not_allowed'}), 400
 
     new_rotation = 1 if normalize_rotation_value(instance.rotated) == 0 else 0
     valid, reason = can_place_item(instance, instance.container_i, instance.pos_x, instance.pos_y, new_rotation)
     if not valid:
-        inventory_logger.warning('Rotation failed for item %s: %s', instance.id, reason)
+        if inventory_logger.handlers:
+            inventory_logger.error('Rotation failed for item %s: %s', instance.id, reason)
         return jsonify({'error': 'invalid_rotation'}), 409
     instance.rotated = new_rotation
     instance.version += 1
@@ -1430,13 +1502,19 @@ def split_inventory_item():
         return jsonify({'error': 'missing_version'}), 400
     if not _assert_version(instance, version):
         return jsonify({'error': 'conflict'}), 409
-    if not stackable_type(instance.definition):
-        return jsonify({'error': 'not_stackable'}), 400
+    if not stackable_type(instance.definition) or has_durability(instance.definition):
+        if inventory_logger.handlers:
+            inventory_logger.error('Split rejected for item %s: non-stackable or durable', instance.id)
+        return jsonify({'ok': False, 'error': 'not_stackable'}), 400
     max_amount = normalized_max_amount(instance.definition)
     if amount <= 0 or amount >= instance.amount:
-        return jsonify({'error': 'invalid_amount'}), 400
+        if inventory_logger.handlers:
+            inventory_logger.error('Split rejected for item %s: invalid amount %s', instance.id, amount)
+        return jsonify({'ok': False, 'error': 'invalid_amount'}), 400
     if amount > max_amount or instance.amount - amount > max_amount:
-        return jsonify({'error': 'invalid_amount'}), 400
+        if inventory_logger.handlers:
+            inventory_logger.error('Split rejected for item %s: exceeds max stack', instance.id)
+        return jsonify({'ok': False, 'error': 'invalid_amount'}), 400
 
     temp_instance = ItemInstance(
         owner_id=instance.owner_id,
@@ -1445,8 +1523,9 @@ def split_inventory_item():
     )
     target_pos = find_first_fit(temp_instance, instance.container_i, normalize_rotation_value(instance.rotated))
     if not target_pos:
-        inventory_logger.warning('Split failed for item %s: no space', instance.id)
-        return jsonify({'error': 'no_space'}), 409
+        if inventory_logger.handlers:
+            inventory_logger.error('Split failed for item %s: no space', instance.id)
+        return jsonify({'ok': False, 'error': 'no_space'}), 409
 
     instance.amount = normalize_stack_amount(instance.definition, instance.amount - amount)
     instance.version += 1
@@ -1464,7 +1543,81 @@ def split_inventory_item():
     )
     db.session.add(new_instance)
     db.session.commit()
-    return jsonify({'status': 'ok'})
+    return jsonify({'ok': True, 'instance_id': new_instance.id})
+
+
+@app.route('/api/inventory/use', methods=['POST'])
+def use_inventory_item():
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    item_id = parse_int(data.get('item_id'), 0)
+    version = parse_int(data.get('version'), 0)
+
+    instance = ItemInstance.query.get(item_id)
+    if not instance:
+        return jsonify({'ok': False, 'error': 'not_found'}), 404
+    lobby_id = current_lobby_id_for(user)
+    if not can_edit_inventory(user, instance.owner_id, lobby_id):
+        return jsonify({'ok': False, 'error': 'forbidden'}), 403
+    if not _require_version(version):
+        return jsonify({'ok': False, 'error': 'missing_version'}), 400
+    if not _assert_version(instance, version):
+        return jsonify({'ok': False, 'error': 'conflict'}), 409
+
+    item_type = instance.definition.item_type.name
+    if item_type not in {'food', 'map'}:
+        if inventory_logger.handlers:
+            inventory_logger.error('Use rejected for item %s: invalid type %s', instance.id, item_type)
+        return jsonify({'ok': False, 'error': 'not_usable'}), 400
+
+    if item_type == 'food':
+        if not stackable_type(instance.definition):
+            if inventory_logger.handlers:
+                inventory_logger.error('Use rejected for item %s: food not stackable', instance.id)
+            return jsonify({'ok': False, 'error': 'invalid_item'}), 400
+        if instance.amount <= 1:
+            db.session.delete(instance)
+            db.session.commit()
+            return jsonify({'ok': True})
+        instance.amount = normalize_stack_amount(instance.definition, instance.amount - 1)
+        instance.version += 1
+        db.session.commit()
+        return jsonify({'ok': True})
+
+    return jsonify({'ok': True})
+
+
+@app.route('/api/inventory/durability', methods=['POST'])
+def update_inventory_durability():
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    item_id = parse_int(data.get('item_id'), 0)
+    version = parse_int(data.get('version'), 0)
+    value = parse_int(data.get('value'), 0)
+
+    instance = ItemInstance.query.get(item_id)
+    if not instance:
+        return jsonify({'ok': False, 'error': 'not_found'}), 404
+    lobby_id = current_lobby_id_for(user)
+    if not is_master(user, lobby_id):
+        return jsonify({'ok': False, 'error': 'forbidden'}), 403
+    if not _require_version(version):
+        return jsonify({'ok': False, 'error': 'missing_version'}), 400
+    if not _assert_version(instance, version):
+        return jsonify({'ok': False, 'error': 'conflict'}), 409
+    if not has_durability(instance.definition) or stackable_type(instance.definition):
+        if inventory_logger.handlers:
+            inventory_logger.error('Durability update rejected for item %s', instance.id)
+        return jsonify({'ok': False, 'error': 'invalid_item'}), 400
+    max_str = max(instance.definition.max_str or 0, 0)
+    if value < 0 or value > max_str:
+        if inventory_logger.handlers:
+            inventory_logger.error('Durability update rejected for item %s: out of range', instance.id)
+        return jsonify({'ok': False, 'error': 'invalid_value'}), 400
+    instance.str_current = value
+    instance.version += 1
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 @app.route('/api/inventory/drop', methods=['POST'])
@@ -1484,9 +1637,14 @@ def drop_inventory_item():
         return jsonify({'error': 'missing_version'}), 400
     if not _assert_version(instance, version):
         return jsonify({'error': 'conflict'}), 409
+    if is_master(user, lobby_id):
+        db.session.delete(instance)
+        db.session.commit()
+        return jsonify({'ok': True})
+
     master_id = master_user_id(lobby_id)
     if not master_id:
-        return jsonify({'error': 'missing_master'}), 400
+        return jsonify({'ok': False, 'error': 'missing_master'}), 400
     target_container = 'inv_main'
     temp_instance = ItemInstance(
         owner_id=master_id,
@@ -1494,15 +1652,16 @@ def drop_inventory_item():
     )
     auto_pos = auto_place_item(temp_instance, target_container, prefer_rotation=instance.rotated)
     if not auto_pos:
-        inventory_logger.warning('Drop failed: no space in master inventory for item %s', instance.id)
-        return jsonify({'error': 'no_space'}), 409
+        if inventory_logger.handlers:
+            inventory_logger.error('Drop failed: no space in master inventory for item %s', instance.id)
+        return jsonify({'ok': False, 'error': 'no_space'}), 409
     instance.owner_id = master_id
     instance.container_i = target_container
     instance.pos_x, instance.pos_y, rotation_value = auto_pos
     instance.rotated = rotation_value
     instance.version += 1
     db.session.commit()
-    return jsonify({'status': 'ok'})
+    return jsonify({'ok': True})
 
 
 @app.route('/api/inventory/transfer', methods=['POST'])
@@ -1550,7 +1709,8 @@ def transfer_inventory_item():
     )
     target_pos = auto_place_item(temp_instance, 'inv_main', prefer_rotation=instance.rotated)
     if not target_pos:
-        inventory_logger.warning('Transfer failed: no space for recipient %s', recipient_id)
+        if inventory_logger.handlers:
+            inventory_logger.error('Transfer failed: no space for recipient %s', recipient_id)
         return jsonify({'error': 'no_space'}), 409
 
     if amount == instance.amount:
@@ -1595,6 +1755,10 @@ def create_item_template():
     max_durability = parse_int(data.get('max_durability'), 1, minimum=1)
     max_amount = parse_int(data.get('max_amount'), 1, minimum=1)
     issue_to = parse_int(data.get('issue_to'), 0)
+    issue_amount = parse_int(data.get('issue_amount'), 1, minimum=1)
+    durability_current = data.get('durability_current')
+    durability_current_value = parse_int(durability_current, 0) if durability_current is not None else None
+    random_durability = str(data.get('random_durability') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
 
     if not name:
         return jsonify({'error': 'missing_name'}), 400
@@ -1604,7 +1768,16 @@ def create_item_template():
     image_path = None
     if 'image' in request.files:
         image_file = request.files['image']
+        error = validate_item_image_upload(image_file)
+        if error:
+            if inventory_logger.handlers:
+                inventory_logger.error('Item image upload failed: %s', error)
+            return jsonify({'error': 'invalid_image'}), 400
         image_path = save_upload(image_file, 'items', f'item_{secrets.token_hex(4)}')
+        if not image_path:
+            if inventory_logger.handlers:
+                inventory_logger.error('Item image upload failed: save error')
+            return jsonify({'error': 'invalid_image'}), 400
 
     item_type = get_or_create_item_type(type_name)
     if item_type.stackable and item_type.has_durability:
@@ -1651,6 +1824,18 @@ def create_item_template():
         if not target_pos:
             db.session.rollback()
             return jsonify({'error': 'no_space'}), 409
+        if stackable_type(definition):
+            if issue_amount > normalized_max_amount(definition):
+                db.session.rollback()
+                return jsonify({'error': 'invalid_amount'}), 400
+            resolved_amount = normalize_stack_amount(definition, issue_amount)
+        else:
+            resolved_amount = 1
+        resolved_durability = resolve_durability_value(
+            definition,
+            durability_current_value,
+            randomize=random_durability,
+        )
         new_instance = ItemInstance(
             owner_id=issue_to,
             template_id=definition.id,
@@ -1658,8 +1843,8 @@ def create_item_template():
             pos_x=target_pos[0],
             pos_y=target_pos[1],
             rotated=target_pos[2],
-            str_current=initial_str_current(definition),
-            amount=1,
+            str_current=resolved_durability,
+            amount=resolved_amount,
         )
         db.session.add(new_instance)
         db.session.flush()
@@ -1679,6 +1864,9 @@ def issue_item_by_id():
     template_id = parse_int(data.get('template_id'), 0)
     target_user_id = parse_int(data.get('target_user_id'), 0)
     amount = parse_int(data.get('amount'), 1, minimum=1)
+    durability_current = data.get('durability_current')
+    durability_current_value = parse_int(durability_current, 0) if durability_current is not None else None
+    random_durability = str(data.get('random_durability') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
 
     definition = ItemDefinition.query.get(template_id)
     if not definition:
@@ -1699,9 +1887,15 @@ def issue_item_by_id():
     )
     target_pos = auto_place_item(temp_instance, 'inv_main')
     if not target_pos:
-        inventory_logger.warning('Issue by ID failed: no space for user %s', target_user_id)
+        if inventory_logger.handlers:
+            inventory_logger.error('Issue by ID failed: no space for user %s', target_user_id)
         return jsonify({'error': 'no_space'}), 409
 
+    resolved_durability = resolve_durability_value(
+        definition,
+        durability_current_value,
+        randomize=random_durability,
+    )
     new_instance = ItemInstance(
         owner_id=target_user_id,
         template_id=definition.id,
@@ -1709,12 +1903,39 @@ def issue_item_by_id():
         pos_x=target_pos[0],
         pos_y=target_pos[1],
         rotated=target_pos[2],
-        str_current=initial_str_current(definition),
+        str_current=resolved_durability,
         amount=amount,
     )
     db.session.add(new_instance)
     db.session.commit()
     return jsonify({'status': 'ok', 'instance_id': new_instance.id})
+
+
+@app.route('/api/master/item_template/<int:template_id>/image', methods=['POST'])
+def update_item_template_image(template_id: int):
+    user = require_user()
+    lobby_id = parse_int(request.form.get('lobby_id'), 0)
+    if not is_master(user, lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    definition = ItemDefinition.query.get(template_id)
+    if not definition:
+        return jsonify({'error': 'not_found'}), 404
+    image_file = request.files.get('image')
+    if not image_file or not image_file.filename:
+        return jsonify({'error': 'invalid_image'}), 400
+    error = validate_item_image_upload(image_file)
+    if error:
+        if inventory_logger.handlers:
+            inventory_logger.error('Item image update failed: %s', error)
+        return jsonify({'error': 'invalid_image'}), 400
+    image_path = save_upload(image_file, 'items', f'item_{secrets.token_hex(4)}')
+    if not image_path:
+        if inventory_logger.handlers:
+            inventory_logger.error('Item image update failed: save error')
+        return jsonify({'error': 'invalid_image'}), 400
+    definition.image_path = image_path
+    db.session.commit()
+    return jsonify({'status': 'ok'})
 
 
 if __name__ == '__main__':
