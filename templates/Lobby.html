@@ -243,6 +243,20 @@
                                                 <p class="muted item-detail__description" data-item-detail-description></p>
                                             </div>
                                         </div>
+                                        <div class="item-detail__actions is-hidden" data-item-detail-actions>
+                                            <button class="button ghost" type="button" data-detail-action="rotate">Rotate (R)</button>
+                                            <button class="button ghost" type="button" data-detail-action="use">Use</button>
+                                            <div class="item-detail__field" data-detail-split>
+                                                <label for="detail-split-amount">Split</label>
+                                                <input type="number" id="detail-split-amount" min="1" data-detail-split-amount>
+                                                <button class="button ghost" type="button" data-detail-action="split">Split</button>
+                                            </div>
+                                            <div class="item-detail__field" data-detail-durability data-master-only="true">
+                                                <label for="detail-durability">Durability</label>
+                                                <input type="number" id="detail-durability" min="0" data-detail-durability-input>
+                                                <button class="button ghost" type="button" data-detail-action="set-durability">Set</button>
+                                            </div>
+                                        </div>
                                     </div>
                                     {% if membership.role == 'master' %}
                                         <div class="inventory-panel panel-secondary lobby-panel lobby-panel--scroll">
@@ -429,6 +443,12 @@
                                 <input type="number" id="transfer-amount" min="1" value="1">
                                 <div class="transfer-modal__players" id="transfer-players"></div>
                                 <button class="button ghost" type="button" id="transfer-close">Скасувати</button>
+                            </div>
+                        </div>
+                        <div class="map-overlay" id="map-overlay" aria-hidden="true">
+                            <div class="map-overlay__content">
+                                <button class="button ghost map-overlay__close" type="button" data-map-close>Закрити</button>
+                                <img src="" alt="Map" class="map-overlay__image" data-map-image>
                             </div>
                         </div>
                     </div>

@@ -824,6 +824,49 @@ def container_label(container_id: str) -> str:
     return CONTAINER_LABELS.get(container_id, container_id)
 
 
+def build_instance_payload(
+    instance: ItemInstance,
+    viewer: Optional[User],
+    lobby_id: Optional[int],
+) -> dict:
+    definition = instance.definition
+    effective_amount = normalize_stack_amount(definition, instance.amount)
+    max_amount = normalized_max_amount(definition)
+    stackable = stackable_type(definition)
+    durability_enabled = has_durability(definition)
+    visible_custom_description = None
+    if viewer and (viewer.id == instance.owner_id or is_master(viewer, lobby_id)):
+        visible_custom_description = instance.custom_description
+    return {
+        'id': instance.id,
+        'template_id': definition.id,
+        'owner_id': instance.owner_id,
+        'name': instance.custom_name or definition.name,
+        'base_name': definition.name,
+        'custom_name': instance.custom_name,
+        'type': definition.item_type.name,
+        'type_id': definition.type_id,
+        'quality': definition.quality,
+        'description': definition.description,
+        'custom_description': visible_custom_description,
+        'image_path': definition.image_path,
+        'size': {'w': definition.w, 'h': definition.h},
+        'rotatable': True,
+        'stackable': stackable,
+        'max_stack': max_amount,
+        'weight': definition.weight,
+        'max_str': definition.max_str if durability_enabled else None,
+        'str_current': max(instance.str_current or 0, 0) if durability_enabled else None,
+        'has_durability': durability_enabled,
+        'amount': effective_amount,
+        'container_id': instance.container_i,
+        'pos_x': instance.pos_x,
+        'pos_y': instance.pos_y,
+        'rotated': normalize_rotation_value(instance.rotated),
+        'version': instance.version,
+    }
+
+
 def build_inventory_payload(
     user: Optional[User],
     lobby_id: Optional[int],
@@ -891,40 +934,7 @@ def build_inventory_payload(
             weight_logged = True
         item_weight = (definition.weight or 0) * effective_amount
         current_weight += item_weight
-        max_amount = normalized_max_amount(definition)
-        stackable = stackable_type(definition)
-        durability_enabled = has_durability(definition)
-        visible_custom_description = None
-        if viewer and (viewer.id == user.id or is_master(viewer, lobby_id)):
-            visible_custom_description = instance.custom_description
-        items_payload.append({
-            'id': instance.id,
-            'template_id': definition.id,
-            'owner_id': instance.owner_id,
-            'name': instance.custom_name or definition.name,
-            'base_name': definition.name,
-            'custom_name': instance.custom_name,
-            'type': definition.item_type.name,
-            'type_id': definition.type_id,
-            'quality': definition.quality,
-            'description': definition.description,
-            'custom_description': visible_custom_description,
-            'image_path': definition.image_path,
-            'size': {'w': definition.w, 'h': definition.h},
-            'rotatable': True,
-            'stackable': stackable,
-            'max_stack': max_amount,
-            'weight': definition.weight,
-            'max_str': definition.max_str if durability_enabled else None,
-            'str_current': max(instance.str_current or 0, 0) if durability_enabled else None,
-            'has_durability': durability_enabled,
-            'amount': effective_amount,
-            'container_id': instance.container_i,
-            'pos_x': instance.pos_x,
-            'pos_y': instance.pos_y,
-            'rotated': normalize_rotation_value(instance.rotated),
-            'version': instance.version,
-        })
+        items_payload.append(build_instance_payload(instance, viewer, lobby_id))
     viewer = viewer or user
     permissions = {
         'can_edit': can_edit_inventory(viewer, user.id, lobby_id),
@@ -1440,7 +1450,7 @@ def move_inventory_item():
         if not auto_pos:
             if inventory_logger.handlers:
                 inventory_logger.error('No space to auto-place item %s in %s', instance.id, container_id)
-            return jsonify({'error': 'no_space'}), 409
+            return jsonify({'error': 'no_space'}), 400
         target_pos_x, target_pos_y = auto_pos
 
     instance.container_i = container_id
@@ -1471,17 +1481,19 @@ def rotate_inventory_item():
         return jsonify({'ok': False, 'error': 'conflict'}), 409
     if not rotation_allowed(instance.container_i):
         return jsonify({'error': 'rotation_not_allowed'}), 400
+    if instance.pos_x is None or instance.pos_y is None:
+        return jsonify({'error': 'invalid_position'}), 400
 
     new_rotation = 1 if normalize_rotation_value(instance.rotated) == 0 else 0
     valid, reason = can_place_item(instance, instance.container_i, instance.pos_x, instance.pos_y, new_rotation)
     if not valid:
         if inventory_logger.handlers:
             inventory_logger.error('Rotation failed for item %s: %s', instance.id, reason)
-        return jsonify({'error': 'invalid_rotation'}), 409
+        return jsonify({'error': 'invalid_rotation'}), 400
     instance.rotated = new_rotation
     instance.version += 1
     db.session.commit()
-    return jsonify({'status': 'ok'})
+    return jsonify({'ok': True, 'instance': build_instance_payload(instance, user, lobby_id)})
 
 
 @app.route('/api/inventory/split', methods=['POST'])
@@ -1490,6 +1502,7 @@ def split_inventory_item():
     data = request.get_json(silent=True) or {}
     item_id = parse_int(data.get('item_id'), 0)
     amount = parse_int(data.get('amount'), 0)
+    split_half = str(data.get('split_half') or '').lower() in {'1', 'true', 'yes'}
     version = parse_int(data.get('version'), 0)
 
     instance = ItemInstance.query.get(item_id)
@@ -1507,6 +1520,9 @@ def split_inventory_item():
             inventory_logger.error('Split rejected for item %s: non-stackable or durable', instance.id)
         return jsonify({'ok': False, 'error': 'not_stackable'}), 400
     max_amount = normalized_max_amount(instance.definition)
+    if split_half:
+        # Split amount uses floor: 5 -> 2 (new) + 3 (original).
+        amount = instance.amount // 2
     if amount <= 0 or amount >= instance.amount:
         if inventory_logger.handlers:
             inventory_logger.error('Split rejected for item %s: invalid amount %s', instance.id, amount)
@@ -1525,7 +1541,7 @@ def split_inventory_item():
     if not target_pos:
         if inventory_logger.handlers:
             inventory_logger.error('Split failed for item %s: no space', instance.id)
-        return jsonify({'ok': False, 'error': 'no_space'}), 409
+        return jsonify({'ok': False, 'error': 'no_space'}), 400
 
     instance.amount = normalize_stack_amount(instance.definition, instance.amount - amount)
     instance.version += 1
@@ -1543,7 +1559,60 @@ def split_inventory_item():
     )
     db.session.add(new_instance)
     db.session.commit()
-    return jsonify({'ok': True, 'instance_id': new_instance.id})
+    return jsonify({
+        'ok': True,
+        'instances': [
+            build_instance_payload(instance, user, lobby_id),
+            build_instance_payload(new_instance, user, lobby_id),
+        ],
+        'new_instance_id': new_instance.id,
+    })
+
+
+@app.route('/api/inventory/merge', methods=['POST'])
+def merge_inventory_items():
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    source_id = parse_int(data.get('source_instance_id'), 0)
+    target_id = parse_int(data.get('target_instance_id'), 0)
+    source_version = parse_int(data.get('source_version'), 0)
+    target_version = parse_int(data.get('target_version'), 0)
+
+    source = ItemInstance.query.get(source_id)
+    target = ItemInstance.query.get(target_id)
+    if not source or not target:
+        return jsonify({'ok': False, 'error': 'not_found'}), 404
+    lobby_id = current_lobby_id_for(user)
+    if not can_edit_inventory(user, source.owner_id, lobby_id):
+        return jsonify({'ok': False, 'error': 'forbidden'}), 403
+    if not can_edit_inventory(user, target.owner_id, lobby_id):
+        return jsonify({'ok': False, 'error': 'forbidden'}), 403
+    if not _require_version(source_version) or not _require_version(target_version):
+        return jsonify({'ok': False, 'error': 'missing_version'}), 400
+    if not _assert_version(source, source_version) or not _assert_version(target, target_version):
+        return jsonify({'ok': False, 'error': 'conflict'}), 409
+    if not is_master(user, lobby_id) and source.owner_id != target.owner_id:
+        return jsonify({'ok': False, 'error': 'forbidden'}), 403
+    if source.template_id != target.template_id:
+        return jsonify({'ok': False, 'error': 'template_mismatch'}), 400
+    if not stackable_type(source.definition):
+        return jsonify({'ok': False, 'error': 'not_stackable'}), 400
+    max_amount = normalized_max_amount(source.definition)
+    total_amount = source.amount + target.amount
+    if total_amount > max_amount:
+        return jsonify({'ok': False, 'error': 'exceeds_max'}), 400
+
+    if source.amount > target.amount:
+        target.custom_name = source.custom_name
+    target.amount = normalize_stack_amount(target.definition, total_amount)
+    target.version += 1
+    db.session.delete(source)
+    db.session.commit()
+    return jsonify({
+        'ok': True,
+        'instance': build_instance_payload(target, user, lobby_id),
+        'deleted_instance_id': source.id,
+    })
 
 
 @app.route('/api/inventory/use', methods=['POST'])
@@ -1565,26 +1634,28 @@ def use_inventory_item():
         return jsonify({'ok': False, 'error': 'conflict'}), 409
 
     item_type = instance.definition.item_type.name
-    if item_type not in {'food', 'map'}:
+    if item_type not in {'food', 'map', 'weapon'}:
         if inventory_logger.handlers:
             inventory_logger.error('Use rejected for item %s: invalid type %s', instance.id, item_type)
         return jsonify({'ok': False, 'error': 'not_usable'}), 400
 
     if item_type == 'food':
-        if not stackable_type(instance.definition):
+        db.session.delete(instance)
+        db.session.commit()
+        return jsonify({'ok': True, 'deleted_instance_id': instance.id})
+
+    if item_type == 'weapon':
+        if not has_durability(instance.definition):
             if inventory_logger.handlers:
-                inventory_logger.error('Use rejected for item %s: food not stackable', instance.id)
+                inventory_logger.error('Use rejected for item %s: missing durability', instance.id)
             return jsonify({'ok': False, 'error': 'invalid_item'}), 400
-        if instance.amount <= 1:
-            db.session.delete(instance)
-            db.session.commit()
-            return jsonify({'ok': True})
-        instance.amount = normalize_stack_amount(instance.definition, instance.amount - 1)
+        roll = random.randint(0, 3)
+        instance.str_current = max((instance.str_current or 0) - roll, 0)
         instance.version += 1
         db.session.commit()
-        return jsonify({'ok': True})
+        return jsonify({'ok': True, 'instance': build_instance_payload(instance, user, lobby_id)})
 
-    return jsonify({'ok': True})
+    return jsonify({'ok': True, 'map_image': instance.definition.image_path})
 
 
 @app.route('/api/inventory/durability', methods=['POST'])
@@ -1617,7 +1688,37 @@ def update_inventory_durability():
     instance.str_current = value
     instance.version += 1
     db.session.commit()
-    return jsonify({'ok': True})
+    return jsonify({'ok': True, 'instance': build_instance_payload(instance, user, lobby_id)})
+
+
+@app.route('/api/master/item_instance/set_durability', methods=['POST'])
+def set_master_durability():
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    item_id = parse_int(data.get('item_id'), 0)
+    version = parse_int(data.get('version'), 0)
+    value = parse_int(data.get('value'), 0)
+
+    instance = ItemInstance.query.get(item_id)
+    if not instance:
+        return jsonify({'ok': False, 'error': 'not_found'}), 404
+    lobby_id = current_lobby_id_for(user)
+    if not is_master(user, lobby_id):
+        return jsonify({'ok': False, 'error': 'forbidden'}), 403
+    if not _require_version(version):
+        return jsonify({'ok': False, 'error': 'missing_version'}), 400
+    if not _assert_version(instance, version):
+        return jsonify({'ok': False, 'error': 'conflict'}), 409
+    if not has_durability(instance.definition):
+        if inventory_logger.handlers:
+            inventory_logger.error('Durability update rejected for item %s', instance.id)
+        return jsonify({'ok': False, 'error': 'invalid_item'}), 400
+    max_str = max(instance.definition.max_str or 0, 0)
+    value = min(max(value, 0), max_str)
+    instance.str_current = value
+    instance.version += 1
+    db.session.commit()
+    return jsonify({'ok': True, 'instance': build_instance_payload(instance, user, lobby_id)})
 
 
 @app.route('/api/inventory/drop', methods=['POST'])
@@ -1654,7 +1755,7 @@ def drop_inventory_item():
     if not auto_pos:
         if inventory_logger.handlers:
             inventory_logger.error('Drop failed: no space in master inventory for item %s', instance.id)
-        return jsonify({'ok': False, 'error': 'no_space'}), 409
+        return jsonify({'ok': False, 'error': 'no_space'}), 400
     instance.owner_id = master_id
     instance.container_i = target_container
     instance.pos_x, instance.pos_y, rotation_value = auto_pos
@@ -1711,7 +1812,7 @@ def transfer_inventory_item():
     if not target_pos:
         if inventory_logger.handlers:
             inventory_logger.error('Transfer failed: no space for recipient %s', recipient_id)
-        return jsonify({'error': 'no_space'}), 409
+        return jsonify({'error': 'no_space'}), 400
 
     if amount == instance.amount:
         instance.owner_id = recipient_id

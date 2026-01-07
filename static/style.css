@@ -1937,6 +1937,60 @@ textarea {
     margin-top: 6px;
 }
 
+.item-detail__actions {
+    display: grid;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.item-detail__field {
+    display: grid;
+    gap: 6px;
+}
+
+.item-detail__actions.is-hidden {
+    display: none;
+}
+
+.item-detail__field.is-hidden {
+    display: none;
+}
+
+.map-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(5, 7, 12, 0.9);
+    z-index: 60;
+}
+
+.map-overlay.is-open {
+    display: flex;
+}
+
+.map-overlay__content {
+    width: min(92vw, 1200px);
+    height: min(92vh, 800px);
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    background: rgba(10, 12, 20, 0.98);
+    padding: 16px;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 12px;
+}
+
+.map-overlay__image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: rgba(6, 8, 12, 0.75);
+}
+
 .transfer-modal__players {
     display: grid;
     gap: 8px;
