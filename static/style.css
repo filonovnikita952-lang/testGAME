@@ -1146,6 +1146,112 @@ textarea {
     gap: 8px;
 }
 
+.panel-toggle {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.panel-toggle .button {
+    font-size: 0.7rem;
+    padding: 6px 10px;
+}
+
+.panel-toggle .button.is-active {
+    border-color: rgba(160, 200, 255, 0.6);
+    color: #a6c6ff;
+}
+
+.stat-bar {
+    display: grid;
+    gap: 6px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(13, 14, 20, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.stat-bar__header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.stat-bar__track {
+    position: relative;
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(6, 7, 10, 0.8);
+    overflow: hidden;
+}
+
+.stat-bar__fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(120, 170, 255, 0.9), rgba(60, 120, 255, 0.9));
+    transition: width 0.2s ease;
+}
+
+.stat-bar[data-stat='mana'] .stat-bar__fill {
+    background: linear-gradient(90deg, rgba(90, 230, 255, 0.9), rgba(40, 140, 255, 0.9));
+}
+
+.stat-bar[data-stat='hungry'] .stat-bar__fill {
+    background: linear-gradient(90deg, rgba(255, 186, 90, 0.95), rgba(255, 120, 60, 0.95));
+}
+
+.stat-bar__input {
+    width: 100%;
+    accent-color: rgba(140, 180, 255, 0.9);
+}
+
+.stat-field--inline {
+    align-items: center;
+    justify-content: space-between;
+}
+
+.stat-field__input {
+    width: 64px;
+    background: rgba(8, 9, 14, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 4px 8px;
+    text-align: right;
+}
+
+.inventory.is-readonly .stat-bar__input,
+.inventory.master-mode-view .stat-bar__input,
+.inventory.master-mode-view .stat-field__input {
+    display: none;
+}
+
+.inventory.master-mode-control .stat-bar__input,
+.inventory.master-mode-control .stat-field__input {
+    display: block;
+}
+
+.bag-grid-list {
+    display: grid;
+    gap: 8px;
+}
+
+.bag-grid-panel {
+    display: grid;
+    gap: 6px;
+}
+
+.bag-grid-panel.is-broken .panel-title {
+    color: #ff7b7b;
+}
+
+.bag-grid-panel.is-broken .tetris-grid {
+    box-shadow: 0 0 0 1px rgba(255, 90, 90, 0.6);
+}
+
 .stat-field {
     display: flex;
     align-items: center;
