@@ -1332,7 +1332,7 @@
         const controller = new LobbyInventory(root);
         root.querySelectorAll('[data-master-create]').forEach((form) => {
             const lobbyId = root.dataset.lobbyId;
-            const issueButton = form.querySelector('button');
+            const issueButton = form.querySelector('button:not([data-random-durability])');
             const randomButton = form.querySelector('[data-random-durability]');
             const durabilityInput = form.querySelector('input[id^="item_durability_current_"]');
             const randomInput = form.querySelector('input[id^="item_random_durability_"]');
@@ -1403,7 +1403,7 @@
 
         root.querySelectorAll('[data-master-issue]').forEach((form) => {
             const lobbyId = root.dataset.lobbyId;
-            const button = form.querySelector('button');
+            const button = form.querySelector('button:not([data-random-durability])');
             const randomButton = form.querySelector('[data-random-durability]');
             const durabilityInput = form.querySelector('input[id^="issue_durability_current_"]');
             const randomInput = form.querySelector('input[id^="issue_random_durability_"]');
