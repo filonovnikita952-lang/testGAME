@@ -167,6 +167,7 @@ class ItemDefinition(db.Model):
     weight = db.Column(db.Float, nullable=False, default=0)
     max_str = db.Column('max_durability', db.Integer, nullable=True)
     quality = db.Column(db.String(20), nullable=False, default='common')
+    is_cloth = db.Column(db.Boolean, nullable=False, default=False)
     bag_width = db.Column(db.Integer, nullable=True)
     bag_height = db.Column(db.Integer, nullable=True)
     type_id = db.Column(db.Integer, db.ForeignKey('item_type.id'), nullable=False)
@@ -202,6 +203,12 @@ class CharacterStats(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False, unique=True)
     strength = db.Column(db.Integer, nullable=False, default=10)
+    hp_current = db.Column(db.Integer, nullable=True)
+    hp_max = db.Column(db.Integer, nullable=True)
+    mana_current = db.Column(db.Integer, nullable=True)
+    mana_max = db.Column(db.Integer, nullable=True)
+    armor_class = db.Column(db.Integer, nullable=True)
+    hungry = db.Column(db.Integer, nullable=True)
 
 
 def _should_reset_database(db_uri: str) -> bool:
@@ -264,6 +271,9 @@ def _ensure_item_definition_columns():
     inspector = inspect(db.engine)
     if 'item_definition' in inspector.get_table_names():
         columns = {column['name'] for column in inspector.get_columns('item_definition')}
+        if 'is_cloth' not in columns:
+            db.session.execute(text('ALTER TABLE item_definition ADD COLUMN is_cloth BOOLEAN DEFAULT 0'))
+            db.session.commit()
         if 'bag_width' not in columns:
             db.session.execute(text('ALTER TABLE item_definition ADD COLUMN bag_width INTEGER'))
             db.session.commit()
@@ -272,11 +282,36 @@ def _ensure_item_definition_columns():
             db.session.commit()
 
 
+def _ensure_character_stats_columns():
+    inspector = inspect(db.engine)
+    if 'character_stats' in inspector.get_table_names():
+        columns = {column['name'] for column in inspector.get_columns('character_stats')}
+        if 'hp_current' not in columns:
+            db.session.execute(text('ALTER TABLE character_stats ADD COLUMN hp_current INTEGER'))
+            db.session.commit()
+        if 'hp_max' not in columns:
+            db.session.execute(text('ALTER TABLE character_stats ADD COLUMN hp_max INTEGER'))
+            db.session.commit()
+        if 'mana_current' not in columns:
+            db.session.execute(text('ALTER TABLE character_stats ADD COLUMN mana_current INTEGER'))
+            db.session.commit()
+        if 'mana_max' not in columns:
+            db.session.execute(text('ALTER TABLE character_stats ADD COLUMN mana_max INTEGER'))
+            db.session.commit()
+        if 'armor_class' not in columns:
+            db.session.execute(text('ALTER TABLE character_stats ADD COLUMN armor_class INTEGER'))
+            db.session.commit()
+        if 'hungry' not in columns:
+            db.session.execute(text('ALTER TABLE character_stats ADD COLUMN hungry INTEGER'))
+            db.session.commit()
+
+
 def initialize_database():
     db.create_all()
     _ensure_user_columns()
     _ensure_item_type_columns()
     _ensure_item_definition_columns()
+    _ensure_character_stats_columns()
 
 
 def reset_database():
@@ -285,6 +320,7 @@ def reset_database():
     _ensure_user_columns()
     _ensure_item_type_columns()
     _ensure_item_definition_columns()
+    _ensure_character_stats_columns()
 
 
 def reset_database_if_needed():
@@ -300,6 +336,7 @@ def reset_database_if_needed():
 
 with app.app_context():
     reset_database_if_needed()
+    cleanup_starter_kit()
 
 
 @dataclass
@@ -485,273 +522,75 @@ def initial_str_current(definition: ItemDefinition) -> int:
     return 0
 
 
-def seed_item_definitions() -> list[ItemDefinition]:
-    definitions = ItemDefinition.query.all()
-    type_weapon = get_or_create_item_type('weapon', has_durability=True, usable=True)
-    type_armor = get_or_create_item_type('armor', has_durability=True)
-    type_shield = get_or_create_item_type('shield', has_durability=True)
-    type_backpack = get_or_create_item_type('backpack', has_durability=True)
-    type_head = get_or_create_item_type('head', has_durability=True)
-    type_shirt = get_or_create_item_type('shirt', has_durability=True)
-    type_pants = get_or_create_item_type('pants', has_durability=True)
-    type_boots = get_or_create_item_type('boots', has_durability=True)
-    type_amulet = get_or_create_item_type('amulet', has_durability=True)
-    type_food = get_or_create_item_type('food', stackable=True, max_amount=5, usable=True, consumable=True)
-    type_map = get_or_create_item_type('map', usable=True)
-    type_ammo = get_or_create_item_type(
-        'ammo',
-        stackable=True,
-        max_amount=30,
-        consumable=True,
-        linked_weapon_type='weapon',
-    )
-    type_other = get_or_create_item_type('other', stackable=True, max_amount=9999)
+def compute_max_stats(strength: int) -> tuple[int, int]:
+    base_strength = strength or 10
+    hp_max = max(1, 10 + base_strength * 2)
+    mana_max = max(1, 5 + base_strength)
+    return hp_max, mana_max
 
-    type_food.stackable = True
-    type_food.max_amount = 5
-    type_food.usable = True
-    type_food.consumable = True
-    type_map.usable = True
-    type_ammo.stackable = True
-    type_ammo.max_amount = 30
-    type_ammo.consumable = True
-    type_ammo.linked_weapon_type = type_ammo.linked_weapon_type or 'weapon'
-    type_other.stackable = True
-    type_other.max_amount = 9999
 
+def recompute_stats_max(stats: CharacterStats) -> bool:
+    hp_max, mana_max = compute_max_stats(stats.strength)
+    updated = False
+    if stats.hp_max != hp_max:
+        stats.hp_max = hp_max
+        updated = True
+    if stats.mana_max != mana_max:
+        stats.mana_max = mana_max
+        updated = True
+    stats.hp_current = min(stats.hp_current or hp_max, hp_max)
+    stats.mana_current = min(stats.mana_current or mana_max, mana_max)
+    return updated
+
+
+def ensure_character_stats(user_id: int) -> CharacterStats:
+    stats = CharacterStats.query.filter_by(user_id=user_id).first()
+    if not stats:
+        stats = CharacterStats(user_id=user_id, strength=10)
+        db.session.add(stats)
+    hp_max, mana_max = compute_max_stats(stats.strength or 10)
+    if stats.hp_max is None:
+        stats.hp_max = hp_max
+    if stats.mana_max is None:
+        stats.mana_max = mana_max
+    if stats.hp_current is None:
+        stats.hp_current = stats.hp_max
+    if stats.mana_current is None:
+        stats.mana_current = stats.mana_max
+    if stats.armor_class is None:
+        stats.armor_class = 10
+    if stats.hungry is None:
+        stats.hungry = 100
+    stats.hp_current = min(stats.hp_current or 0, stats.hp_max or hp_max)
+    stats.mana_current = min(stats.mana_current or 0, stats.mana_max or mana_max)
+    stats.hungry = min(max(stats.hungry or 0, 0), 100)
     db.session.commit()
-    if definitions:
-        return definitions
+    return stats
 
-    definitions = [
-        ItemDefinition(
-            name='Меч найманця',
-            description='Балансований клинок для ближнього бою.',
-            image_path='images/1_skull.png',
-            w=1,
-            h=3,
-            weight=3.2,
-            max_str=100,
-            quality='uncommon',
-            item_type=type_weapon,
-        ),
-        ItemDefinition(
-            name='Шкіряна броня',
-            description='Легка броня для мандрівника.',
-            image_path='images/2_boots.png',
-            w=2,
-            h=3,
-            weight=5.4,
-            max_str=120,
-            quality='common',
-            item_type=type_armor,
-        ),
-        ItemDefinition(
-            name='Баклер',
-            description='Невеликий щит для захисту від атак.',
-            image_path='images/1_bionic-eye.png',
-            w=2,
-            h=2,
-            weight=2.6,
-            max_str=90,
-            quality='common',
-            item_type=type_shield,
-        ),
-        ItemDefinition(
-            name='Дорожній рюкзак',
-            description='Складається з жорсткого каркасу та ременів.',
-            image_path='images/1_bionic-eye.png',
-            w=3,
-            h=3,
-            weight=1.8,
-            max_str=80,
-            quality='uncommon',
-            item_type=type_backpack,
-        ),
-        ItemDefinition(
-            name='Шолом розвідника',
-            description='Захищає голову та очі від ударів.',
-            image_path='images/1_bionic-eye.png',
-            w=2,
-            h=2,
-            weight=1.2,
-            max_str=60,
-            quality='common',
-            item_type=type_head,
-        ),
-        ItemDefinition(
-            name='Подорожня сорочка',
-            description='Проста тканинна сорочка.',
-            image_path='images/1_bionic-eye.png',
-            w=2,
-            h=2,
-            weight=0.8,
-            max_str=40,
-            quality='common',
-            item_type=type_shirt,
-        ),
-        ItemDefinition(
-            name='Штани шукача',
-            description='Зручні штани для походів.',
-            image_path='images/1_bionic-eye.png',
-            w=2,
-            h=2,
-            weight=0.9,
-            max_str=40,
-            quality='common',
-            item_type=type_pants,
-        ),
-        ItemDefinition(
-            name='Черевики мандрівника',
-            description='Довговічне взуття для мандрів.',
-            image_path='images/1_bionic-eye.png',
-            w=2,
-            h=2,
-            weight=0.9,
-            max_str=50,
-            quality='common',
-            item_type=type_boots,
-        ),
-        ItemDefinition(
-            name='Амулет вітру',
-            description='Магічний амулет для захисту.',
-            image_path='images/1_bionic-eye.png',
-            w=1,
-            h=2,
-            weight=0.2,
-            max_str=45,
-            quality='uncommon',
-            item_type=type_amulet,
-        ),
-        ItemDefinition(
-            name='Зілля лікування',
-            description='Відновлює 12 HP.',
-            image_path='images/1_bionic-eye.png',
-            w=1,
-            h=2,
-            weight=0.3,
-            max_str=None,
-            quality='uncommon',
-            item_type=type_food,
-        ),
-        ItemDefinition(
-            name='Стрілковий набір',
-            description='Пучок стріл для лука.',
-            image_path='images/1_bionic-eye.png',
-            w=2,
-            h=1,
-            weight=0.1,
-            max_str=None,
-            quality='common',
-            item_type=type_ammo,
-        ),
-        ItemDefinition(
-            name='Мішечок монет',
-            description='Золоті монети. Використовуються як предмет.',
-            image_path='images/1_bionic-eye.png',
-            w=1,
-            h=1,
-            weight=0.01,
-            max_str=None,
-            quality='common',
-            item_type=type_other,
-        ),
-    ]
-    db.session.add_all(definitions)
+
+def cleanup_starter_kit() -> None:
+    starter_names = {
+        'Меч найманця',
+        'Шкіряна броня',
+        'Баклер',
+        'Дорожній рюкзак',
+        'Шолом розвідника',
+        'Подорожня сорочка',
+        'Штани шукача',
+        'Черевики мандрівника',
+        'Амулет вітру',
+        'Зілля лікування',
+        'Стрілковий набір',
+        'Мішечок монет',
+    }
+    starter_defs = ItemDefinition.query.filter(ItemDefinition.name.in_(starter_names)).all()
+    if not starter_defs:
+        return
+    starter_ids = [definition.id for definition in starter_defs]
+    ItemInstance.query.filter(ItemInstance.template_id.in_(starter_ids)).delete(synchronize_session=False)
+    for definition in starter_defs:
+        db.session.delete(definition)
     db.session.commit()
-    return definitions
-
-
-def seed_user_inventory(user: User, lobby_id: Optional[int]) -> list[ItemInstance]:
-    existing = ItemInstance.query.filter_by(owner_id=user.id).all()
-    if existing:
-        return existing
-    definitions = seed_item_definitions()
-    instances = [
-        ItemInstance(
-            owner_id=user.id,
-            definition=definitions[0],
-            container_i='inv_main',
-            pos_x=1,
-            pos_y=1,
-            rotated=0,
-            str_current=86,
-            amount=1,
-        ),
-        ItemInstance(
-            owner_id=user.id,
-            definition=definitions[1],
-            container_i='inv_main',
-            pos_x=3,
-            pos_y=1,
-            rotated=0,
-            str_current=110,
-            amount=1,
-        ),
-        ItemInstance(
-            owner_id=user.id,
-            definition=definitions[2],
-            container_i='inv_main',
-            pos_x=6,
-            pos_y=1,
-            rotated=0,
-            str_current=85,
-            amount=1,
-        ),
-        ItemInstance(
-            owner_id=user.id,
-            definition=definitions[3],
-            container_i='inv_main',
-            pos_x=8,
-            pos_y=1,
-            rotated=0,
-            str_current=80,
-            amount=1,
-        ),
-        ItemInstance(
-            owner_id=user.id,
-            definition=definitions[4],
-            container_i='inv_main',
-            pos_x=10,
-            pos_y=1,
-            rotated=0,
-            str_current=50,
-            amount=1,
-        ),
-        ItemInstance(
-            owner_id=user.id,
-            definition=definitions[9],
-            container_i='inv_main',
-            pos_x=1,
-            pos_y=5,
-            rotated=0,
-            str_current=None,
-            amount=3,
-        ),
-        ItemInstance(
-            owner_id=user.id,
-            definition=definitions[11],
-            container_i='inv_main',
-            pos_x=4,
-            pos_y=5,
-            rotated=0,
-            str_current=None,
-            amount=280,
-        ),
-        ItemInstance(
-            owner_id=user.id,
-            definition=definitions[10],
-            container_i='inv_main',
-            pos_x=6,
-            pos_y=5,
-            rotated=0,
-            str_current=None,
-            amount=20,
-        ),
-    ]
-    db.session.add_all(instances)
-    db.session.commit()
-    return instances
 
 
 def get_membership(user: User, lobby_id: Optional[int]) -> Optional[LobbyMember]:
@@ -787,17 +626,19 @@ def can_edit_inventory(current: User, target_user_id: int, lobby_id: Optional[in
     return current.id == target_user_id or is_master(current, lobby_id)
 
 
-def get_backpack_container(owner_id: int) -> Optional[ItemInstance]:
-    return (
-        ItemInstance.query.join(ItemDefinition, ItemInstance.template_id == ItemDefinition.id)
-        .join(ItemType, ItemDefinition.type_id == ItemType.id)
-        .filter(
-            ItemInstance.owner_id == owner_id,
-            ItemInstance.container_i == 'equip_back',
-            ItemType.name == 'backpack',
-        )
-        .first()
-    )
+def get_bag_instance(owner_id: int, bag_id: int) -> Optional[ItemInstance]:
+    if not bag_id:
+        return None
+    bag_instance = ItemInstance.query.get(bag_id)
+    if not bag_instance or bag_instance.owner_id != owner_id:
+        return None
+    if bag_instance.container_i not in EQUIPMENT_GRIDS:
+        return None
+    if not bag_instance.definition.is_cloth:
+        return None
+    if not bag_instance.definition.bag_width or not bag_instance.definition.bag_height:
+        return None
+    return bag_instance
 
 
 def container_size(container_id: str) -> Optional[tuple[int, int]]:
@@ -811,16 +652,17 @@ def container_size(container_id: str) -> Optional[tuple[int, int]]:
         return SPECIAL_GRIDS[container_id]
     if container_id.startswith('bag:'):
         bag_id = parse_int(container_id.split(':', 1)[1], 0)
-        bag_instance = ItemInstance.query.get(bag_id)
-        if bag_instance and bag_instance.definition.bag_width and bag_instance.definition.bag_height:
+        instance = ItemInstance.query.get(bag_id)
+        bag_instance = get_bag_instance(instance.owner_id if instance else 0, bag_id)
+        if bag_instance:
             return bag_instance.definition.bag_width, bag_instance.definition.bag_height
-        return BACKPACK_GRID_WIDTH, BACKPACK_GRID_HEIGHT
+        return None
     return None
 
 
 def container_label(container_id: str) -> str:
     if container_id.startswith('bag:'):
-        return 'Backpack'
+        return 'Cloth Bag'
     return CONTAINER_LABELS.get(container_id, container_id)
 
 
@@ -850,6 +692,7 @@ def build_instance_payload(
         'description': definition.description,
         'custom_description': visible_custom_description,
         'image_path': definition.image_path,
+        'is_cloth': bool(definition.is_cloth),
         'size': {'w': definition.w, 'h': definition.h},
         'rotatable': True,
         'stackable': stackable,
@@ -881,10 +724,7 @@ def build_inventory_payload(
             'permissions': {'can_edit': False, 'is_master': False},
         }
     membership = get_membership(user, lobby_id)
-    if lobby_id and membership:
-        seed_user_inventory(user, lobby_id)
     instances = ItemInstance.query.filter_by(owner_id=user.id).all()
-    backpack = get_backpack_container(user.id)
     containers = [
         {
             'id': 'inv_main',
@@ -913,15 +753,29 @@ def build_inventory_payload(
             'w': width,
             'h': height,
         })
-    if backpack:
-        bag_width = backpack.definition.bag_width or BACKPACK_GRID_WIDTH
-        bag_height = backpack.definition.bag_height or BACKPACK_GRID_HEIGHT
+    cloth_bags = []
+    for instance in instances:
+        definition = instance.definition
+        if (
+            instance.container_i in EQUIPMENT_GRIDS
+            and definition.is_cloth
+            and (definition.bag_width or 0) > 0
+            and (definition.bag_height or 0) > 0
+        ):
+            cloth_bags.append(instance)
+    for bag_instance in cloth_bags:
         containers.append({
-            'id': f'bag:{backpack.id}',
-            'label': container_label(f'bag:{backpack.id}'),
-            'w': bag_width,
-            'h': bag_height,
-            'is_backpack': True,
+            'id': f'bag:{bag_instance.id}',
+            'label': f'{bag_instance.definition.name} Bag',
+            'w': bag_instance.definition.bag_width,
+            'h': bag_instance.definition.bag_height,
+            'is_bag': True,
+            'bag_instance_id': bag_instance.id,
+            'bag_broken': bool(
+                bag_instance.definition.is_cloth
+                and has_durability(bag_instance.definition)
+                and (bag_instance.str_current or 0) <= 0
+            ),
         })
     items_payload = []
     current_weight = 0.0
@@ -940,11 +794,7 @@ def build_inventory_payload(
         'can_edit': can_edit_inventory(viewer, user.id, lobby_id),
         'is_master': is_master(viewer, lobby_id),
     }
-    stats = CharacterStats.query.filter_by(user_id=user.id).first()
-    if not stats:
-        stats = CharacterStats(user_id=user.id, strength=10)
-        db.session.add(stats)
-        db.session.commit()
+    stats = ensure_character_stats(user.id)
     strength_modifier = (stats.strength - 10) // 2
     capacity = max(5, 5 + 5 * strength_modifier)
     return {
@@ -953,6 +803,15 @@ def build_inventory_payload(
         'items': items_payload,
         'weight': {'current': round(current_weight, 2), 'capacity': capacity},
         'permissions': permissions,
+        'stats': {
+            'strength': stats.strength,
+            'hp_current': stats.hp_current,
+            'hp_max': stats.hp_max,
+            'mana_current': stats.mana_current,
+            'mana_max': stats.mana_max,
+            'armor_class': stats.armor_class,
+            'hungry': stats.hungry,
+        },
     }
 
 
@@ -1006,8 +865,8 @@ def is_container_allowed(
         return True, ''
     if container_id.startswith('bag:'):
         backpack_id = container_id.split(':', 1)[1]
-        active_bag = get_backpack_container(owner_id)
-        if not active_bag or str(active_bag.id) != backpack_id:
+        bag_instance = get_bag_instance(owner_id, parse_int(backpack_id, 0))
+        if not bag_instance or str(bag_instance.id) != backpack_id:
             return False, 'missing_backpack'
         return True, ''
     if container_id in EQUIPMENT_GRIDS or container_id in SPECIAL_GRIDS:
@@ -1416,8 +1275,8 @@ def move_inventory_item():
             inventory_logger.error('Inventory move rejected: %s', reason)
         return jsonify({'error': reason}), 400
 
-    if instance.container_i == 'equip_back' and container_id != 'equip_back':
-        if instance.definition.item_type.name == 'backpack':
+    if instance.container_i in EQUIPMENT_GRIDS and container_id not in EQUIPMENT_GRIDS:
+        if instance.definition.is_cloth and instance.definition.bag_width and instance.definition.bag_height:
             bag_id = f'bag:{instance.id}'
             bag_items = ItemInstance.query.filter_by(
                 owner_id=instance.owner_id,
@@ -1425,7 +1284,7 @@ def move_inventory_item():
             ).count()
             if bag_items:
                 if inventory_logger.handlers:
-                    inventory_logger.error('Cannot unequip backpack %s with items inside', instance.id)
+                    inventory_logger.error('Cannot unequip cloth bag %s with items inside', instance.id)
                 return jsonify({'error': 'backpack_not_empty'}), 400
 
     rotation_value = normalize_rotation(instance.definition, rotated)
@@ -1721,6 +1580,49 @@ def set_master_durability():
     return jsonify({'ok': True, 'instance': build_instance_payload(instance, user, lobby_id)})
 
 
+@app.route('/api/master/character_stats/update', methods=['POST'])
+def update_character_stats():
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    lobby_id = parse_int(data.get('lobby_id'), 0)
+    if not is_master(user, lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    target_user_id = parse_int(data.get('user_id'), 0)
+    if not target_user_id:
+        return jsonify({'error': 'invalid_user'}), 400
+    target_membership = LobbyMember.query.filter_by(
+        lobby_id=lobby_id,
+        user_id=target_user_id,
+    ).first()
+    if not target_membership:
+        return jsonify({'error': 'not_in_lobby'}), 403
+    stats = ensure_character_stats(target_user_id)
+    hp_max, mana_max = compute_max_stats(stats.strength or 10)
+    stats.hp_max = hp_max
+    stats.mana_max = mana_max
+    hp_current = parse_int(data.get('hp_current'), stats.hp_current or hp_max, minimum=0)
+    mana_current = parse_int(data.get('mana_current'), stats.mana_current or mana_max, minimum=0)
+    armor_class = parse_int(data.get('armor_class'), stats.armor_class or 0, minimum=0)
+    hungry = parse_int(data.get('hungry'), stats.hungry or 0, minimum=0)
+    stats.hp_current = min(hp_current, hp_max)
+    stats.mana_current = min(mana_current, mana_max)
+    stats.armor_class = armor_class
+    stats.hungry = min(max(hungry, 0), 100)
+    db.session.commit()
+    return jsonify({
+        'ok': True,
+        'stats': {
+            'strength': stats.strength,
+            'hp_current': stats.hp_current,
+            'hp_max': stats.hp_max,
+            'mana_current': stats.mana_current,
+            'mana_max': stats.mana_max,
+            'armor_class': stats.armor_class,
+            'hungry': stats.hungry,
+        },
+    })
+
+
 @app.route('/api/inventory/drop', methods=['POST'])
 def drop_inventory_item():
     user = require_user()
@@ -1855,6 +1757,9 @@ def create_item_template():
     weight = float(data.get('weight') or 0)
     max_durability = parse_int(data.get('max_durability'), 1, minimum=1)
     max_amount = parse_int(data.get('max_amount'), 1, minimum=1)
+    is_cloth = str(data.get('is_cloth') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
+    bag_width = parse_int(data.get('bag_width'), 0, minimum=0)
+    bag_height = parse_int(data.get('bag_height'), 0, minimum=0)
     issue_to = parse_int(data.get('issue_to'), 0)
     issue_amount = parse_int(data.get('issue_amount'), 1, minimum=1)
     durability_current = data.get('durability_current')
@@ -1865,6 +1770,8 @@ def create_item_template():
         return jsonify({'error': 'missing_name'}), 400
     if quality not in QUALITY_LEVELS:
         quality = 'common'
+    if type_name == 'cloth':
+        is_cloth = True
 
     image_path = None
     if 'image' in request.files:
@@ -1903,6 +1810,9 @@ def create_item_template():
         weight=weight,
         max_str=max_str,
         quality=quality,
+        is_cloth=is_cloth,
+        bag_width=bag_width if is_cloth and bag_width > 0 else None,
+        bag_height=bag_height if is_cloth and bag_height > 0 else None,
         item_type=item_type,
     )
     db.session.add(definition)

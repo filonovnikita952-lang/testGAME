@@ -64,6 +64,22 @@
             this.detailDurabilityField = this.root.querySelector('[data-detail-durability]');
             this.detailDurabilityInput = this.root.querySelector('[data-detail-durability-input]');
             this.detailItemId = null;
+            this.stats = null;
+            this.statsValues = {
+                hp: this.root.querySelector('[data-stat-value="hp"]'),
+                mana: this.root.querySelector('[data-stat-value="mana"]'),
+                hungry: this.root.querySelector('[data-stat-value="hungry"]'),
+                ac: this.root.querySelector('[data-stat-value="ac"]'),
+            };
+            this.statsFills = {
+                hp: this.root.querySelector('[data-stat-fill="hp"]'),
+                mana: this.root.querySelector('[data-stat-fill="mana"]'),
+                hungry: this.root.querySelector('[data-stat-fill="hungry"]'),
+            };
+            this.statsInputs = Array.from(this.root.querySelectorAll('[data-stat-input]'));
+            this.bagGridList = this.root.querySelector('[data-bag-grid-list]');
+            this.masterToggle = this.root.querySelector('[data-master-toggle]');
+            this.masterMode = 'view';
             this.gridElements = Array.from(this.root.querySelectorAll('.tetris-grid'));
             this.rosterList = this.lobbyId
                 ? document.querySelector(`.lobby-roster__list[data-lobby-id="${this.lobbyId}"]`)
@@ -144,6 +160,26 @@
                 });
             }
 
+            if (this.masterToggle) {
+                this.masterToggle.querySelectorAll('[data-master-mode]').forEach((button) => {
+                    button.addEventListener('click', () => {
+                        const mode = button.dataset.masterMode || 'view';
+                        this.setMasterMode(mode);
+                    });
+                });
+            }
+
+            this.statsInputs.forEach((input) => {
+                input.addEventListener('input', () => {
+                    if (!this.canEditStats()) return;
+                    this.updateStatsPreviewFromInputs();
+                });
+                input.addEventListener('change', () => {
+                    if (!this.canEditStats()) return;
+                    this.submitStatsUpdate();
+                });
+            });
+
             this.mapClose?.addEventListener('click', () => this.closeMapOverlay());
             this.mapOverlay?.addEventListener('click', (event) => {
                 if (event.target === this.mapOverlay) this.closeMapOverlay();
@@ -213,6 +249,8 @@
                     this.playerRole.textContent = roleLabel;
                 }
             }
+            this.stats = payload.stats || null;
+            this.updateStatsUI();
             if (this.weightDisplay && payload.weight) {
                 this.weightDisplay.textContent = `${payload.weight.current} / ${payload.weight.capacity}`;
             }
@@ -220,7 +258,8 @@
             if (this.inventoryActions) {
                 this.inventoryActions.classList.toggle('is-disabled', !this.permissions.can_edit);
             }
-            this.syncBackpackContainer();
+            this.refreshMasterModeState();
+            this.rebuildBagGrids();
             if (this.detailItemId) {
                 const detailItem = this.items.find((entry) => String(entry.id) === String(this.detailItemId));
                 this.updateDetailsPanel(detailItem || null);
@@ -230,18 +269,33 @@
             this.render();
         }
 
-        syncBackpackContainer() {
-            const backpackContainer = Array.from(this.containers.values()).find((item) => item.is_backpack);
-            const backpackGrid = this.gridElements.find((grid) => grid.dataset.containerRole === 'backpack');
-            if (!backpackGrid) return;
-            if (!backpackContainer) {
-                backpackGrid.classList.add('is-hidden');
-                backpackGrid.removeAttribute('data-container-id');
-                backpackGrid.innerHTML = '';
-                return;
+        rebuildBagGrids() {
+            if (!this.bagGridList) return;
+            this.bagGridList.innerHTML = '';
+            const bagContainers = Array.from(this.containers.values()).filter((container) => container.is_bag);
+            if (!bagContainers.length) {
+                const empty = document.createElement('p');
+                empty.className = 'muted';
+                empty.textContent = 'Немає додаткових сумок.';
+                this.bagGridList.appendChild(empty);
+            } else {
+                bagContainers.forEach((container) => {
+                    const panel = document.createElement('div');
+                    panel.className = 'bag-grid-panel';
+                    if (container.bag_broken) {
+                        panel.classList.add('is-broken');
+                    }
+                    panel.innerHTML = `
+                        <div class="panel-header">
+                            <span class="panel-title">${container.label || 'Bag'}</span>
+                            ${container.bag_broken ? '<span class="panel-tag danger">Broken</span>' : ''}
+                        </div>
+                        <div class="tetris-grid tetris-grid--backpack" data-container-id="${container.id}"></div>
+                    `;
+                    this.bagGridList.appendChild(panel);
+                });
             }
-            backpackGrid.classList.remove('is-hidden');
-            backpackGrid.dataset.containerId = backpackContainer.id;
+            this.gridElements = Array.from(this.root.querySelectorAll('.tetris-grid'));
         }
 
         render() {
@@ -281,6 +335,9 @@
                 const qualityClass = `inventory-item--quality-${item.quality}`;
                 element.className = `inventory-item inventory-item--${item.type} ${qualityClass}`;
                 if (item.has_durability && item.str_current <= 0) {
+                    element.classList.add('is-broken');
+                }
+                if (item.is_cloth && item.has_durability && item.str_current <= 0) {
                     element.classList.add('is-broken');
                 }
                 element.dataset.itemId = item.id;
@@ -468,7 +525,7 @@
             if (!containerId) return false;
             if (containerId === 'inv_main') return true;
             if (containerId === 'hands') return true;
-            if (containerId.startsWith('bag:')) return true;
+            if (containerId.startsWith('bag:')) return this.containers.has(containerId);
             const allowed = containerTypeMap[containerId];
             if (!allowed) return false;
             return allowed.includes(item.type);
@@ -780,7 +837,6 @@
 
         async handleContextAction(action) {
             const itemId = this.contextMenu?.dataset.itemId;
-            const version = Number.parseInt(this.contextMenu?.dataset.itemVersion || '0', 10);
             const item = this.items.find((entry) => String(entry.id) === String(itemId));
             if (!item) {
                 this.closeContextMenu();
@@ -800,7 +856,7 @@
                     await this.splitItem(item);
                     break;
                 case 'drop':
-                    await this.dropItem(item, version);
+                    await this.dropItem(item);
                     break;
                 case 'transfer':
                     this.openTransferModal(item);
@@ -898,11 +954,11 @@
             }
         }
 
-        async dropItem(item, version) {
+        async dropItem(item) {
             const response = await fetch('/api/inventory/drop', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ item_id: item.id, version }),
+                body: JSON.stringify({ item_id: item.id, version: item.version }),
             });
             if (response.ok) {
                 await this.refreshInventory(this.selectedPlayerId);
@@ -1140,6 +1196,136 @@
                 }
             }
         }
+
+        setMasterMode(mode) {
+            this.masterMode = mode === 'control' ? 'control' : 'view';
+            this.refreshMasterModeState();
+        }
+
+        refreshMasterModeState() {
+            const isMaster = this.permissions.is_master;
+            this.root.classList.toggle('master-mode-control', isMaster && this.masterMode === 'control');
+            this.root.classList.toggle('master-mode-view', !isMaster || this.masterMode !== 'control');
+            if (this.masterToggle) {
+                this.masterToggle.querySelectorAll('[data-master-mode]').forEach((button) => {
+                    const isActive = button.dataset.masterMode === this.masterMode;
+                    button.classList.toggle('is-active', isActive);
+                });
+            }
+            this.statsInputs.forEach((input) => {
+                input.disabled = !this.canEditStats();
+            });
+        }
+
+        canEditStats() {
+            return this.permissions.is_master && this.masterMode === 'control';
+        }
+
+        updateStatsUI() {
+            if (!this.stats) return;
+            const hpCurrent = this.stats.hp_current ?? 0;
+            const hpMax = this.stats.hp_max ?? 0;
+            const manaCurrent = this.stats.mana_current ?? 0;
+            const manaMax = this.stats.mana_max ?? 0;
+            const hungry = this.stats.hungry ?? 0;
+            const ac = this.stats.armor_class ?? 0;
+            if (this.statsValues.hp) {
+                this.statsValues.hp.textContent = `${hpCurrent}/${hpMax}`;
+            }
+            if (this.statsValues.mana) {
+                this.statsValues.mana.textContent = `${manaCurrent}/${manaMax}`;
+            }
+            if (this.statsValues.hungry) {
+                this.statsValues.hungry.textContent = `${hungry}/100`;
+            }
+            if (this.statsValues.ac) {
+                this.statsValues.ac.textContent = `${ac}`;
+            }
+            if (this.statsFills.hp) {
+                const pct = hpMax > 0 ? (hpCurrent / hpMax) * 100 : 0;
+                this.statsFills.hp.style.width = `${Math.min(Math.max(pct, 0), 100)}%`;
+            }
+            if (this.statsFills.mana) {
+                const pct = manaMax > 0 ? (manaCurrent / manaMax) * 100 : 0;
+                this.statsFills.mana.style.width = `${Math.min(Math.max(pct, 0), 100)}%`;
+            }
+            if (this.statsFills.hungry) {
+                const pct = (hungry / 100) * 100;
+                this.statsFills.hungry.style.width = `${Math.min(Math.max(pct, 0), 100)}%`;
+            }
+            this.statsInputs.forEach((input) => {
+                const key = input.dataset.statInput;
+                switch (key) {
+                    case 'hp_current':
+                        input.max = `${hpMax}`;
+                        input.value = `${hpCurrent}`;
+                        break;
+                    case 'mana_current':
+                        input.max = `${manaMax}`;
+                        input.value = `${manaCurrent}`;
+                        break;
+                    case 'hungry':
+                        input.max = '100';
+                        input.value = `${hungry}`;
+                        break;
+                    case 'armor_class':
+                        input.value = `${ac}`;
+                        break;
+                    default:
+                        break;
+                }
+            });
+        }
+
+        updateStatsPreviewFromInputs() {
+            const stats = {
+                hp_current: this.stats?.hp_current ?? 0,
+                hp_max: this.stats?.hp_max ?? 0,
+                mana_current: this.stats?.mana_current ?? 0,
+                mana_max: this.stats?.mana_max ?? 0,
+                hungry: this.stats?.hungry ?? 0,
+                armor_class: this.stats?.armor_class ?? 0,
+            };
+            this.statsInputs.forEach((input) => {
+                const value = Number.parseInt(input.value || '0', 10);
+                if (Number.isNaN(value)) return;
+                if (input.dataset.statInput === 'hp_current') stats.hp_current = value;
+                if (input.dataset.statInput === 'mana_current') stats.mana_current = value;
+                if (input.dataset.statInput === 'hungry') stats.hungry = value;
+                if (input.dataset.statInput === 'armor_class') stats.armor_class = value;
+            });
+            this.stats = { ...this.stats, ...stats };
+            this.updateStatsUI();
+        }
+
+        async submitStatsUpdate() {
+            if (!this.canEditStats()) return;
+            const payload = {
+                lobby_id: this.lobbyId,
+                user_id: this.selectedPlayerId,
+            };
+            this.statsInputs.forEach((input) => {
+                const key = input.dataset.statInput;
+                const value = Number.parseInt(input.value || '0', 10);
+                if (Number.isNaN(value)) return;
+                payload[key] = value;
+            });
+            const response = await fetch('/api/master/character_stats/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (response.ok) {
+                const data = await response.json().catch(() => ({}));
+                if (data?.stats) {
+                    this.stats = data.stats;
+                    this.updateStatsUI();
+                }
+                return;
+            }
+            await response.json().catch(() => ({}));
+            await this.refreshInventory(this.selectedPlayerId);
+        }
     }
 
     inventoryRoots.forEach((root) => {
@@ -1170,6 +1356,9 @@
                 const randomDurability = form.querySelector('input[id^="item_random_durability_"]')?.value || '';
                 const maxAmount = Number.parseInt(form.querySelector('input[id^="item_max_amount_"]')?.value || '1', 10);
                 const issueAmount = Number.parseInt(form.querySelector('input[id^="item_issue_amount_"]')?.value || '1', 10);
+                const isCloth = form.querySelector('input[id^="item_is_cloth_"]')?.checked;
+                const bagWidth = Number.parseInt(form.querySelector('input[id^="item_bag_w_"]')?.value || '0', 10);
+                const bagHeight = Number.parseInt(form.querySelector('input[id^="item_bag_h_"]')?.value || '0', 10);
                 const target = form.querySelector('select[id^="item_target_"]')?.value;
                 const imageInput = form.querySelector('input[type="file"]');
 
@@ -1191,6 +1380,9 @@
                 payload.append('random_durability', randomDurability);
                 payload.append('max_amount', maxAmount);
                 payload.append('issue_amount', issueAmount);
+                payload.append('is_cloth', isCloth ? '1' : '0');
+                payload.append('bag_width', Number.isNaN(bagWidth) ? 0 : bagWidth);
+                payload.append('bag_height', Number.isNaN(bagHeight) ? 0 : bagHeight);
                 payload.append('issue_to', target || '');
                 if (imageInput?.files?.length) {
                     payload.append('image', imageInput.files[0]);
