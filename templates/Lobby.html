@@ -58,7 +58,7 @@
                             <h3>Склад команди</h3>
                             <p class="muted">Натисніть на учасника, щоб побачити деталі.</p>
                         </div>
-                        <div class="lobby-info">
+                        <div class="lobby-info dra-card">
                             <div class="lobby-info__meta">
                                 <div>
                                     <span class="lobby-info__label">Лобі</span>
@@ -146,7 +146,7 @@
                         </div>
                     </aside>
 
-                    <div class="lobby-room__workspace card" aria-label="Поле для роботи">
+                    <div class="lobby-room__workspace" aria-label="Поле для роботи">
                         <section
                             class="inventory inventory--embedded"
                             data-inventory-root
@@ -158,7 +158,7 @@
                         >
                             <div class="lobby-inventory-layout">
                                 <section class="lobby-inventory__inventory">
-                                    <div class="inventory-grid-panel panel-main">
+                                    <div class="inventory-grid-panel panel-main dra-card">
                                         <div class="panel-header">
                                             <span class="panel-title">Inventory</span>
                                             <span class="panel-tag" data-weight-display>0 / 5</span>
@@ -171,14 +171,14 @@
                                         <p class="muted inventory-hint">Перетягуйте предмети, натискайте R для повороту та ПКМ для контекстного меню.</p>
                                     </div>
                                     <div class="inventory-subgrids">
-                                        <div class="inventory-grid-panel">
+                                        <div class="inventory-grid-panel dra-card">
                                             <div class="panel-header">
                                                 <span class="panel-title">Extra Bags</span>
                                                 <span class="panel-tag">Cloth</span>
                                             </div>
                                             <div class="bag-grid-list" data-bag-grid-list></div>
                                         </div>
-                                        <div class="inventory-grid-panel">
+                                        <div class="inventory-grid-panel dra-card">
                                             <div class="panel-header">
                                                 <span class="panel-title">Equipment</span>
                                             </div>
@@ -233,7 +233,7 @@
                                         <strong data-player-name>{{ user.nickname or 'KING' }}</strong>
                                         <span class="viewing-banner__role" data-player-role>Власний</span>
                                     </div>
-                                    <div class="inventory-panel panel-secondary lobby-panel">
+                                    <div class="inventory-panel panel-secondary lobby-panel dra-card">
                                         <div class="panel-header">
                                             <span class="panel-title">Деталі предмета</span>
                                         </div>
@@ -259,7 +259,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="inventory-panel panel-secondary lobby-panel">
+                                    <div class="inventory-panel panel-secondary lobby-panel dra-card">
                                         {% if is_master_user %}
                                             <div class="panel-toggle" data-master-toggle>
                                                 <button type="button" class="button ghost is-active" data-master-mode="view">View as player</button>
@@ -320,7 +320,7 @@
                                         </div>
                                     </div>
                                     {% if is_master_user %}
-                                        <div class="inventory-panel panel-secondary lobby-panel lobby-panel--scroll">
+                                        <div class="inventory-panel panel-secondary lobby-panel lobby-panel--scroll dra-card">
                                             <div class="panel-header">
                                                 <span class="panel-title">Майстер</span>
                                                 <span class="panel-tag">TOOLS</span>
@@ -418,7 +418,6 @@
                                                         </select>
                                                         <button type="button" class="button">Створити шаблон</button>
                                                     </form>
-                                                    <div class="divider"></div>
                                                     <form class="form" data-master-issue>
                                                         <h4>Видати за ID</h4>
                                                         <label for="issue_template_{{ membership.lobby.id }}">Template ID</label>
@@ -439,7 +438,6 @@
                                                         <button type="button" class="button ghost" data-random-durability>Random</button>
                                                         <button type="button" class="button ghost">Видати</button>
                                                     </form>
-                                                    <div class="divider"></div>
                                                     <form class="form" data-master-image-update>
                                                         <h4>Оновити фото</h4>
                                                         <label for="image_template_{{ membership.lobby.id }}">Template ID</label>
