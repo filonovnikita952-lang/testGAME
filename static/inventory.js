@@ -58,11 +58,20 @@
             this.detailImage = this.root.querySelector('[data-item-detail-image]');
             this.detailName = this.root.querySelector('[data-item-detail-name]');
             this.detailDescription = this.root.querySelector('[data-item-detail-description]');
+            this.detailActions = this.root.querySelector('[data-item-detail-actions]');
+            this.detailSplitField = this.root.querySelector('[data-detail-split]');
+            this.detailSplitAmount = this.root.querySelector('[data-detail-split-amount]');
+            this.detailDurabilityField = this.root.querySelector('[data-detail-durability]');
+            this.detailDurabilityInput = this.root.querySelector('[data-detail-durability-input]');
             this.detailItemId = null;
             this.gridElements = Array.from(this.root.querySelectorAll('.tetris-grid'));
             this.rosterList = this.lobbyId
                 ? document.querySelector(`.lobby-roster__list[data-lobby-id="${this.lobbyId}"]`)
                 : null;
+            this.mapOverlay = document.getElementById('map-overlay');
+            this.mapImage = this.mapOverlay?.querySelector('[data-map-image]');
+            this.mapClose = this.mapOverlay?.querySelector('[data-map-close]');
+            this.lastPointer = null;
 
             this.bindEvents();
             this.loadInitialState();
@@ -81,20 +90,31 @@
 
             if (this.inventoryActions) {
                 this.inventoryActions.querySelector('[data-action="rotate-item"]')?.addEventListener('click', () => {
-                    if (this.dragState?.item) {
-                        this.toggleRotation(this.dragState.item);
-                    }
+                    this.rotateActiveItem();
                 });
             }
 
             document.addEventListener('keydown', (event) => {
+                if (event.target?.closest('input, textarea, select')) return;
                 if (event.key === 'Escape' && this.dragState?.item) {
                     this.cancelDrag();
                     return;
                 }
-                if (event.key.toLowerCase() === 'r' && this.dragState?.item) {
-                    this.toggleRotation(this.dragState.item);
+                if (event.key === 'Escape' && this.mapOverlay?.classList.contains('is-open')) {
+                    this.closeMapOverlay();
+                    return;
                 }
+                if (event.key.toLowerCase() === 'r') {
+                    this.rotateActiveItem();
+                    return;
+                }
+                if (event.key.toLowerCase() === 'h') {
+                    this.splitActiveItemHalf();
+                }
+            });
+
+            document.addEventListener('pointermove', (event) => {
+                this.lastPointer = { x: event.clientX, y: event.clientY };
             });
 
             if (this.contextMenu) {
@@ -114,6 +134,19 @@
             this.transferClose?.addEventListener('click', () => this.closeTransferModal());
             this.transferModal?.addEventListener('click', (event) => {
                 if (event.target === this.transferModal) this.closeTransferModal();
+            });
+
+            if (this.detailActions) {
+                this.detailActions.querySelectorAll('[data-detail-action]').forEach((button) => {
+                    button.addEventListener('click', () => {
+                        this.handleDetailAction(button.dataset.detailAction);
+                    });
+                });
+            }
+
+            this.mapClose?.addEventListener('click', () => this.closeMapOverlay());
+            this.mapOverlay?.addEventListener('click', (event) => {
+                if (event.target === this.mapOverlay) this.closeMapOverlay();
             });
         }
 
@@ -269,6 +302,11 @@
                     element.addEventListener('pointerdown', (event) => this.startDrag(event, item));
                     element.addEventListener('contextmenu', (event) => this.openContextMenu(event, item));
                 }
+                element.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    this.detailItemId = item.id;
+                    this.updateDetailsPanel(item);
+                });
                 grid.appendChild(element);
             });
         }
@@ -343,6 +381,19 @@
         onDragEnd = async (event) => {
             if (!this.dragState) return;
             const { item } = this.dragState;
+            const dropTargetItem = document.elementFromPoint(event.clientX, event.clientY)?.closest('.inventory-item');
+            if (dropTargetItem) {
+                const targetItemId = dropTargetItem.dataset.itemId;
+                const targetItem = this.items.find((entry) => String(entry.id) === String(targetItemId));
+                if (targetItem && targetItem.id !== item.id) {
+                    const merged = await this.submitMerge(item, targetItem);
+                    this.cleanupDrag(item.id);
+                    if (!merged) {
+                        this.renderItems();
+                    }
+                    return;
+                }
+            }
             const targetGrid = document.elementFromPoint(event.clientX, event.clientY)?.closest('.tetris-grid');
             const targetContainer = targetGrid?.dataset.containerId || null;
             const allowed = targetContainer ? this.isContainerAllowed(item, targetContainer) : false;
@@ -476,8 +527,7 @@
         }
 
         logConflict(action, item, payload = {}) {
-            if (!DEBUG_INVENTORY) return;
-            console.debug('[Inventory] Conflict detected', {
+            console.warn('[Inventory] Conflict detected', {
                 action,
                 instance_id: item?.instance_id ?? item?.id ?? null,
                 local_version: item?.version ?? null,
@@ -488,6 +538,106 @@
         async handleConflict(action, item, payload = {}) {
             this.logConflict(action, item, payload);
             await this.refreshInventory(this.selectedPlayerId);
+        }
+
+        getItemById(itemId) {
+            return this.items.find((entry) => String(entry.id) === String(itemId));
+        }
+
+        getActiveItem() {
+            if (this.dragState?.item) return this.dragState.item;
+            if (this.detailItemId) return this.getItemById(this.detailItemId);
+            return null;
+        }
+
+        rotateActiveItem() {
+            const item = this.getActiveItem();
+            if (!item) return;
+            this.rotateItem(item);
+        }
+
+        splitActiveItemHalf() {
+            const item = this.getActiveItem();
+            if (!item) return;
+            this.splitItem(item, { splitHalf: true, attachDrag: true });
+        }
+
+        handleDetailAction(action) {
+            const item = this.getItemById(this.detailItemId);
+            if (!item) return;
+            switch (action) {
+                case 'rotate':
+                    this.rotateItem(item);
+                    break;
+                case 'use':
+                    this.useItem(item);
+                    break;
+                case 'split':
+                    {
+                        const amount = Number.parseInt(this.detailSplitAmount?.value || '1', 10);
+                        if (Number.isNaN(amount)) return;
+                        this.splitItem(item, { amount });
+                    }
+                    break;
+                case 'set-durability':
+                    this.updateDurability(item);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        applyInstanceUpdates(instances = [], deletedIds = []) {
+            const normalizedDeleted = deletedIds.map((id) => String(id));
+            let nextItems = this.items.filter((entry) => !normalizedDeleted.includes(String(entry.id)));
+            instances.forEach((instance) => {
+                const index = nextItems.findIndex((entry) => String(entry.id) === String(instance.id));
+                if (index >= 0) {
+                    nextItems[index] = instance;
+                } else {
+                    nextItems.push(instance);
+                }
+            });
+            this.items = nextItems;
+            if (this.dragState?.item) {
+                const updated = this.getItemById(this.dragState.item.id);
+                if (updated) {
+                    this.dragState.item = updated;
+                }
+            }
+            if (this.detailItemId) {
+                const detailItem = this.getItemById(this.detailItemId);
+                if (!detailItem) {
+                    this.detailItemId = null;
+                }
+                this.updateDetailsPanel(detailItem || null);
+            }
+            this.renderItems();
+        }
+
+        getItemCenterPosition(item) {
+            const grid = this.gridElements.find((el) => el.dataset.containerId === item.container_id);
+            const container = this.containers.get(item.container_id);
+            if (!grid || !container) return null;
+            const rect = grid.getBoundingClientRect();
+            const metrics = this.cellSize(grid, container);
+            const size = this.getItemSize(item);
+            const left = rect.left + metrics.paddingX + (item.pos_x - 1) * (metrics.width + metrics.gapX);
+            const top = rect.top + metrics.paddingY + (item.pos_y - 1) * (metrics.height + metrics.gapY);
+            const width = size.w * metrics.width + metrics.gapX * (size.w - 1) - 4;
+            const height = size.h * metrics.height + metrics.gapY * (size.h - 1) - 4;
+            return { x: left + width / 2, y: top + height / 2 };
+        }
+
+        attachDragToItem(item) {
+            const pointer = this.lastPointer || this.getItemCenterPosition(item);
+            if (!pointer) return;
+            const event = {
+                clientX: pointer.x,
+                clientY: pointer.y,
+                preventDefault: () => {},
+            };
+            this.startDrag(event, item);
         }
 
         async submitMove(item, containerId, position) {
@@ -520,22 +670,34 @@
             return false;
         }
 
-        toggleRotation(item) {
-            if (!item.rotatable || !this.permissions.can_edit) return;
-            if (!this.canRotateItem(item)) return;
-            item.rotated = item.rotated === 1 ? 0 : 1;
-            this.renderItems();
-            if (this.dragState?.lastPointer) {
-                this.updateGhost({
-                    clientX: this.dragState.lastPointer.x,
-                    clientY: this.dragState.lastPointer.y,
-                });
-                this.updateDragPreviewPosition({
-                    clientX: this.dragState.lastPointer.x,
-                    clientY: this.dragState.lastPointer.y,
-                });
-                this.updateDragPreviewSize();
+        async submitMerge(sourceItem, targetItem) {
+            if (!this.permissions.can_edit) return false;
+            if (!sourceItem.stackable || !targetItem.stackable) return false;
+            if (sourceItem.template_id !== targetItem.template_id) return false;
+            if (sourceItem.id === targetItem.id) return false;
+            if ((sourceItem.amount + targetItem.amount) > targetItem.max_stack) return false;
+            const response = await fetch('/api/inventory/merge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source_instance_id: sourceItem.id,
+                    target_instance_id: targetItem.id,
+                    source_version: sourceItem.version,
+                    target_version: targetItem.version,
+                }),
+            });
+            if (response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                if (payload?.instance) {
+                    this.applyInstanceUpdates([payload.instance], payload?.deleted_instance_id ? [payload.deleted_instance_id] : []);
+                }
+                return true;
             }
+            const payload = await response.json().catch(() => ({}));
+            if (response.status === 409) {
+                await this.handleConflict('merge', sourceItem, payload);
+            }
+            return false;
         }
 
         canRotateItem(item) {
@@ -563,7 +725,7 @@
             }
             const useButton = this.contextMenu.querySelector('[data-action="use"]');
             if (useButton) {
-                useButton.style.display = ['food', 'map'].includes(item.type) ? 'inline-flex' : 'none';
+                useButton.style.display = ['food', 'map', 'weapon'].includes(item.type) ? 'inline-flex' : 'none';
             }
             const splitButton = this.contextMenu.querySelector('[data-action="split"]');
             if (splitButton) {
@@ -626,16 +788,16 @@
             }
             switch (action) {
                 case 'use':
-                    await this.useItem(item, version);
+                    await this.useItem(item);
                     break;
                 case 'equip':
                     await this.equipItem(item);
                     break;
                 case 'rotate':
-                    await this.rotateItem(item, version);
+                    await this.rotateItem(item);
                     break;
                 case 'split':
-                    await this.splitItem(item, version);
+                    await this.splitItem(item);
                     break;
                 case 'drop':
                     await this.dropItem(item, version);
@@ -647,7 +809,7 @@
                     await this.issueByIdFromPanel(item);
                     break;
                 case 'set-durability':
-                    await this.updateDurability(item, version);
+                    await this.updateDurability(item);
                     break;
                 default:
                     break;
@@ -663,14 +825,29 @@
             await this.submitMove(item, targetContainer, null);
         }
 
-        async rotateItem(item, version) {
+        async rotateItem(item) {
+            if (!item.rotatable || !this.permissions.can_edit) return;
             const response = await fetch('/api/inventory/rotate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ item_id: item.id, version }),
+                body: JSON.stringify({ item_id: item.id, version: item.version }),
             });
             if (response.ok) {
-                await this.refreshInventory(this.selectedPlayerId);
+                const payload = await response.json().catch(() => ({}));
+                if (payload?.instance) {
+                    this.applyInstanceUpdates([payload.instance]);
+                    if (this.dragState?.lastPointer) {
+                        this.updateGhost({
+                            clientX: this.dragState.lastPointer.x,
+                            clientY: this.dragState.lastPointer.y,
+                        });
+                        this.updateDragPreviewPosition({
+                            clientX: this.dragState.lastPointer.x,
+                            clientY: this.dragState.lastPointer.y,
+                        });
+                        this.updateDragPreviewSize();
+                    }
+                }
                 return;
             }
             const payload = await response.json().catch(() => ({}));
@@ -678,22 +855,40 @@
                 await this.handleConflict('rotate', item, payload);
                 return;
             }
-            await this.refreshInventory(this.selectedPlayerId);
         }
 
-        async splitItem(item, version) {
+        async splitItem(item, options = {}) {
+            if (!this.permissions.can_edit) return;
             if (!item.stackable || item.amount <= 1) return;
-            const splitInput = this.contextMenu?.querySelector('[data-split-amount]');
-            const amount = Number.parseInt(splitInput?.value || '1', 10);
-            if (!amount || Number.isNaN(amount)) return;
-            if (amount < 1 || amount >= item.amount) return;
+            const amount = Number.isFinite(options.amount)
+                ? options.amount
+                : Number.parseInt(this.contextMenu?.querySelector('[data-split-amount]')?.value || '1', 10);
+            if (!options.splitHalf) {
+                if (!amount || Number.isNaN(amount)) return;
+                if (amount < 1 || amount >= item.amount) return;
+            }
             const response = await fetch('/api/inventory/split', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ item_id: item.id, amount, version }),
+                body: JSON.stringify({
+                    item_id: item.id,
+                    amount: options.splitHalf ? null : amount,
+                    split_half: options.splitHalf ? true : null,
+                    version: item.version,
+                }),
             });
             if (response.ok) {
-                await this.refreshInventory(this.selectedPlayerId);
+                const payload = await response.json().catch(() => ({}));
+                const instances = payload?.instances || [];
+                if (instances.length) {
+                    this.applyInstanceUpdates(instances);
+                }
+                if (options.attachDrag && payload?.new_instance_id) {
+                    const newItem = this.getItemById(payload.new_instance_id);
+                    if (newItem) {
+                        this.attachDragToItem(newItem);
+                    }
+                }
                 return;
             }
             const payload = await response.json().catch(() => ({}));
@@ -701,7 +896,6 @@
                 await this.handleConflict('split', item, payload);
                 return;
             }
-            await this.refreshInventory(this.selectedPlayerId);
         }
 
         async dropItem(item, version) {
@@ -722,17 +916,24 @@
             await this.refreshInventory(this.selectedPlayerId);
         }
 
-        async useItem(item, version) {
+        async useItem(item) {
+            if (!this.permissions.can_edit) return;
             const response = await fetch('/api/inventory/use', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ item_id: item.id, version }),
+                body: JSON.stringify({ item_id: item.id, version: item.version }),
             });
             if (response.ok) {
-                if (item.type === 'map' && item.image_path) {
-                    window.open(this.resolveImageUrl(item.image_path), '_blank', 'noopener');
+                const payload = await response.json().catch(() => ({}));
+                if (payload?.instance) {
+                    this.applyInstanceUpdates([payload.instance]);
                 }
-                await this.refreshInventory(this.selectedPlayerId);
+                if (payload?.deleted_instance_id) {
+                    this.applyInstanceUpdates([], [payload.deleted_instance_id]);
+                }
+                if (payload?.map_image) {
+                    this.openMapOverlay(payload.map_image);
+                }
                 return;
             }
             const payload = await response.json().catch(() => ({}));
@@ -740,21 +941,24 @@
                 await this.handleConflict('use', item, payload);
                 return;
             }
-            await this.refreshInventory(this.selectedPlayerId);
         }
 
-        async updateDurability(item, version) {
-            const durabilityInput = this.contextMenu?.querySelector('[data-durability-input]');
+        async updateDurability(item) {
+            if (!this.permissions.is_master) return;
+            const durabilityInput = this.detailDurabilityInput || this.contextMenu?.querySelector('[data-durability-input]');
             const value = Number.parseInt(durabilityInput?.value || '0', 10);
             if (Number.isNaN(value)) return;
             if (value < 0 || (item.max_str != null && value > item.max_str)) return;
-            const response = await fetch('/api/inventory/durability', {
+            const response = await fetch('/api/master/item_instance/set_durability', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ item_id: item.id, value, version }),
+                body: JSON.stringify({ item_id: item.id, value, version: item.version }),
             });
             if (response.ok) {
-                await this.refreshInventory(this.selectedPlayerId);
+                const payload = await response.json().catch(() => ({}));
+                if (payload?.instance) {
+                    this.applyInstanceUpdates([payload.instance]);
+                }
                 return;
             }
             const payload = await response.json().catch(() => ({}));
@@ -762,7 +966,6 @@
                 await this.handleConflict('durability', item, payload);
                 return;
             }
-            await this.refreshInventory(this.selectedPlayerId);
         }
 
         openTransferModal(item) {
@@ -877,6 +1080,20 @@
             return `/static/${normalized}`;
         }
 
+        openMapOverlay(path) {
+            if (!this.mapOverlay || !this.mapImage) return;
+            const imageUrl = this.resolveImageUrl(path);
+            if (!imageUrl) return;
+            this.mapImage.src = imageUrl;
+            this.mapOverlay.classList.add('is-open');
+        }
+
+        closeMapOverlay() {
+            if (!this.mapOverlay || !this.mapImage) return;
+            this.mapOverlay.classList.remove('is-open');
+            this.mapImage.src = '';
+        }
+
         updateDetailsPanel(item) {
             if (!this.detailImage || !this.detailName || !this.detailDescription) return;
             if (!item) {
@@ -884,6 +1101,9 @@
                 this.detailImage.alt = 'Item';
                 this.detailName.textContent = 'Оберіть предмет';
                 this.detailDescription.textContent = '';
+                if (this.detailActions) {
+                    this.detailActions.classList.add('is-hidden');
+                }
                 return;
             }
             const imageUrl = this.resolveImageUrl(item.image_path);
@@ -891,6 +1111,34 @@
             this.detailImage.alt = item.name || 'Item';
             this.detailName.textContent = item.name || 'Item';
             this.detailDescription.textContent = item.description || '';
+            if (this.detailActions) {
+                this.detailActions.classList.toggle('is-hidden', !this.permissions.can_edit);
+                this.detailActions.querySelector('[data-detail-action="use"]')?.classList.toggle(
+                    'is-hidden',
+                    !['food', 'map', 'weapon'].includes(item.type),
+                );
+                this.detailActions.querySelector('[data-detail-action="rotate"]')?.classList.toggle(
+                    'is-hidden',
+                    !item.rotatable,
+                );
+            }
+            if (this.detailSplitField && this.detailSplitAmount) {
+                const canSplit = this.permissions.can_edit && item.stackable && item.amount > 1;
+                this.detailSplitField.classList.toggle('is-hidden', !canSplit);
+                if (canSplit) {
+                    this.detailSplitAmount.value = '1';
+                    this.detailSplitAmount.max = `${item.amount - 1}`;
+                }
+            }
+            if (this.detailDurabilityField && this.detailDurabilityInput) {
+                const canEdit = this.permissions.is_master && item.has_durability && !item.stackable;
+                this.detailDurabilityField.classList.toggle('is-hidden', !canEdit);
+                if (canEdit) {
+                    this.detailDurabilityInput.min = '0';
+                    this.detailDurabilityInput.max = `${item.max_str || 0}`;
+                    this.detailDurabilityInput.value = `${item.str_current ?? 0}`;
+                }
+            }
         }
     }
 
