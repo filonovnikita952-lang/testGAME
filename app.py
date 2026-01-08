@@ -336,7 +336,6 @@ def reset_database_if_needed():
 
 with app.app_context():
     reset_database_if_needed()
-    cleanup_starter_kit()
 
 
 @dataclass
@@ -1950,4 +1949,6 @@ def update_item_template_image(template_id: int):
 
 
 if __name__ == '__main__':
+    with app.app_context():
+        cleanup_starter_kit()
     app.run(debug=True)
