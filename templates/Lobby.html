@@ -52,8 +52,9 @@
                     </div>
                 </header>
 
-                <div class="lobby-room__grid">
-                    <aside class="lobby-roster">
+                <div class="lobby-room__surface workspace">
+                    <div class="lobby-room__grid">
+                        <aside class="lobby-roster">
                         <div class="lobby-roster__header">
                             <h3>Склад команди</h3>
                             <p class="muted">Натисніть на учасника, щоб побачити деталі.</p>
@@ -146,7 +147,7 @@
                         </div>
                     </aside>
 
-                    <div class="lobby-room__workspace" aria-label="Поле для роботи">
+                    <div class="lobby-room__center" aria-label="Поле для роботи">
                         <section
                             class="inventory inventory--embedded"
                             data-inventory-root
@@ -226,235 +227,240 @@
                                     </div>
                                 </section>
 
-                                <section class="lobby-inventory__equipment">
-                                    <div class="viewing-banner">
-                                        <span class="viewing-banner__label viewing-banner__label--player">Персонаж</span>
-                                        <span class="viewing-banner__label viewing-banner__label--master">Перегляд гравця</span>
-                                        <strong data-player-name>{{ user.nickname or 'KING' }}</strong>
-                                        <span class="viewing-banner__role" data-player-role>Власний</span>
-                                    </div>
-                                    <div class="inventory-panel panel-secondary lobby-panel dra-card">
-                                        <div class="panel-header">
-                                            <span class="panel-title">Деталі предмета</span>
-                                        </div>
-                                        <div class="item-detail">
-                                            <img src="/static/images/default_avatar.png" alt="Item" class="item-detail__image" data-item-detail-image>
-                                            <div>
-                                                <strong class="item-detail__name" data-item-detail-name>Оберіть предмет</strong>
-                                                <p class="muted item-detail__description" data-item-detail-description></p>
-                                            </div>
-                                        </div>
-                                        <div class="item-detail__actions is-hidden" data-item-detail-actions>
-                                            <button class="button ghost" type="button" data-detail-action="rotate">Rotate (R)</button>
-                                            <button class="button ghost" type="button" data-detail-action="use">Use</button>
-                                            <div class="item-detail__field" data-detail-split>
-                                                <label for="detail-split-amount">Split</label>
-                                                <input type="number" id="detail-split-amount" min="1" data-detail-split-amount>
-                                                <button class="button ghost" type="button" data-detail-action="split">Split</button>
-                                            </div>
-                                            <div class="item-detail__field" data-detail-durability data-master-only="true">
-                                                <label for="detail-durability">Durability</label>
-                                                <input type="number" id="detail-durability" min="0" data-detail-durability-input>
-                                                <button class="button ghost" type="button" data-detail-action="set-durability">Set</button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="inventory-panel panel-secondary lobby-panel dra-card">
-                                        {% if is_master_user %}
-                                            <div class="panel-toggle" data-master-toggle>
-                                                <button type="button" class="button ghost is-active" data-master-mode="view">View as player</button>
-                                                <button type="button" class="button ghost" data-master-mode="control">Master control</button>
-                                            </div>
-                                        {% endif %}
-                                        <div class="character-frame">
-                                            {% if user.userImage %}
-                                                <img src="{{ url_for('static', filename=static_path(user.userImage)) }}" alt="Персонаж" class="character-frame__image">
-                                            {% else %}
-                                                <img src="/static/images/default_avatar.png" alt="Персонаж" class="character-frame__image">
-                                            {% endif %}
-                                        </div>
-                                        <div class="character-stats" data-character-stats>
-                                            <div class="stat-bar" data-stat="hp">
-                                                <div class="stat-bar__header">
-                                                    <span>HP</span>
-                                                    <span data-stat-value="hp">0/0</span>
-                                                </div>
-                                                <div class="stat-bar__track">
-                                                    <div class="stat-bar__fill" data-stat-fill="hp"></div>
-                                                </div>
-                                                <input type="range" min="0" max="0" value="0" class="stat-bar__input" data-stat-input="hp_current">
-                                            </div>
-                                            <div class="stat-bar" data-stat="mana">
-                                                <div class="stat-bar__header">
-                                                    <span>Mana</span>
-                                                    <span data-stat-value="mana">0/0</span>
-                                                </div>
-                                                <div class="stat-bar__track">
-                                                    <div class="stat-bar__fill" data-stat-fill="mana"></div>
-                                                </div>
-                                                <input type="range" min="0" max="0" value="0" class="stat-bar__input" data-stat-input="mana_current">
-                                            </div>
-                                            <div class="stat-bar" data-stat="hungry">
-                                                <div class="stat-bar__header">
-                                                    <span>Hungry</span>
-                                                    <span data-stat-value="hungry">0/100</span>
-                                                </div>
-                                                <div class="stat-bar__track">
-                                                    <div class="stat-bar__fill" data-stat-fill="hungry"></div>
-                                                </div>
-                                                <input type="range" min="0" max="100" value="0" class="stat-bar__input" data-stat-input="hungry">
-                                            </div>
-                                            <div class="stat-field stat-field--inline">
-                                                <span>Armor Class</span>
-                                                <strong data-stat-value="ac">0</strong>
-                                                <input type="number" min="0" class="stat-field__input" data-stat-input="armor_class">
-                                            </div>
-                                        </div>
-                                        <div class="character-storage">
-                                            <h4 class="inventory-section__title">Швидкі слоти</h4>
-                                            <div class="tetris-grid tetris-grid--compact" data-container-id="slot_weapon_main"></div>
-                                            <h4 class="inventory-section__title">Пояс</h4>
-                                            <div class="tetris-grid tetris-grid--shield" data-container-id="slot_shield"></div>
-                                            <h4 class="inventory-section__title">Руки</h4>
-                                            <div class="tetris-grid tetris-grid--compact" data-container-id="hands"></div>
-                                        </div>
-                                    </div>
-                                    {% if is_master_user %}
-                                        <div class="inventory-panel panel-secondary lobby-panel lobby-panel--scroll dra-card">
-                                            <div class="panel-header">
-                                                <span class="panel-title">Майстер</span>
-                                                <span class="panel-tag">TOOLS</span>
-                                            </div>
-                                            <section class="inventory-section inventory-section--master">
-                                                <div class="master-panel">
-                                                    <h3>Шаблон предмета</h3>
-                                                    <form class="form" data-master-create>
-                                                        <label for="item_name_{{ membership.lobby.id }}">Назва</label>
-                                                        <input type="text" id="item_name_{{ membership.lobby.id }}" placeholder="Наприклад: Зілля">
-                                                        <label for="item_description_{{ membership.lobby.id }}">Опис</label>
-                                                        <textarea id="item_description_{{ membership.lobby.id }}" rows="3" placeholder="Короткий опис"></textarea>
-                                                        <label for="item_type_{{ membership.lobby.id }}">Тип</label>
-                                                        <select id="item_type_{{ membership.lobby.id }}">
-                                                            <option value="weapon">Weapon</option>
-                                                            <option value="armor">Armor</option>
-                                                            <option value="shield">Shield</option>
-                                                            <option value="backpack">Backpack</option>
-                                                            <option value="head">Head</option>
-                                                            <option value="shirt">Shirt</option>
-                                                            <option value="pants">Pants</option>
-                                                            <option value="boots">Boots</option>
-                                                            <option value="amulet">Amulet</option>
-                                                            <option value="ammo">Ammo</option>
-                                                            <option value="food">Food</option>
-                                                            <option value="map">Map</option>
-                                                            <option value="other">Other</option>
-                                                        </select>
-                                                        <label for="item_quality_{{ membership.lobby.id }}">Редкість</label>
-                                                        <select id="item_quality_{{ membership.lobby.id }}">
-                                                            <option value="common">Common</option>
-                                                            <option value="uncommon">Uncommon</option>
-                                                            <option value="epic">Epic</option>
-                                                            <option value="legendary">Legendary</option>
-                                                            <option value="mythical">Mythical</option>
-                                                        </select>
-                                                        <div class="form inline">
-                                                            <div>
-                                                                <label for="item_w_{{ membership.lobby.id }}">W</label>
-                                                                <input type="number" id="item_w_{{ membership.lobby.id }}" min="1" max="7" value="1">
-                                                            </div>
-                                                            <div>
-                                                                <label for="item_h_{{ membership.lobby.id }}">H</label>
-                                                                <input type="number" id="item_h_{{ membership.lobby.id }}" min="1" max="9" value="1">
-                                                            </div>
-                                                            <div>
-                                                                <label for="item_weight_{{ membership.lobby.id }}">Вага</label>
-                                                                <input type="number" id="item_weight_{{ membership.lobby.id }}" min="0" step="0.1" value="0">
-                                                            </div>
-                                                        </div>
-                                                        <div class="form inline">
-                                                            <div>
-                                                                <label for="item_durability_{{ membership.lobby.id }}">Max durability</label>
-                                                                <input type="number" id="item_durability_{{ membership.lobby.id }}" min="1" value="10">
-                                                            </div>
-                                                            <div>
-                                                                <label for="item_durability_current_{{ membership.lobby.id }}">Durability</label>
-                                                                <input type="number" id="item_durability_current_{{ membership.lobby.id }}" min="0" value="">
-                                                                <input type="hidden" id="item_random_durability_{{ membership.lobby.id }}" value="0">
-                                                                <button type="button" class="button ghost" data-random-durability>Random</button>
-                                                            </div>
-                                                            <div>
-                                                                <label for="item_max_amount_{{ membership.lobby.id }}">Stack max</label>
-                                                                <input type="number" id="item_max_amount_{{ membership.lobby.id }}" min="1" value="1">
-                                                            </div>
-                                                            <div>
-                                                                <label for="item_issue_amount_{{ membership.lobby.id }}">Кількість</label>
-                                                                <input type="number" id="item_issue_amount_{{ membership.lobby.id }}" min="1" value="1">
-                                                            </div>
-                                                        </div>
-                                                        <div class="form inline">
-                                                            <div class="checkbox-row">
-                                                                <label for="item_is_cloth_{{ membership.lobby.id }}">Cloth item</label>
-                                                                <input type="checkbox" id="item_is_cloth_{{ membership.lobby.id }}">
-                                                            </div>
-                                                            <div>
-                                                                <label for="item_bag_w_{{ membership.lobby.id }}">Bag W</label>
-                                                                <input type="number" id="item_bag_w_{{ membership.lobby.id }}" min="0" value="0">
-                                                            </div>
-                                                            <div>
-                                                                <label for="item_bag_h_{{ membership.lobby.id }}">Bag H</label>
-                                                                <input type="number" id="item_bag_h_{{ membership.lobby.id }}" min="0" value="0">
-                                                            </div>
-                                                        </div>
-                                                        <label for="item_image_{{ membership.lobby.id }}">Фото предмета</label>
-                                                        <input type="file" id="item_image_{{ membership.lobby.id }}" accept="image/*">
-                                                        <label for="item_target_{{ membership.lobby.id }}">Передати (опційно)</label>
-                                                        <select id="item_target_{{ membership.lobby.id }}">
-                                                            <option value="">Не видавати</option>
-                                                            {% for member in membership.lobby.members %}
-                                                                {% if member.user %}
-                                                                    <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
-                                                                {% endif %}
-                                                            {% endfor %}
-                                                        </select>
-                                                        <button type="button" class="button">Створити шаблон</button>
-                                                    </form>
-                                                    <form class="form" data-master-issue>
-                                                        <h4>Видати за ID</h4>
-                                                        <label for="issue_template_{{ membership.lobby.id }}">Template ID</label>
-                                                        <input type="number" id="issue_template_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону">
-                                                        <label for="issue_target_{{ membership.lobby.id }}">Отримувач</label>
-                                                        <select id="issue_target_{{ membership.lobby.id }}">
-                                                            {% for member in membership.lobby.members %}
-                                                                {% if member.user %}
-                                                                    <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
-                                                                {% endif %}
-                                                            {% endfor %}
-                                                        </select>
-                                                        <label for="issue_amount_{{ membership.lobby.id }}">Кількість</label>
-                                                        <input type="number" id="issue_amount_{{ membership.lobby.id }}" min="1" value="1">
-                                                        <label for="issue_durability_current_{{ membership.lobby.id }}">Durability</label>
-                                                        <input type="number" id="issue_durability_current_{{ membership.lobby.id }}" min="0" value="">
-                                                        <input type="hidden" id="issue_random_durability_{{ membership.lobby.id }}" value="0">
-                                                        <button type="button" class="button ghost" data-random-durability>Random</button>
-                                                        <button type="button" class="button ghost">Видати</button>
-                                                    </form>
-                                                    <form class="form" data-master-image-update>
-                                                        <h4>Оновити фото</h4>
-                                                        <label for="image_template_{{ membership.lobby.id }}">Template ID</label>
-                                                        <input type="number" id="image_template_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону">
-                                                        <label for="item_image_update_{{ membership.lobby.id }}">Фото предмета</label>
-                                                        <input type="file" id="item_image_update_{{ membership.lobby.id }}" accept="image/*">
-                                                        <button type="button" class="button ghost">Оновити</button>
-                                                    </form>
-                                                </div>
-                                            </section>
-                                        </div>
-                                    {% endif %}
-                                </section>
                             </div>
                         </section>
+                    </div>
 
-                        <div class="context-menu" id="context-menu" aria-hidden="true">
+                    <aside class="lobby-room__sidebar">
+                            <section class="lobby-inventory__equipment">
+                                <div class="viewing-banner">
+                                    <span class="viewing-banner__label viewing-banner__label--player">Персонаж</span>
+                                    <span class="viewing-banner__label viewing-banner__label--master">Перегляд гравця</span>
+                                    <strong data-player-name>{{ user.nickname or 'KING' }}</strong>
+                                    <span class="viewing-banner__role" data-player-role>Власний</span>
+                                </div>
+                                <div class="inventory-panel panel-secondary lobby-panel dra-card">
+                                    <div class="panel-header">
+                                        <span class="panel-title">Деталі предмета</span>
+                                    </div>
+                                    <div class="item-detail">
+                                        <img src="/static/images/default_avatar.png" alt="Item" class="item-detail__image" data-item-detail-image>
+                                        <div>
+                                            <strong class="item-detail__name" data-item-detail-name>Оберіть предмет</strong>
+                                            <p class="muted item-detail__description" data-item-detail-description></p>
+                                        </div>
+                                    </div>
+                                    <div class="item-detail__actions is-hidden" data-item-detail-actions>
+                                        <button class="button ghost" type="button" data-detail-action="rotate">Rotate (R)</button>
+                                        <button class="button ghost" type="button" data-detail-action="use">Use</button>
+                                        <div class="item-detail__field" data-detail-split>
+                                            <label for="detail-split-amount">Split</label>
+                                            <input type="number" id="detail-split-amount" min="1" data-detail-split-amount>
+                                            <button class="button ghost" type="button" data-detail-action="split">Split</button>
+                                        </div>
+                                        <div class="item-detail__field" data-detail-durability data-master-only="true">
+                                            <label for="detail-durability">Durability</label>
+                                            <input type="number" id="detail-durability" min="0" data-detail-durability-input>
+                                            <button class="button ghost" type="button" data-detail-action="set-durability">Set</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="inventory-panel panel-secondary lobby-panel dra-card">
+                                    {% if is_master_user %}
+                                        <div class="panel-toggle" data-master-toggle>
+                                            <button type="button" class="button ghost is-active" data-master-mode="view">View as player</button>
+                                            <button type="button" class="button ghost" data-master-mode="control">Master control</button>
+                                        </div>
+                                    {% endif %}
+                                    <div class="character-frame">
+                                        {% if user.userImage %}
+                                            <img src="{{ url_for('static', filename=static_path(user.userImage)) }}" alt="Персонаж" class="character-frame__image">
+                                        {% else %}
+                                            <img src="/static/images/default_avatar.png" alt="Персонаж" class="character-frame__image">
+                                        {% endif %}
+                                    </div>
+                                    <div class="character-stats" data-character-stats>
+                                        <div class="stat-bar" data-stat="hp">
+                                            <div class="stat-bar__header">
+                                                <span>HP</span>
+                                                <span data-stat-value="hp">0/0</span>
+                                            </div>
+                                            <div class="stat-bar__track">
+                                                <div class="stat-bar__fill" data-stat-fill="hp"></div>
+                                            </div>
+                                            <input type="range" min="0" max="0" value="0" class="stat-bar__input" data-stat-input="hp_current">
+                                        </div>
+                                        <div class="stat-bar" data-stat="mana">
+                                            <div class="stat-bar__header">
+                                                <span>Mana</span>
+                                                <span data-stat-value="mana">0/0</span>
+                                            </div>
+                                            <div class="stat-bar__track">
+                                                <div class="stat-bar__fill" data-stat-fill="mana"></div>
+                                            </div>
+                                            <input type="range" min="0" max="0" value="0" class="stat-bar__input" data-stat-input="mana_current">
+                                        </div>
+                                        <div class="stat-bar" data-stat="hungry">
+                                            <div class="stat-bar__header">
+                                                <span>Hungry</span>
+                                                <span data-stat-value="hungry">0/100</span>
+                                            </div>
+                                            <div class="stat-bar__track">
+                                                <div class="stat-bar__fill" data-stat-fill="hungry"></div>
+                                            </div>
+                                            <input type="range" min="0" max="100" value="0" class="stat-bar__input" data-stat-input="hungry">
+                                        </div>
+                                        <div class="stat-field stat-field--inline">
+                                            <span>Armor Class</span>
+                                            <strong data-stat-value="ac">0</strong>
+                                            <input type="number" min="0" class="stat-field__input" data-stat-input="armor_class">
+                                        </div>
+                                    </div>
+                                    <div class="character-storage">
+                                        <h4 class="inventory-section__title">Швидкі слоти</h4>
+                                        <div class="tetris-grid tetris-grid--compact" data-container-id="slot_weapon_main"></div>
+                                        <h4 class="inventory-section__title">Пояс</h4>
+                                        <div class="tetris-grid tetris-grid--shield" data-container-id="slot_shield"></div>
+                                        <h4 class="inventory-section__title">Руки</h4>
+                                        <div class="tetris-grid tetris-grid--compact" data-container-id="hands"></div>
+                                    </div>
+                                </div>
+                                {% if is_master_user %}
+                                    <div class="inventory-panel panel-secondary lobby-panel lobby-panel--scroll dra-card">
+                                        <div class="panel-header">
+                                            <span class="panel-title">Майстер</span>
+                                            <span class="panel-tag">TOOLS</span>
+                                        </div>
+                                        <section class="inventory-section inventory-section--master">
+                                            <div class="master-panel">
+                                                <h3>Шаблон предмета</h3>
+                                                <form class="form" data-master-create>
+                                                    <label for="item_name_{{ membership.lobby.id }}">Назва</label>
+                                                    <input type="text" id="item_name_{{ membership.lobby.id }}" placeholder="Наприклад: Зілля">
+                                                    <label for="item_description_{{ membership.lobby.id }}">Опис</label>
+                                                    <textarea id="item_description_{{ membership.lobby.id }}" rows="3" placeholder="Короткий опис"></textarea>
+                                                    <label for="item_type_{{ membership.lobby.id }}">Тип</label>
+                                                    <select id="item_type_{{ membership.lobby.id }}">
+                                                        <option value="weapon">Weapon</option>
+                                                        <option value="armor">Armor</option>
+                                                        <option value="shield">Shield</option>
+                                                        <option value="backpack">Backpack</option>
+                                                        <option value="head">Head</option>
+                                                        <option value="shirt">Shirt</option>
+                                                        <option value="pants">Pants</option>
+                                                        <option value="boots">Boots</option>
+                                                        <option value="amulet">Amulet</option>
+                                                        <option value="ammo">Ammo</option>
+                                                        <option value="food">Food</option>
+                                                        <option value="map">Map</option>
+                                                        <option value="other">Other</option>
+                                                    </select>
+                                                    <label for="item_quality_{{ membership.lobby.id }}">Редкість</label>
+                                                    <select id="item_quality_{{ membership.lobby.id }}">
+                                                        <option value="common">Common</option>
+                                                        <option value="uncommon">Uncommon</option>
+                                                        <option value="epic">Epic</option>
+                                                        <option value="legendary">Legendary</option>
+                                                        <option value="mythical">Mythical</option>
+                                                    </select>
+                                                    <div class="form inline">
+                                                        <div>
+                                                            <label for="item_w_{{ membership.lobby.id }}">W</label>
+                                                            <input type="number" id="item_w_{{ membership.lobby.id }}" min="1" max="7" value="1">
+                                                        </div>
+                                                        <div>
+                                                            <label for="item_h_{{ membership.lobby.id }}">H</label>
+                                                            <input type="number" id="item_h_{{ membership.lobby.id }}" min="1" max="9" value="1">
+                                                        </div>
+                                                        <div>
+                                                            <label for="item_weight_{{ membership.lobby.id }}">Вага</label>
+                                                            <input type="number" id="item_weight_{{ membership.lobby.id }}" min="0" step="0.1" value="0">
+                                                        </div>
+                                                    </div>
+                                                    <div class="form inline">
+                                                        <div>
+                                                            <label for="item_durability_{{ membership.lobby.id }}">Max durability</label>
+                                                            <input type="number" id="item_durability_{{ membership.lobby.id }}" min="1" value="10">
+                                                        </div>
+                                                        <div>
+                                                            <label for="item_durability_current_{{ membership.lobby.id }}">Durability</label>
+                                                            <input type="number" id="item_durability_current_{{ membership.lobby.id }}" min="0" value="">
+                                                            <input type="hidden" id="item_random_durability_{{ membership.lobby.id }}" value="0">
+                                                            <button type="button" class="button ghost" data-random-durability>Random</button>
+                                                        </div>
+                                                        <div>
+                                                            <label for="item_max_amount_{{ membership.lobby.id }}">Stack max</label>
+                                                            <input type="number" id="item_max_amount_{{ membership.lobby.id }}" min="1" value="1">
+                                                        </div>
+                                                        <div>
+                                                            <label for="item_issue_amount_{{ membership.lobby.id }}">Кількість</label>
+                                                            <input type="number" id="item_issue_amount_{{ membership.lobby.id }}" min="1" value="1">
+                                                        </div>
+                                                    </div>
+                                                    <div class="form inline">
+                                                        <div class="checkbox-row">
+                                                            <label for="item_is_cloth_{{ membership.lobby.id }}">Cloth item</label>
+                                                            <input type="checkbox" id="item_is_cloth_{{ membership.lobby.id }}">
+                                                        </div>
+                                                        <div>
+                                                            <label for="item_bag_w_{{ membership.lobby.id }}">Bag W</label>
+                                                            <input type="number" id="item_bag_w_{{ membership.lobby.id }}" min="0" value="0">
+                                                        </div>
+                                                        <div>
+                                                            <label for="item_bag_h_{{ membership.lobby.id }}">Bag H</label>
+                                                            <input type="number" id="item_bag_h_{{ membership.lobby.id }}" min="0" value="0">
+                                                        </div>
+                                                    </div>
+                                                    <label for="item_image_{{ membership.lobby.id }}">Фото предмета</label>
+                                                    <input type="file" id="item_image_{{ membership.lobby.id }}" accept="image/*">
+                                                    <label for="item_target_{{ membership.lobby.id }}">Передати (опційно)</label>
+                                                    <select id="item_target_{{ membership.lobby.id }}">
+                                                        <option value="">Не видавати</option>
+                                                        {% for member in membership.lobby.members %}
+                                                            {% if member.user %}
+                                                                <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                    </select>
+                                                    <button type="button" class="button">Створити шаблон</button>
+                                                </form>
+                                                <form class="form" data-master-issue>
+                                                    <h4>Видати за ID</h4>
+                                                    <label for="issue_template_{{ membership.lobby.id }}">Template ID</label>
+                                                    <input type="number" id="issue_template_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону">
+                                                    <label for="issue_target_{{ membership.lobby.id }}">Отримувач</label>
+                                                    <select id="issue_target_{{ membership.lobby.id }}">
+                                                        {% for member in membership.lobby.members %}
+                                                            {% if member.user %}
+                                                                <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                    </select>
+                                                    <label for="issue_amount_{{ membership.lobby.id }}">Кількість</label>
+                                                    <input type="number" id="issue_amount_{{ membership.lobby.id }}" min="1" value="1">
+                                                    <label for="issue_durability_current_{{ membership.lobby.id }}">Durability</label>
+                                                    <input type="number" id="issue_durability_current_{{ membership.lobby.id }}" min="0" value="">
+                                                    <input type="hidden" id="issue_random_durability_{{ membership.lobby.id }}" value="0">
+                                                    <button type="button" class="button ghost" data-random-durability>Random</button>
+                                                    <button type="button" class="button ghost">Видати</button>
+                                                </form>
+                                                <form class="form" data-master-image-update>
+                                                    <h4>Оновити фото</h4>
+                                                    <label for="image_template_{{ membership.lobby.id }}">Template ID</label>
+                                                    <input type="number" id="image_template_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону">
+                                                    <label for="item_image_update_{{ membership.lobby.id }}">Фото предмета</label>
+                                                    <input type="file" id="item_image_update_{{ membership.lobby.id }}" accept="image/*">
+                                                    <button type="button" class="button ghost">Оновити</button>
+                                                </form>
+                                            </div>
+                                        </section>
+                                    </div>
+                                {% endif %}
+                            </section>
+                    </aside>
+                </div>
+
+                    <div class="context-menu" id="context-menu" aria-hidden="true">
                             <div class="context-menu__header">
                                 <strong id="context-name">Item</strong>
                                 <span class="chip" id="context-type">type</span>

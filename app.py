@@ -11,7 +11,7 @@ from typing import Optional
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import inspect, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
@@ -1818,24 +1818,36 @@ def create_item_template():
     db.session.flush()
 
     issued_instance_id = None
+    container_id = 'inv_main'
     if issue_to:
         recipient_membership = LobbyMember.query.filter_by(
             lobby_id=lobby_id,
             user_id=issue_to,
         ).first()
         if not recipient_membership:
+            if inventory_logger.handlers:
+                inventory_logger.error('Item template issue failed: target user %s not in lobby %s', issue_to, lobby_id)
             db.session.rollback()
             return jsonify({'error': 'invalid_recipient'}), 400
+        if not container_size(container_id):
+            if inventory_logger.handlers:
+                inventory_logger.error('Item template issue failed: invalid container %s', container_id)
+            db.session.rollback()
+            return jsonify({'error': 'invalid_container'}), 400
         temp_instance = ItemInstance(
             owner_id=issue_to,
             definition=definition,
         )
-        target_pos = auto_place_item(temp_instance, 'inv_main')
+        target_pos = auto_place_item(temp_instance, container_id)
         if not target_pos:
+            if inventory_logger.handlers:
+                inventory_logger.error('Item template issue failed: no space for user %s', issue_to)
             db.session.rollback()
-            return jsonify({'error': 'no_space'}), 409
+            return jsonify({'error': 'no_space'}), 400
         if stackable_type(definition):
             if issue_amount > normalized_max_amount(definition):
+                if inventory_logger.handlers:
+                    inventory_logger.error('Item template issue failed: amount %s exceeds max for template %s', issue_amount, definition.id)
                 db.session.rollback()
                 return jsonify({'error': 'invalid_amount'}), 400
             resolved_amount = normalize_stack_amount(definition, issue_amount)
@@ -1849,7 +1861,7 @@ def create_item_template():
         new_instance = ItemInstance(
             owner_id=issue_to,
             template_id=definition.id,
-            container_i='inv_main',
+            container_i=container_id,
             pos_x=target_pos[0],
             pos_y=target_pos[1],
             rotated=target_pos[2],
@@ -1860,7 +1872,13 @@ def create_item_template():
         db.session.flush()
         issued_instance_id = new_instance.id
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        if inventory_logger.handlers:
+            inventory_logger.error('Item template create failed: %s', exc)
+        return jsonify({'error': 'db_error'}), 500
     return jsonify({'status': 'ok', 'template_id': definition.id, 'instance_id': issued_instance_id})
 
 
@@ -1880,26 +1898,42 @@ def issue_item_by_id():
 
     definition = ItemDefinition.query.get(template_id)
     if not definition:
+        if inventory_logger.handlers:
+            inventory_logger.error('Issue by ID failed: template %s not found', template_id)
         return jsonify({'error': 'not_found'}), 404
+    target_user = User.query.get(target_user_id)
+    if not target_user:
+        if inventory_logger.handlers:
+            inventory_logger.error('Issue by ID failed: target user %s not found', target_user_id)
+        return jsonify({'error': 'invalid_recipient'}), 400
     target_membership = LobbyMember.query.filter_by(
         lobby_id=lobby_id,
         user_id=target_user_id,
     ).first()
     if not target_membership:
+        if inventory_logger.handlers:
+            inventory_logger.error('Issue by ID failed: target user %s not in lobby %s', target_user_id, lobby_id)
         return jsonify({'error': 'invalid_recipient'}), 400
     max_amount = normalized_max_amount(definition)
     if amount > max_amount:
+        if inventory_logger.handlers:
+            inventory_logger.error('Issue by ID failed: amount %s exceeds max for template %s', amount, definition.id)
         return jsonify({'error': 'invalid_amount'}), 400
     amount = normalize_stack_amount(definition, amount)
+    container_id = 'inv_main'
+    if not container_size(container_id):
+        if inventory_logger.handlers:
+            inventory_logger.error('Issue by ID failed: invalid container %s', container_id)
+        return jsonify({'error': 'invalid_container'}), 400
     temp_instance = ItemInstance(
         owner_id=target_user_id,
         definition=definition,
     )
-    target_pos = auto_place_item(temp_instance, 'inv_main')
+    target_pos = auto_place_item(temp_instance, container_id)
     if not target_pos:
         if inventory_logger.handlers:
             inventory_logger.error('Issue by ID failed: no space for user %s', target_user_id)
-        return jsonify({'error': 'no_space'}), 409
+        return jsonify({'error': 'no_space'}), 400
 
     resolved_durability = resolve_durability_value(
         definition,
@@ -1909,7 +1943,7 @@ def issue_item_by_id():
     new_instance = ItemInstance(
         owner_id=target_user_id,
         template_id=definition.id,
-        container_i='inv_main',
+        container_i=container_id,
         pos_x=target_pos[0],
         pos_y=target_pos[1],
         rotated=target_pos[2],
@@ -1917,7 +1951,13 @@ def issue_item_by_id():
         amount=amount,
     )
     db.session.add(new_instance)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        if inventory_logger.handlers:
+            inventory_logger.error('Issue by ID failed: %s', exc)
+        return jsonify({'error': 'db_error'}), 500
     return jsonify({'status': 'ok', 'instance_id': new_instance.id})
 
 

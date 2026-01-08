@@ -750,8 +750,20 @@ textarea {
 
 .lobby-room {
     display: grid;
+    gap: 12px;
+}
+
+.workspace {
+    width: 100%;
+    max-width: 1340px;
+    margin: 0 auto;
+    min-height: calc(100vh - 200px);
+    padding: 18px;
+    border-radius: 26px;
+    background: rgba(12, 14, 22, 0.75);
+    display: flex;
+    flex-direction: column;
     gap: 16px;
-    min-height: calc(100vh - 220px);
 }
 
 .lobby-room__header {
@@ -800,14 +812,19 @@ textarea {
 
 .lobby-room__grid {
     display: grid;
-    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-    gap: 10px;
-    align-items: stretch;
+    grid-template-columns: minmax(210px, 240px) minmax(0, 1fr) minmax(260px, 320px);
+    gap: 16px;
+    align-items: start;
+    min-height: 100%;
 }
 
 .lobby-roster {
     display: grid;
-    gap: 16px;
+    gap: 12px;
+    grid-template-rows: auto auto 1fr;
+    min-height: 0;
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.7);
 }
 
 .lobby-roster__header h3 {
@@ -817,6 +834,9 @@ textarea {
 .lobby-roster__list {
     display: grid;
     gap: 6px;
+    overflow: auto;
+    min-height: 0;
+    padding-right: 4px;
 }
 
 .lobby-info {
@@ -878,8 +898,7 @@ textarea {
 }
 
 .roster-card.is-selected > .roster-card__summary {
-    background: rgba(180, 152, 96, 0.14);
-    box-shadow: 0 0 0 1px rgba(180, 152, 96, 0.2);
+    background: rgba(180, 152, 96, 0.18);
 }
 
 .roster-card__actions {
@@ -892,13 +911,20 @@ textarea {
     margin-top: 4px;
 }
 
-.lobby-room__workspace {
-    padding: 0;
-    display: flex;
-    align-items: stretch;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
+.lobby-room__center {
+    min-height: 0;
+    overflow: auto;
+    display: grid;
+    align-content: start;
+}
+
+.lobby-room__sidebar {
+    min-height: 0;
+    overflow: auto;
+    display: grid;
+    gap: 10px;
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.7);
 }
 
 .member-status {
@@ -1014,11 +1040,15 @@ textarea {
 .page--lobby .inventory--embedded {
     display: block;
     grid-template-columns: 1fr;
-    height: auto;
+    height: 100%;
 }
 
 .page--lobby .inventory--embedded > * {
-    height: auto;
+    height: 100%;
+}
+
+.lobby-room__center .inventory--embedded {
+    height: 100%;
 }
 
 .inventory--embedded > * {
@@ -1080,15 +1110,15 @@ textarea {
 .inventory--embedded .tetris-grid {
     gap: 4px;
     padding: 6px;
-    background: linear-gradient(180deg, rgba(30, 32, 34, 0.98), rgba(16, 18, 20, 0.98));
-    border-color: rgba(255, 255, 255, 0.18);
-    box-shadow: inset 0 0 32px rgba(0, 0, 0, 0.7);
+    background: rgba(10, 12, 18, 0.85);
+    border-color: transparent;
+    box-shadow: none;
 }
 
 .inventory--embedded .tetris-cell {
-    border-color: rgba(255, 255, 255, 0.16);
-    background: rgba(12, 12, 14, 0.55);
-    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.6);
+    border-color: transparent;
+    background: rgba(12, 14, 20, 0.7);
+    box-shadow: none;
 }
 
 .inventory-panel,
@@ -1114,7 +1144,7 @@ textarea {
 }
 
 .page--lobby .inventory-grid-panel.panel-main {
-    background: rgba(28, 32, 46, 0.9);
+    background: rgba(30, 34, 52, 0.95);
 }
 
 .page--lobby .panel-secondary {
@@ -1134,8 +1164,8 @@ textarea {
 
 .lobby-inventory-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
-    gap: 16px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
     align-items: start;
 }
 
