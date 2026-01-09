@@ -254,9 +254,7 @@
             }
             this.stats = payload.stats || null;
             this.updateStatsUI();
-            if (this.weightDisplay && payload.weight) {
-                this.weightDisplay.textContent = `${payload.weight.current} / ${payload.weight.capacity}`;
-            }
+            this.updateWeightDisplay(payload.weight);
             this.root.classList.toggle('is-readonly', !this.permissions.can_edit);
             if (this.inventoryActions) {
                 this.inventoryActions.classList.toggle('is-disabled', !this.permissions.can_edit);
@@ -785,6 +783,7 @@
                 if (payload?.instance) {
                     this.applyInstanceUpdates([payload.instance], payload?.deleted_instance_id ? [payload.deleted_instance_id] : []);
                 }
+                this.updateWeightDisplay(payload?.weight);
                 return true;
             }
             const payload = await response.json().catch(() => ({}));
@@ -942,6 +941,7 @@
                         this.updateDragPreviewSize();
                     }
                 }
+                this.updateWeightDisplay(payload?.weight);
                 return;
             }
             const payload = await response.json().catch(() => ({}));
@@ -985,6 +985,7 @@
                         this.attachDragToItem(newItem);
                     }
                 }
+                this.updateWeightDisplay(payload?.weight);
                 return;
             }
             const payload = await response.json().catch(() => ({}));
@@ -1031,6 +1032,7 @@
                 if (payload?.map_image) {
                     this.openMapOverlay(payload.map_image);
                 }
+                this.updateWeightDisplay(payload?.weight);
                 return;
             }
             const payload = await response.json().catch(() => ({}));
@@ -1056,6 +1058,7 @@
                 if (payload?.instance) {
                     this.applyInstanceUpdates([payload.instance]);
                 }
+                this.updateWeightDisplay(payload?.weight);
                 return;
             }
             const payload = await response.json().catch(() => ({}));
@@ -1317,6 +1320,11 @@
                         break;
                 }
             });
+        }
+
+        updateWeightDisplay(weight) {
+            if (!this.weightDisplay || !weight) return;
+            this.weightDisplay.textContent = `${weight.current} / ${weight.capacity}`;
         }
 
         updateStatsPreviewFromInputs() {
