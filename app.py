@@ -74,6 +74,17 @@ CONTAINER_ALLOWED_TYPES = {
     'slot_shield': {'shield'},
 }
 QUALITY_LEVELS = {'common', 'uncommon', 'epic', 'legendary', 'mythical'}
+DURABLE_ITEM_TYPES = {
+    'weapon',
+    'armor',
+    'shield',
+    'backpack',
+    'head',
+    'shirt',
+    'pants',
+    'boots',
+    'amulet',
+}
 
 
 db = SQLAlchemy(app)
@@ -209,6 +220,19 @@ class CharacterStats(db.Model):
     mana_max = db.Column(db.Integer, nullable=True)
     armor_class = db.Column(db.Integer, nullable=True)
     hungry = db.Column(db.Integer, nullable=True)
+
+
+class ChatMessage(db.Model):
+    __tablename__ = 'chat_message'
+
+    id = db.Column(db.Integer, primary_key=True)
+    lobby_id = db.Column(db.Integer, db.ForeignKey('lobby.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    is_system = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User')
 
 
 def _should_reset_database(db_uri: str) -> bool:
@@ -495,7 +519,38 @@ def normalize_rotation_value(rotated: Optional[int]) -> int:
 
 
 def has_durability(definition: ItemDefinition) -> bool:
+    if definition.max_str is not None:
+        return True
     return bool(definition.item_type and definition.item_type.has_durability)
+
+
+def log_debug(message: str, *args) -> None:
+    if inventory_logger.handlers:
+        inventory_logger.debug(message, *args)
+    else:
+        app.logger.debug(message, *args)
+
+
+def serialize_chat_message(message: ChatMessage) -> dict:
+    return {
+        'id': message.id,
+        'user_id': message.user_id,
+        'sender': message.user.nickname if message.user else '',
+        'message': message.message,
+        'is_system': bool(message.is_system),
+        'created_at': message.created_at.isoformat() if message.created_at else None,
+    }
+
+
+def create_chat_message(lobby_id: int, user_id: int, message: str, *, is_system: bool = False) -> ChatMessage:
+    chat_message = ChatMessage(
+        lobby_id=lobby_id,
+        user_id=user_id,
+        message=message,
+        is_system=is_system,
+    )
+    db.session.add(chat_message)
+    return chat_message
 
 
 def stackable_type(definition: ItemDefinition) -> bool:
@@ -1162,6 +1217,36 @@ def lobby_inventory_api(lobby_id: int, user_id: int):
     return jsonify(build_inventory_payload(target, lobby_id, viewer=user))
 
 
+@app.route('/api/lobby/<int:lobby_id>/chat', methods=['GET', 'POST'])
+def lobby_chat_api(lobby_id: int):
+    user = require_user()
+    membership = LobbyMember.query.filter_by(lobby_id=lobby_id, user_id=user.id).first()
+    if not membership:
+        log_debug('Chat access denied: user %s not in lobby %s', user.id, lobby_id)
+        return jsonify({'error': 'forbidden'}), 403
+
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        message_text = (data.get('message') or '').strip()
+        if not message_text:
+            log_debug('Chat send failed: empty message from user %s in lobby %s', user.id, lobby_id)
+            return jsonify({'error': 'empty_message'}), 400
+        message = create_chat_message(lobby_id, user.id, message_text)
+        db.session.commit()
+        return jsonify({'status': 'ok', 'message': serialize_chat_message(message)})
+
+    after_id = parse_int(request.args.get('after_id'), 0)
+    query = ChatMessage.query.filter_by(lobby_id=lobby_id).order_by(ChatMessage.id.asc())
+    if after_id:
+        query = query.filter(ChatMessage.id > after_id)
+    messages = query.limit(120).all()
+    latest_id = messages[-1].id if messages else after_id
+    return jsonify({
+        'messages': [serialize_chat_message(message) for message in messages],
+        'latest_id': latest_id,
+    })
+
+
 def _assert_version(instance: ItemInstance, version: int) -> bool:
     if instance.version != version:
         if inventory_logger.handlers:
@@ -1485,34 +1570,45 @@ def use_inventory_item():
         return jsonify({'ok': False, 'error': 'not_found'}), 404
     lobby_id = current_lobby_id_for(user)
     if not can_edit_inventory(user, instance.owner_id, lobby_id):
+        log_debug('Use failed: user %s cannot use item %s', user.id, item_id)
         return jsonify({'ok': False, 'error': 'forbidden'}), 403
     if not _require_version(version):
+        log_debug('Use failed: missing version for item %s', item_id)
         return jsonify({'ok': False, 'error': 'missing_version'}), 400
     if not _assert_version(instance, version):
         return jsonify({'ok': False, 'error': 'conflict'}), 409
 
     item_type = instance.definition.item_type.name
     if item_type not in {'food', 'map', 'weapon'}:
-        if inventory_logger.handlers:
-            inventory_logger.error('Use rejected for item %s: invalid type %s', instance.id, item_type)
+        log_debug('Use rejected for item %s: invalid type %s', instance.id, item_type)
         return jsonify({'ok': False, 'error': 'not_usable'}), 400
 
     if item_type == 'food':
+        if lobby_id:
+            create_chat_message(lobby_id, user.id, f'{user.nickname} used {instance.definition.name}', is_system=True)
         db.session.delete(instance)
         db.session.commit()
         return jsonify({'ok': True, 'deleted_instance_id': instance.id})
 
     if item_type == 'weapon':
         if not has_durability(instance.definition):
-            if inventory_logger.handlers:
-                inventory_logger.error('Use rejected for item %s: missing durability', instance.id)
+            log_debug('Use rejected for item %s: missing durability', instance.id)
             return jsonify({'ok': False, 'error': 'invalid_item'}), 400
         roll = random.randint(0, 3)
         instance.str_current = max((instance.str_current or 0) - roll, 0)
         instance.version += 1
+        if lobby_id:
+            create_chat_message(
+                lobby_id,
+                user.id,
+                f'{user.nickname} used {instance.definition.name} and spent {roll} durability',
+                is_system=True,
+            )
         db.session.commit()
         return jsonify({'ok': True, 'instance': build_instance_payload(instance, user, lobby_id)})
 
+    if lobby_id:
+        create_chat_message(lobby_id, user.id, f'{user.nickname} used {instance.definition.name}', is_system=True)
     return jsonify({'ok': True, 'map_image': instance.definition.image_path})
 
 
@@ -1674,35 +1770,54 @@ def transfer_inventory_item():
     recipient_id = parse_int(data.get('recipient_id'), 0)
     amount = parse_int(data.get('amount'), 1, minimum=1)
     version = parse_int(data.get('version'), 0)
+    lobby_id = parse_int(data.get('lobby_id'), 0) or current_lobby_id_for(user)
 
     instance = ItemInstance.query.get(item_id)
     if not instance:
         return jsonify({'error': 'not_found'}), 404
-    lobby_id = current_lobby_id_for(user)
+    if not lobby_id:
+        log_debug('Transfer failed: missing lobby for item %s', item_id)
+        return jsonify({'error': 'missing_lobby'}), 400
     if not can_edit_inventory(user, instance.owner_id, lobby_id):
+        log_debug('Transfer failed: user %s cannot transfer item %s', user.id, item_id)
         return jsonify({'error': 'forbidden'}), 403
     if not _require_version(version):
+        log_debug('Transfer failed: missing version for item %s', item_id)
         return jsonify({'error': 'missing_version'}), 400
     if not _assert_version(instance, version):
         return jsonify({'error': 'conflict'}), 409
     if recipient_id == instance.owner_id or not recipient_id:
+        log_debug('Transfer failed: invalid recipient %s for item %s', recipient_id, item_id)
         return jsonify({'error': 'invalid_recipient'}), 400
     recipient = User.query.get(recipient_id)
     if not recipient:
+        log_debug('Transfer failed: recipient %s not found', recipient_id)
         return jsonify({'error': 'invalid_recipient'}), 400
-    sender_membership = get_membership(user, lobby_id)
+    sender_membership = LobbyMember.query.filter_by(
+        lobby_id=lobby_id,
+        user_id=instance.owner_id,
+    ).first()
     recipient_membership = LobbyMember.query.filter_by(
         lobby_id=lobby_id,
         user_id=recipient_id,
     ).first()
     if not sender_membership or not recipient_membership:
+        log_debug(
+            'Transfer failed: sender membership %s or recipient membership %s missing in lobby %s',
+            sender_membership is not None,
+            recipient_membership is not None,
+            lobby_id,
+        )
         return jsonify({'error': 'not_in_lobby'}), 403
     if amount > instance.amount:
+        log_debug('Transfer failed: amount %s exceeds instance amount %s', amount, instance.amount)
         return jsonify({'error': 'invalid_amount'}), 400
     if amount < instance.amount and not stackable_type(instance.definition):
+        log_debug('Transfer failed: non-stackable amount %s for item %s', amount, item_id)
         return jsonify({'error': 'invalid_amount'}), 400
     max_amount = normalized_max_amount(instance.definition)
     if amount > max_amount and stackable_type(instance.definition):
+        log_debug('Transfer failed: amount %s exceeds max stack %s', amount, max_amount)
         return jsonify({'error': 'invalid_amount'}), 400
 
     temp_instance = ItemInstance(
@@ -1711,8 +1826,7 @@ def transfer_inventory_item():
     )
     target_pos = auto_place_item(temp_instance, 'inv_main', prefer_rotation=instance.rotated)
     if not target_pos:
-        if inventory_logger.handlers:
-            inventory_logger.error('Transfer failed: no space for recipient %s', recipient_id)
+        log_debug('Transfer failed: no space for recipient %s', recipient_id)
         return jsonify({'error': 'no_space'}), 400
 
     if amount == instance.amount:
@@ -1791,10 +1905,13 @@ def create_item_template():
         item_type.has_durability = False
     if item_type.stackable:
         if max_amount < 1:
+            log_debug('Item template create failed: invalid max amount %s for type %s', max_amount, type_name)
             return jsonify({'error': 'invalid_max_amount'}), 400
         item_type.max_amount = max(item_type.max_amount or 1, max_amount)
         max_str = None
     else:
+        if type_name in DURABLE_ITEM_TYPES:
+            item_type.has_durability = True
         if item_type.has_durability:
             max_str = max(max_durability, 1)
         else:
@@ -1825,13 +1942,11 @@ def create_item_template():
             user_id=issue_to,
         ).first()
         if not recipient_membership:
-            if inventory_logger.handlers:
-                inventory_logger.error('Item template issue failed: target user %s not in lobby %s', issue_to, lobby_id)
+            log_debug('Item template issue failed: target user %s not in lobby %s', issue_to, lobby_id)
             db.session.rollback()
             return jsonify({'error': 'invalid_recipient'}), 400
         if not container_size(container_id):
-            if inventory_logger.handlers:
-                inventory_logger.error('Item template issue failed: invalid container %s', container_id)
+            log_debug('Item template issue failed: invalid container %s', container_id)
             db.session.rollback()
             return jsonify({'error': 'invalid_container'}), 400
         temp_instance = ItemInstance(
@@ -1840,14 +1955,16 @@ def create_item_template():
         )
         target_pos = auto_place_item(temp_instance, container_id)
         if not target_pos:
-            if inventory_logger.handlers:
-                inventory_logger.error('Item template issue failed: no space for user %s', issue_to)
+            log_debug('Item template issue failed: no space for user %s', issue_to)
             db.session.rollback()
             return jsonify({'error': 'no_space'}), 400
         if stackable_type(definition):
             if issue_amount > normalized_max_amount(definition):
-                if inventory_logger.handlers:
-                    inventory_logger.error('Item template issue failed: amount %s exceeds max for template %s', issue_amount, definition.id)
+                log_debug(
+                    'Item template issue failed: amount %s exceeds max for template %s',
+                    issue_amount,
+                    definition.id,
+                )
                 db.session.rollback()
                 return jsonify({'error': 'invalid_amount'}), 400
             resolved_amount = normalize_stack_amount(definition, issue_amount)
@@ -1898,32 +2015,36 @@ def issue_item_by_id():
 
     definition = ItemDefinition.query.get(template_id)
     if not definition:
-        if inventory_logger.handlers:
-            inventory_logger.error('Issue by ID failed: template %s not found', template_id)
+        log_debug('Issue by ID failed: template %s not found', template_id)
         return jsonify({'error': 'not_found'}), 404
     target_user = User.query.get(target_user_id)
     if not target_user:
-        if inventory_logger.handlers:
-            inventory_logger.error('Issue by ID failed: target user %s not found', target_user_id)
+        log_debug('Issue by ID failed: target user %s not found', target_user_id)
         return jsonify({'error': 'invalid_recipient'}), 400
     target_membership = LobbyMember.query.filter_by(
         lobby_id=lobby_id,
         user_id=target_user_id,
     ).first()
     if not target_membership:
-        if inventory_logger.handlers:
-            inventory_logger.error('Issue by ID failed: target user %s not in lobby %s', target_user_id, lobby_id)
+        log_debug('Issue by ID failed: target user %s not in lobby %s', target_user_id, lobby_id)
         return jsonify({'error': 'invalid_recipient'}), 400
-    max_amount = normalized_max_amount(definition)
-    if amount > max_amount:
-        if inventory_logger.handlers:
-            inventory_logger.error('Issue by ID failed: amount %s exceeds max for template %s', amount, definition.id)
-        return jsonify({'error': 'invalid_amount'}), 400
-    amount = normalize_stack_amount(definition, amount)
+    if stackable_type(definition):
+        max_amount = normalized_max_amount(definition)
+        if amount > max_amount:
+            log_debug(
+                'Issue by ID failed: amount %s exceeds max for template %s',
+                amount,
+                definition.id,
+            )
+            return jsonify({'error': 'invalid_amount'}), 400
+        amount = normalize_stack_amount(definition, amount)
+    else:
+        if amount != 1:
+            log_debug('Issue by ID: forcing amount to 1 for non-stackable template %s', definition.id)
+        amount = 1
     container_id = 'inv_main'
     if not container_size(container_id):
-        if inventory_logger.handlers:
-            inventory_logger.error('Issue by ID failed: invalid container %s', container_id)
+        log_debug('Issue by ID failed: invalid container %s', container_id)
         return jsonify({'error': 'invalid_container'}), 400
     temp_instance = ItemInstance(
         owner_id=target_user_id,
@@ -1931,8 +2052,13 @@ def issue_item_by_id():
     )
     target_pos = auto_place_item(temp_instance, container_id)
     if not target_pos:
-        if inventory_logger.handlers:
-            inventory_logger.error('Issue by ID failed: no space for user %s', target_user_id)
+        log_debug(
+            'Issue by ID failed: no space for user %s template=%s cloth=%s type=%s',
+            target_user_id,
+            definition.id,
+            definition.is_cloth,
+            definition.item_type.name if definition.item_type else None,
+        )
         return jsonify({'error': 'no_space'}), 400
 
     resolved_durability = resolve_durability_value(
