@@ -185,7 +185,7 @@ a {
 
 .page--lobby {
     padding: 16px 2vw 12px;
-    font-size: 0.92rem;
+    font-size: 0.88rem;
     overflow: hidden;
     gap: 12px;
     height: calc(100vh - 76px);
@@ -736,6 +736,7 @@ textarea {
     gap: 32px;
     min-height: 0;
     flex: 1;
+    height: 100%;
 }
 
 .lobby-hero {
@@ -770,9 +771,11 @@ textarea {
 
 .lobby-room {
     display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
     gap: 12px;
     min-height: 0;
     flex: 1;
+    height: 100%;
 }
 
 .workspace {
@@ -783,8 +786,8 @@ textarea {
     padding: clamp(10px, 1.5vw, 18px);
     border-radius: 26px;
     background: rgba(12, 14, 22, 0.75);
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
     gap: 16px;
     flex: 1;
     height: 100%;
@@ -846,6 +849,7 @@ textarea {
 
 .lobby-room__grid--four {
     grid-template-columns: minmax(220px, 1.1fr) minmax(260px, 1.5fr) minmax(260px, 2fr) minmax(220px, 1.4fr);
+    grid-template-rows: minmax(0, 1fr);
     align-items: stretch;
     height: 100%;
     min-height: 0;
@@ -867,6 +871,7 @@ textarea {
     gap: 10px;
     min-height: 0;
     overflow: auto;
+    flex: 1;
 }
 
 .lobby-roster {
@@ -1094,7 +1099,7 @@ textarea {
     align-items: stretch;
     grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
     height: 100%;
-    --cell-size: 26px;
+    --cell-size: 24px;
 }
 
 .page--lobby .inventory--embedded {
@@ -1629,7 +1634,7 @@ textarea {
 
 .equipment-board {
     display: grid;
-    grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) minmax(120px, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
     align-items: start;
 }
@@ -2338,18 +2343,25 @@ textarea {
 }
 
 .item-detail {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(120px, 160px) minmax(0, 1fr);
     gap: 12px;
-    align-items: center;
+    align-items: stretch;
+    min-height: 120px;
 }
 
 .item-detail__image {
-    width: 72px;
-    height: 72px;
+    width: 100%;
+    height: 100%;
     border-radius: 12px;
     border: 1px solid var(--border);
-    object-fit: cover;
+    object-fit: contain;
     background: rgba(18, 22, 32, 0.8);
+}
+
+.item-detail__content {
+    display: grid;
+    align-content: start;
 }
 
 .item-detail__description {
@@ -2373,6 +2385,20 @@ textarea {
 
 .item-detail__field.is-hidden {
     display: none;
+}
+
+.inventory-panel.is-hidden {
+    display: none;
+}
+
+.fast-slot-list {
+    display: grid;
+    gap: 10px;
+}
+
+.fast-slot-panel {
+    display: grid;
+    gap: 8px;
 }
 
 .map-overlay {

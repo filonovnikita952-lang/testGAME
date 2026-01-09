@@ -13,16 +13,16 @@
         equip_pants: ['pants'],
         equip_armor: ['armor'],
         equip_boots: ['boots'],
-        equip_weapon: ['weapon'],
         equip_back: ['backpack'],
         equip_amulet: ['amulet'],
+        equip_belt: ['belt'],
+        equip_shield: ['shield'],
         slot_weapon_main: ['weapon'],
-        slot_shield: ['shield'],
     };
 
     const equipTargetMap = {
-        weapon: 'equip_weapon',
-        shield: 'slot_shield',
+        weapon: 'hands',
+        shield: 'equip_shield',
         backpack: 'equip_back',
         head: 'equip_head',
         shirt: 'equip_shirt',
@@ -30,6 +30,7 @@
         armor: 'equip_armor',
         boots: 'equip_boots',
         amulet: 'equip_amulet',
+        belt: 'equip_belt',
     };
 
     class LobbyInventory {
@@ -78,6 +79,8 @@
             };
             this.statsInputs = Array.from(this.root.querySelectorAll('[data-stat-input]'));
             this.bagGridList = this.root.querySelector('[data-bag-grid-list]');
+            this.fastSlotList = this.root.querySelector('[data-fast-slot-list]');
+            this.fastSlotPanel = this.root.querySelector('[data-fast-slot-panel]');
             this.masterToggle = this.root.querySelector('[data-master-toggle]');
             this.masterMode = 'view';
             this.gridElements = Array.from(this.root.querySelectorAll('.tetris-grid'));
@@ -260,6 +263,7 @@
             }
             this.refreshMasterModeState();
             this.rebuildBagGrids();
+            this.rebuildFastSlots();
             if (this.detailItemId) {
                 const detailItem = this.items.find((entry) => String(entry.id) === String(this.detailItemId));
                 this.updateDetailsPanel(detailItem || null);
@@ -295,6 +299,31 @@
                     this.bagGridList.appendChild(panel);
                 });
             }
+            this.gridElements = Array.from(this.root.querySelectorAll('.tetris-grid'));
+        }
+
+        rebuildFastSlots() {
+            if (!this.fastSlotList) return;
+            this.fastSlotList.innerHTML = '';
+            const fastContainers = Array.from(this.containers.values()).filter((container) => container.is_fast);
+            if (this.fastSlotPanel) {
+                this.fastSlotPanel.classList.toggle('is-hidden', !fastContainers.length);
+            }
+            if (!fastContainers.length) {
+                this.gridElements = Array.from(this.root.querySelectorAll('.tetris-grid'));
+                return;
+            }
+            fastContainers.forEach((container) => {
+                const panel = document.createElement('div');
+                panel.className = 'fast-slot-panel';
+                panel.innerHTML = `
+                    <div class="panel-header">
+                        <span class="panel-title">${container.label || 'Fast Slot'}</span>
+                    </div>
+                    <div class="tetris-grid tetris-grid--compact" data-container-id="${container.id}"></div>
+                `;
+                this.fastSlotList.appendChild(panel);
+            });
             this.gridElements = Array.from(this.root.querySelectorAll('.tetris-grid'));
         }
 
@@ -526,9 +555,16 @@
             if (containerId === 'inv_main') return true;
             if (containerId === 'hands') return true;
             if (containerId.startsWith('bag:')) return this.containers.has(containerId);
+            if (containerId.startsWith('fast:')) return this.containers.has(containerId);
             const allowed = containerTypeMap[containerId];
             if (!allowed) return false;
             return allowed.includes(item.type);
+        }
+
+        canSplitItem(item) {
+            if (!item || !item.stackable || item.amount <= 1) return false;
+            if (item.container_id === 'inv_main' || item.container_id === 'hands') return true;
+            return Boolean(item.container_id && item.container_id.startsWith('bag:'));
         }
 
         getDropPosition(grid, containerId, item, event) {
@@ -633,7 +669,7 @@
                     {
                         const amount = Number.parseInt(this.detailSplitAmount?.value || '1', 10);
                         if (Number.isNaN(amount)) return;
-                        this.splitItem(item, { amount });
+                        this.splitItem(item, { amount, attachDrag: true });
                     }
                     break;
                 case 'set-durability':
@@ -724,6 +760,7 @@
                 await this.handleConflict('move', item, payload);
                 return false;
             }
+            console.debug('[Inventory] Move rejected', payload);
             return false;
         }
 
@@ -785,8 +822,9 @@
                 useButton.style.display = ['food', 'map', 'weapon'].includes(item.type) ? 'inline-flex' : 'none';
             }
             const splitButton = this.contextMenu.querySelector('[data-action="split"]');
+            const canSplit = this.canSplitItem(item);
             if (splitButton) {
-                splitButton.style.display = item.stackable && item.amount > 1 ? 'inline-flex' : 'none';
+                splitButton.style.display = canSplit ? 'inline-flex' : 'none';
             }
             const equipButton = this.contextMenu.querySelector('[data-action="equip"]');
             if (equipButton) {
@@ -795,7 +833,7 @@
             const splitField = this.contextMenu.querySelector('[data-split-field]');
             const splitInput = this.contextMenu.querySelector('[data-split-amount]');
             if (splitField && splitInput) {
-                if (item.stackable && item.amount > 1) {
+                if (canSplit) {
                     splitField.style.display = 'flex';
                     splitInput.value = '1';
                     splitInput.max = `${item.amount - 1}`;
@@ -853,7 +891,7 @@
                     await this.rotateItem(item);
                     break;
                 case 'split':
-                    await this.splitItem(item);
+                    await this.splitItem(item, { attachDrag: true });
                     break;
                 case 'drop':
                     await this.dropItem(item);
@@ -911,11 +949,13 @@
                 await this.handleConflict('rotate', item, payload);
                 return;
             }
+            console.debug('[Inventory] Rotate rejected', payload);
+            await this.refreshInventory(this.selectedPlayerId);
         }
 
         async splitItem(item, options = {}) {
             if (!this.permissions.can_edit) return;
-            if (!item.stackable || item.amount <= 1) return;
+            if (!this.canSplitItem(item)) return;
             const amount = Number.isFinite(options.amount)
                 ? options.amount
                 : Number.parseInt(this.contextMenu?.querySelector('[data-split-amount]')?.value || '1', 10);
@@ -952,6 +992,7 @@
                 await this.handleConflict('split', item, payload);
                 return;
             }
+            console.debug('[Inventory] Split rejected', payload);
         }
 
         async dropItem(item) {
@@ -1180,7 +1221,7 @@
                 );
             }
             if (this.detailSplitField && this.detailSplitAmount) {
-                const canSplit = this.permissions.can_edit && item.stackable && item.amount > 1;
+                const canSplit = this.permissions.can_edit && this.canSplitItem(item);
                 this.detailSplitField.classList.toggle('is-hidden', !canSplit);
                 if (canSplit) {
                     this.detailSplitAmount.value = '1';
@@ -1360,6 +1401,8 @@
                 const isCloth = form.querySelector('input[id^="item_is_cloth_"]')?.checked;
                 const bagWidth = Number.parseInt(form.querySelector('input[id^="item_bag_w_"]')?.value || '0', 10);
                 const bagHeight = Number.parseInt(form.querySelector('input[id^="item_bag_h_"]')?.value || '0', 10);
+                const fastWidth = Number.parseInt(form.querySelector('input[id^="item_fast_w_"]')?.value || '0', 10);
+                const fastHeight = Number.parseInt(form.querySelector('input[id^="item_fast_h_"]')?.value || '0', 10);
                 const target = form.querySelector('select[id^="item_target_"]')?.value;
                 const imageInput = form.querySelector('input[type="file"]');
 
@@ -1384,6 +1427,8 @@
                 payload.append('is_cloth', isCloth ? '1' : '0');
                 payload.append('bag_width', Number.isNaN(bagWidth) ? 0 : bagWidth);
                 payload.append('bag_height', Number.isNaN(bagHeight) ? 0 : bagHeight);
+                payload.append('fast_w', Number.isNaN(fastWidth) ? 0 : fastWidth);
+                payload.append('fast_h', Number.isNaN(fastHeight) ? 0 : fastHeight);
                 payload.append('issue_to', target || '');
                 if (imageInput?.files?.length) {
                     payload.append('image', imageInput.files[0]);

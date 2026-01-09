@@ -27,25 +27,26 @@ ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 ALLOWED_IMAGE_MIME_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
 MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024
 MAX_ITEM_IMAGE_BYTES = 5 * 1024 * 1024
-MAIN_GRID_WIDTH = 12
-MAIN_GRID_HEIGHT = 8
+MAIN_GRID_WIDTH = 5
+MAIN_GRID_HEIGHT = 3
 BACKPACK_GRID_WIDTH = 8
 BACKPACK_GRID_HEIGHT = 6
-HANDS_GRID_WIDTH = 6
+HANDS_GRID_WIDTH = 5
 HANDS_GRID_HEIGHT = 3
+DEFAULT_MAX_STACK = 20
 EQUIPMENT_GRIDS = {
-    'equip_head': (2, 2),
-    'equip_shirt': (3, 3),
-    'equip_pants': (3, 3),
-    'equip_armor': (4, 4),
+    'equip_head': (3, 2),
+    'equip_shirt': (3, 2),
+    'equip_pants': (3, 2),
+    'equip_armor': (3, 5),
     'equip_boots': (2, 2),
-    'equip_weapon': (5, 2),
-    'equip_back': (4, 4),
-    'equip_amulet': (1, 2),
+    'equip_back': (3, 3),
+    'equip_amulet': (3, 3),
+    'equip_belt': (2, 2),
+    'equip_shield': (3, 3),
 }
 SPECIAL_GRIDS = {
     'slot_weapon_main': (5, 2),
-    'slot_shield': (3, 3),
 }
 CONTAINER_LABELS = {
     'inv_main': 'Main Inventory',
@@ -55,11 +56,11 @@ CONTAINER_LABELS = {
     'equip_pants': 'Pants',
     'equip_armor': 'Armor',
     'equip_boots': 'Boots',
-    'equip_weapon': 'Weapon',
     'equip_back': 'Backpack Slot',
     'equip_amulet': 'Amulet',
+    'equip_belt': 'Belt',
+    'equip_shield': 'Shield',
     'slot_weapon_main': 'Ready Weapon',
-    'slot_shield': 'Ready Shield',
 }
 CONTAINER_ALLOWED_TYPES = {
     'equip_head': {'head'},
@@ -67,11 +68,11 @@ CONTAINER_ALLOWED_TYPES = {
     'equip_pants': {'pants'},
     'equip_armor': {'armor'},
     'equip_boots': {'boots'},
-    'equip_weapon': {'weapon'},
     'equip_back': {'backpack'},
     'equip_amulet': {'amulet'},
+    'equip_belt': {'belt'},
+    'equip_shield': {'shield'},
     'slot_weapon_main': {'weapon'},
-    'slot_shield': {'shield'},
 }
 QUALITY_LEVELS = {'common', 'uncommon', 'epic', 'legendary', 'mythical'}
 DURABLE_ITEM_TYPES = {
@@ -84,6 +85,7 @@ DURABLE_ITEM_TYPES = {
     'pants',
     'boots',
     'amulet',
+    'belt',
 }
 
 
@@ -156,7 +158,7 @@ class ItemType(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(40), nullable=False, unique=True)
     stackable = db.Column(db.Boolean, default=False)
-    max_amount = db.Column(db.Integer, nullable=False, default=1)
+    max_amount = db.Column(db.Integer, nullable=False, default=DEFAULT_MAX_STACK)
     has_durability = db.Column(db.Boolean, default=False)
     usable = db.Column(db.Boolean, default=False)
     consumable = db.Column(db.Boolean, default=False)
@@ -181,6 +183,8 @@ class ItemDefinition(db.Model):
     is_cloth = db.Column(db.Boolean, nullable=False, default=False)
     bag_width = db.Column(db.Integer, nullable=True)
     bag_height = db.Column(db.Integer, nullable=True)
+    fast_w = db.Column(db.Integer, nullable=True)
+    fast_h = db.Column(db.Integer, nullable=True)
     type_id = db.Column(db.Integer, db.ForeignKey('item_type.id'), nullable=False)
 
     item_type = db.relationship('ItemType', back_populates='definitions')
@@ -272,7 +276,7 @@ def _ensure_item_type_columns():
             db.session.execute(text('ALTER TABLE item_type ADD COLUMN stackable BOOLEAN DEFAULT 0'))
             db.session.commit()
         if 'max_amount' not in columns:
-            db.session.execute(text('ALTER TABLE item_type ADD COLUMN max_amount INTEGER DEFAULT 1'))
+            db.session.execute(text(f'ALTER TABLE item_type ADD COLUMN max_amount INTEGER DEFAULT {DEFAULT_MAX_STACK}'))
             db.session.commit()
         if 'has_durability' not in columns:
             db.session.execute(text('ALTER TABLE item_type ADD COLUMN has_durability BOOLEAN DEFAULT 0'))
@@ -289,6 +293,11 @@ def _ensure_item_type_columns():
         if 'linked_weapon_type' not in columns:
             db.session.execute(text('ALTER TABLE item_type ADD COLUMN linked_weapon_type VARCHAR(40)'))
             db.session.commit()
+        db.session.execute(text(
+            f'UPDATE item_type SET max_amount = {DEFAULT_MAX_STACK} '
+            'WHERE max_amount IS NULL OR max_amount < 1'
+        ))
+        db.session.commit()
 
 
 def _ensure_item_definition_columns():
@@ -303,6 +312,12 @@ def _ensure_item_definition_columns():
             db.session.commit()
         if 'bag_height' not in columns:
             db.session.execute(text('ALTER TABLE item_definition ADD COLUMN bag_height INTEGER'))
+            db.session.commit()
+        if 'fast_w' not in columns:
+            db.session.execute(text('ALTER TABLE item_definition ADD COLUMN fast_w INTEGER'))
+            db.session.commit()
+        if 'fast_h' not in columns:
+            db.session.execute(text('ALTER TABLE item_definition ADD COLUMN fast_h INTEGER'))
             db.session.commit()
 
 
@@ -487,7 +502,7 @@ def get_or_create_item_type(
     name: str,
     *,
     stackable: bool = False,
-    max_amount: int = 1,
+    max_amount: int = DEFAULT_MAX_STACK,
     has_durability: bool = False,
     usable: bool = False,
     consumable: bool = False,
@@ -554,13 +569,15 @@ def create_chat_message(lobby_id: int, user_id: int, message: str, *, is_system:
 
 
 def stackable_type(definition: ItemDefinition) -> bool:
+    if has_durability(definition):
+        return False
     return bool(definition.item_type and definition.item_type.stackable)
 
 
 def normalized_max_amount(definition: ItemDefinition) -> int:
     if not stackable_type(definition):
         return 1
-    max_amount = definition.item_type.max_amount or 1
+    max_amount = definition.item_type.max_amount or DEFAULT_MAX_STACK
     return max(max_amount, 1)
 
 
@@ -568,6 +585,20 @@ def normalize_stack_amount(definition: ItemDefinition, amount: int) -> int:
     if not stackable_type(definition):
         return 1
     return min(max(amount, 1), normalized_max_amount(definition))
+
+
+def split_stack_amounts(definition: ItemDefinition, amount: int) -> list[int]:
+    total = max(amount, 1)
+    if not stackable_type(definition):
+        return [1]
+    max_amount = normalized_max_amount(definition)
+    stacks = []
+    remaining = total
+    while remaining > max_amount:
+        stacks.append(max_amount)
+        remaining -= max_amount
+    stacks.append(remaining)
+    return stacks
 
 
 def initial_str_current(definition: ItemDefinition) -> int:
@@ -700,6 +731,20 @@ def container_size(container_id: str) -> Optional[tuple[int, int]]:
         return MAIN_GRID_WIDTH, MAIN_GRID_HEIGHT
     if container_id == 'hands':
         return HANDS_GRID_WIDTH, HANDS_GRID_HEIGHT
+    if container_id.startswith('fast:'):
+        belt_id = parse_int(container_id.split(':', 1)[1], 0)
+        belt_instance = ItemInstance.query.get(belt_id)
+        if not belt_instance:
+            return None
+        if belt_instance.container_i != 'equip_belt':
+            return None
+        if not belt_instance.definition.item_type or belt_instance.definition.item_type.name != 'belt':
+            return None
+        fast_w = belt_instance.definition.fast_w or 0
+        fast_h = belt_instance.definition.fast_h or 0
+        if fast_w <= 0 or fast_h <= 0:
+            return None
+        return fast_w, fast_h
     if container_id in EQUIPMENT_GRIDS:
         return EQUIPMENT_GRIDS[container_id]
     if container_id in SPECIAL_GRIDS:
@@ -831,6 +876,28 @@ def build_inventory_payload(
                 and (bag_instance.str_current or 0) <= 0
             ),
         })
+    belt_instances = []
+    for instance in instances:
+        definition = instance.definition
+        if instance.container_i != 'equip_belt':
+            continue
+        if not definition.item_type or definition.item_type.name != 'belt':
+            continue
+        fast_w = definition.fast_w or 0
+        fast_h = definition.fast_h or 0
+        if fast_w <= 0 or fast_h <= 0:
+            continue
+        belt_instances.append(instance)
+    for belt_instance in belt_instances:
+        containers.append({
+            'id': f'fast:{belt_instance.id}',
+            'label': f'Fast Slot ({belt_instance.definition.name})',
+            'w': belt_instance.definition.fast_w,
+            'h': belt_instance.definition.fast_h,
+            'is_fast': True,
+            'belt_instance_id': belt_instance.id,
+            'belt_name': belt_instance.definition.name,
+        })
     items_payload = []
     current_weight = 0.0
     weight_logged = False
@@ -916,6 +983,20 @@ def is_container_allowed(
     if container_id == 'inv_main':
         return True, ''
     if container_id == 'hands':
+        return True, ''
+    if container_id.startswith('fast:'):
+        belt_id = parse_int(container_id.split(':', 1)[1], 0)
+        belt_instance = ItemInstance.query.get(belt_id)
+        if not belt_instance or belt_instance.owner_id != owner_id:
+            return False, 'invalid_belt'
+        if belt_instance.container_i != 'equip_belt':
+            return False, 'invalid_belt'
+        if not belt_instance.definition.item_type or belt_instance.definition.item_type.name != 'belt':
+            return False, 'invalid_belt'
+        fast_w = belt_instance.definition.fast_w or 0
+        fast_h = belt_instance.definition.fast_h or 0
+        if fast_w <= 0 or fast_h <= 0:
+            return False, 'invalid_belt'
         return True, ''
     if container_id.startswith('bag:'):
         backpack_id = container_id.split(':', 1)[1]
@@ -1370,6 +1451,16 @@ def move_inventory_item():
                 if inventory_logger.handlers:
                     inventory_logger.error('Cannot unequip cloth bag %s with items inside', instance.id)
                 return jsonify({'error': 'backpack_not_empty'}), 400
+    if instance.container_i == 'equip_belt' and container_id != 'equip_belt':
+        fast_container_id = f'fast:{instance.id}'
+        fast_items = ItemInstance.query.filter_by(
+            owner_id=instance.owner_id,
+            container_i=fast_container_id,
+        ).count()
+        if fast_items:
+            if inventory_logger.handlers:
+                inventory_logger.error('Cannot unequip belt %s with items in fast slots', instance.id)
+            return jsonify({'error': 'belt_not_empty'}), 400
 
     rotation_value = normalize_rotation(instance.definition, rotated)
     if rotation_value and not rotation_allowed(container_id):
@@ -1458,6 +1549,13 @@ def split_inventory_item():
         return jsonify({'error': 'missing_version'}), 400
     if not _assert_version(instance, version):
         return jsonify({'error': 'conflict'}), 409
+    if (
+        instance.container_i not in {'inv_main', 'hands'}
+        and not instance.container_i.startswith('bag:')
+    ):
+        if inventory_logger.handlers:
+            inventory_logger.error('Split rejected for item %s: invalid container %s', instance.id, instance.container_i)
+        return jsonify({'ok': False, 'error': 'invalid_container'}), 400
     if not stackable_type(instance.definition) or has_durability(instance.definition):
         if inventory_logger.handlers:
             inventory_logger.error('Split rejected for item %s: non-stackable or durable', instance.id)
@@ -1873,6 +1971,8 @@ def create_item_template():
     is_cloth = str(data.get('is_cloth') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
     bag_width = parse_int(data.get('bag_width'), 0, minimum=0)
     bag_height = parse_int(data.get('bag_height'), 0, minimum=0)
+    fast_w = parse_int(data.get('fast_w'), 0, minimum=0)
+    fast_h = parse_int(data.get('fast_h'), 0, minimum=0)
     issue_to = parse_int(data.get('issue_to'), 0)
     issue_amount = parse_int(data.get('issue_amount'), 1, minimum=1)
     durability_current = data.get('durability_current')
@@ -1884,6 +1984,8 @@ def create_item_template():
     if quality not in QUALITY_LEVELS:
         quality = 'common'
     if type_name == 'cloth':
+        is_cloth = True
+    if type_name == 'belt':
         is_cloth = True
 
     image_path = None
@@ -1929,6 +2031,8 @@ def create_item_template():
         is_cloth=is_cloth,
         bag_width=bag_width if is_cloth and bag_width > 0 else None,
         bag_height=bag_height if is_cloth and bag_height > 0 else None,
+        fast_w=fast_w if type_name == 'belt' and fast_w > 0 else None,
+        fast_h=fast_h if type_name == 'belt' and fast_h > 0 else None,
         item_type=item_type,
     )
     db.session.add(definition)
@@ -1949,45 +2053,38 @@ def create_item_template():
             log_debug('Item template issue failed: invalid container %s', container_id)
             db.session.rollback()
             return jsonify({'error': 'invalid_container'}), 400
-        temp_instance = ItemInstance(
-            owner_id=issue_to,
-            definition=definition,
-        )
-        target_pos = auto_place_item(temp_instance, container_id)
-        if not target_pos:
-            log_debug('Item template issue failed: no space for user %s', issue_to)
-            db.session.rollback()
-            return jsonify({'error': 'no_space'}), 400
-        if stackable_type(definition):
-            if issue_amount > normalized_max_amount(definition):
-                log_debug(
-                    'Item template issue failed: amount %s exceeds max for template %s',
-                    issue_amount,
-                    definition.id,
-                )
+        stack_amounts = split_stack_amounts(definition, issue_amount)
+        created_instances = []
+        for stack_amount in stack_amounts:
+            temp_instance = ItemInstance(
+                owner_id=issue_to,
+                definition=definition,
+            )
+            target_pos = auto_place_item(temp_instance, container_id)
+            if not target_pos:
+                log_debug('Item template issue failed: no space for user %s', issue_to)
                 db.session.rollback()
-                return jsonify({'error': 'invalid_amount'}), 400
-            resolved_amount = normalize_stack_amount(definition, issue_amount)
-        else:
-            resolved_amount = 1
-        resolved_durability = resolve_durability_value(
-            definition,
-            durability_current_value,
-            randomize=random_durability,
-        )
-        new_instance = ItemInstance(
-            owner_id=issue_to,
-            template_id=definition.id,
-            container_i=container_id,
-            pos_x=target_pos[0],
-            pos_y=target_pos[1],
-            rotated=target_pos[2],
-            str_current=resolved_durability,
-            amount=resolved_amount,
-        )
-        db.session.add(new_instance)
-        db.session.flush()
-        issued_instance_id = new_instance.id
+                return jsonify({'error': 'no_space'}), 400
+            resolved_durability = resolve_durability_value(
+                definition,
+                durability_current_value,
+                randomize=random_durability,
+            )
+            new_instance = ItemInstance(
+                owner_id=issue_to,
+                template_id=definition.id,
+                container_i=container_id,
+                pos_x=target_pos[0],
+                pos_y=target_pos[1],
+                rotated=target_pos[2],
+                str_current=resolved_durability,
+                amount=stack_amount,
+            )
+            db.session.add(new_instance)
+            db.session.flush()
+            created_instances.append(new_instance)
+        if created_instances:
+            issued_instance_id = created_instances[0].id
 
     try:
         db.session.commit()
@@ -2028,55 +2125,48 @@ def issue_item_by_id():
     if not target_membership:
         log_debug('Issue by ID failed: target user %s not in lobby %s', target_user_id, lobby_id)
         return jsonify({'error': 'invalid_recipient'}), 400
-    if stackable_type(definition):
-        max_amount = normalized_max_amount(definition)
-        if amount > max_amount:
-            log_debug(
-                'Issue by ID failed: amount %s exceeds max for template %s',
-                amount,
-                definition.id,
-            )
-            return jsonify({'error': 'invalid_amount'}), 400
-        amount = normalize_stack_amount(definition, amount)
-    else:
-        if amount != 1:
-            log_debug('Issue by ID: forcing amount to 1 for non-stackable template %s', definition.id)
-        amount = 1
+    if not stackable_type(definition) and amount != 1:
+        log_debug('Issue by ID: forcing amount to 1 for non-stackable template %s', definition.id)
     container_id = 'inv_main'
     if not container_size(container_id):
         log_debug('Issue by ID failed: invalid container %s', container_id)
         return jsonify({'error': 'invalid_container'}), 400
-    temp_instance = ItemInstance(
-        owner_id=target_user_id,
-        definition=definition,
-    )
-    target_pos = auto_place_item(temp_instance, container_id)
-    if not target_pos:
-        log_debug(
-            'Issue by ID failed: no space for user %s template=%s cloth=%s type=%s',
-            target_user_id,
-            definition.id,
-            definition.is_cloth,
-            definition.item_type.name if definition.item_type else None,
+    stack_amounts = split_stack_amounts(definition, amount)
+    created_instances = []
+    for stack_amount in stack_amounts:
+        temp_instance = ItemInstance(
+            owner_id=target_user_id,
+            definition=definition,
         )
-        return jsonify({'error': 'no_space'}), 400
-
-    resolved_durability = resolve_durability_value(
-        definition,
-        durability_current_value,
-        randomize=random_durability,
-    )
-    new_instance = ItemInstance(
-        owner_id=target_user_id,
-        template_id=definition.id,
-        container_i=container_id,
-        pos_x=target_pos[0],
-        pos_y=target_pos[1],
-        rotated=target_pos[2],
-        str_current=resolved_durability,
-        amount=amount,
-    )
-    db.session.add(new_instance)
+        target_pos = auto_place_item(temp_instance, container_id)
+        if not target_pos:
+            log_debug(
+                'Issue by ID failed: no space for user %s template=%s cloth=%s type=%s',
+                target_user_id,
+                definition.id,
+                definition.is_cloth,
+                definition.item_type.name if definition.item_type else None,
+            )
+            db.session.rollback()
+            return jsonify({'error': 'no_space'}), 400
+        resolved_durability = resolve_durability_value(
+            definition,
+            durability_current_value,
+            randomize=random_durability,
+        )
+        new_instance = ItemInstance(
+            owner_id=target_user_id,
+            template_id=definition.id,
+            container_i=container_id,
+            pos_x=target_pos[0],
+            pos_y=target_pos[1],
+            rotated=target_pos[2],
+            str_current=resolved_durability,
+            amount=stack_amount,
+        )
+        db.session.add(new_instance)
+        db.session.flush()
+        created_instances.append(new_instance)
     try:
         db.session.commit()
     except SQLAlchemyError as exc:
@@ -2084,7 +2174,8 @@ def issue_item_by_id():
         if inventory_logger.handlers:
             inventory_logger.error('Issue by ID failed: %s', exc)
         return jsonify({'error': 'db_error'}), 500
-    return jsonify({'status': 'ok', 'instance_id': new_instance.id})
+    issued_id = created_instances[0].id if created_instances else None
+    return jsonify({'status': 'ok', 'instance_id': issued_id})
 
 
 @app.route('/api/master/item_template/<int:template_id>/image', methods=['POST'])
