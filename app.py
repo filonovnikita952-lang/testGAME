@@ -607,6 +607,37 @@ def initial_str_current(definition: ItemDefinition) -> int:
     return 0
 
 
+def compute_inventory_weight(instances: list[ItemInstance]) -> float:
+    current_weight = 0.0
+    weight_logged = False
+    for instance in instances:
+        definition = instance.definition
+        effective_amount = max(instance.amount or 0, 0)
+        if definition.weight is None and not weight_logged:
+            log_weight_breakdown(instances, 'missing_weight')
+            weight_logged = True
+        item_weight = (definition.weight or 0) * effective_amount
+        current_weight += item_weight
+    return current_weight
+
+
+def build_weight_payload(user_id: int, *, log_context: str = 'inventory') -> dict:
+    instances = ItemInstance.query.filter_by(owner_id=user_id).all()
+    current_weight = compute_inventory_weight(instances)
+    stats = ensure_character_stats(user_id)
+    strength_modifier = (stats.strength - 10) // 2
+    capacity = max(5, 5 + 5 * strength_modifier)
+    log_debug(
+        'Inventory weight (%s) user=%s instances=%s current=%.2f capacity=%s',
+        log_context,
+        user_id,
+        len(instances),
+        current_weight,
+        capacity,
+    )
+    return {'current': round(current_weight, 2), 'capacity': capacity}
+
+
 def compute_max_stats(strength: int) -> tuple[int, int]:
     base_strength = strength or 10
     hp_max = max(1, 10 + base_strength * 2)
@@ -899,17 +930,9 @@ def build_inventory_payload(
             'belt_name': belt_instance.definition.name,
         })
     items_payload = []
-    current_weight = 0.0
-    weight_logged = False
     for instance in instances:
-        definition = instance.definition
-        effective_amount = normalize_stack_amount(definition, instance.amount)
-        if definition.weight is None and not weight_logged:
-            log_weight_breakdown(instances, 'missing_weight')
-            weight_logged = True
-        item_weight = (definition.weight or 0) * effective_amount
-        current_weight += item_weight
         items_payload.append(build_instance_payload(instance, viewer, lobby_id))
+    current_weight = compute_inventory_weight(instances)
     viewer = viewer or user
     permissions = {
         'can_edit': can_edit_inventory(viewer, user.id, lobby_id),
@@ -918,6 +941,13 @@ def build_inventory_payload(
     stats = ensure_character_stats(user.id)
     strength_modifier = (stats.strength - 10) // 2
     capacity = max(5, 5 + 5 * strength_modifier)
+    log_debug(
+        'Inventory payload weight user=%s instances=%s current=%.2f capacity=%s',
+        user.id,
+        len(instances),
+        current_weight,
+        capacity,
+    )
     return {
         'user': {'id': user.id, 'name': user.nickname},
         'containers': containers,
@@ -1527,7 +1557,11 @@ def rotate_inventory_item():
     instance.rotated = new_rotation
     instance.version += 1
     db.session.commit()
-    return jsonify({'ok': True, 'instance': build_instance_payload(instance, user, lobby_id)})
+    return jsonify({
+        'ok': True,
+        'instance': build_instance_payload(instance, user, lobby_id),
+        'weight': build_weight_payload(instance.owner_id, log_context='rotate'),
+    })
 
 
 @app.route('/api/inventory/split', methods=['POST'])
@@ -1607,6 +1641,7 @@ def split_inventory_item():
             build_instance_payload(new_instance, user, lobby_id),
         ],
         'new_instance_id': new_instance.id,
+        'weight': build_weight_payload(instance.owner_id, log_context='split'),
     })
 
 
@@ -1653,6 +1688,7 @@ def merge_inventory_items():
         'ok': True,
         'instance': build_instance_payload(target, user, lobby_id),
         'deleted_instance_id': source.id,
+        'weight': build_weight_payload(target.owner_id, log_context='merge'),
     })
 
 
@@ -1686,7 +1722,11 @@ def use_inventory_item():
             create_chat_message(lobby_id, user.id, f'{user.nickname} used {instance.definition.name}', is_system=True)
         db.session.delete(instance)
         db.session.commit()
-        return jsonify({'ok': True, 'deleted_instance_id': instance.id})
+        return jsonify({
+            'ok': True,
+            'deleted_instance_id': instance.id,
+            'weight': build_weight_payload(user.id, log_context='use_food'),
+        })
 
     if item_type == 'weapon':
         if not has_durability(instance.definition):
@@ -1703,11 +1743,19 @@ def use_inventory_item():
                 is_system=True,
             )
         db.session.commit()
-        return jsonify({'ok': True, 'instance': build_instance_payload(instance, user, lobby_id)})
+        return jsonify({
+            'ok': True,
+            'instance': build_instance_payload(instance, user, lobby_id),
+            'weight': build_weight_payload(user.id, log_context='use_weapon'),
+        })
 
     if lobby_id:
         create_chat_message(lobby_id, user.id, f'{user.nickname} used {instance.definition.name}', is_system=True)
-    return jsonify({'ok': True, 'map_image': instance.definition.image_path})
+    return jsonify({
+        'ok': True,
+        'map_image': instance.definition.image_path,
+        'weight': build_weight_payload(user.id, log_context='use_map'),
+    })
 
 
 @app.route('/api/inventory/durability', methods=['POST'])
@@ -1740,7 +1788,11 @@ def update_inventory_durability():
     instance.str_current = value
     instance.version += 1
     db.session.commit()
-    return jsonify({'ok': True, 'instance': build_instance_payload(instance, user, lobby_id)})
+    return jsonify({
+        'ok': True,
+        'instance': build_instance_payload(instance, user, lobby_id),
+        'weight': build_weight_payload(instance.owner_id, log_context='durability'),
+    })
 
 
 @app.route('/api/master/item_instance/set_durability', methods=['POST'])
@@ -1770,7 +1822,11 @@ def set_master_durability():
     instance.str_current = value
     instance.version += 1
     db.session.commit()
-    return jsonify({'ok': True, 'instance': build_instance_payload(instance, user, lobby_id)})
+    return jsonify({
+        'ok': True,
+        'instance': build_instance_payload(instance, user, lobby_id),
+        'weight': build_weight_payload(instance.owner_id, log_context='master_durability'),
+    })
 
 
 @app.route('/api/master/character_stats/update', methods=['POST'])
@@ -2003,6 +2059,8 @@ def create_item_template():
             return jsonify({'error': 'invalid_image'}), 400
 
     item_type = get_or_create_item_type(type_name)
+    if max_amount > 1:
+        item_type.stackable = True
     if item_type.stackable and item_type.has_durability:
         item_type.has_durability = False
     if item_type.stackable:
@@ -2106,6 +2164,12 @@ def issue_item_by_id():
     template_id = parse_int(data.get('template_id'), 0)
     target_user_id = parse_int(data.get('target_user_id'), 0)
     amount = parse_int(data.get('amount'), 1, minimum=1)
+    log_debug(
+        'Issue by ID request: template=%s target_user=%s amount=%s',
+        template_id,
+        target_user_id,
+        amount,
+    )
     durability_current = data.get('durability_current')
     durability_current_value = parse_int(durability_current, 0) if durability_current is not None else None
     random_durability = str(data.get('random_durability') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
@@ -2125,15 +2189,25 @@ def issue_item_by_id():
     if not target_membership:
         log_debug('Issue by ID failed: target user %s not in lobby %s', target_user_id, lobby_id)
         return jsonify({'error': 'invalid_recipient'}), 400
-    if not stackable_type(definition) and amount != 1:
+    stackable = stackable_type(definition)
+    max_amount = normalized_max_amount(definition)
+    log_debug(
+        'Issue by ID template=%s stackable=%s max_amount=%s',
+        definition.id,
+        stackable,
+        max_amount,
+    )
+    if not stackable and amount != 1:
         log_debug('Issue by ID: forcing amount to 1 for non-stackable template %s', definition.id)
+        amount = 1
     container_id = 'inv_main'
     if not container_size(container_id):
         log_debug('Issue by ID failed: invalid container %s', container_id)
         return jsonify({'error': 'invalid_container'}), 400
     stack_amounts = split_stack_amounts(definition, amount)
+    log_debug('Issue by ID stack splits: %s', stack_amounts)
     created_instances = []
-    for stack_amount in stack_amounts:
+    for index, stack_amount in enumerate(stack_amounts, start=1):
         temp_instance = ItemInstance(
             owner_id=target_user_id,
             definition=definition,
@@ -2141,14 +2215,17 @@ def issue_item_by_id():
         target_pos = auto_place_item(temp_instance, container_id)
         if not target_pos:
             log_debug(
-                'Issue by ID failed: no space for user %s template=%s cloth=%s type=%s',
+                'Issue by ID failed: no space for user %s template=%s stack=%s/%s amount=%s cloth=%s type=%s',
                 target_user_id,
                 definition.id,
+                index,
+                len(stack_amounts),
+                stack_amount,
                 definition.is_cloth,
                 definition.item_type.name if definition.item_type else None,
             )
             db.session.rollback()
-            return jsonify({'error': 'no_space'}), 400
+            return jsonify({'ok': False, 'error': 'no_space'}), 400
         resolved_durability = resolve_durability_value(
             definition,
             durability_current_value,
@@ -2175,6 +2252,13 @@ def issue_item_by_id():
             inventory_logger.error('Issue by ID failed: %s', exc)
         return jsonify({'error': 'db_error'}), 500
     issued_id = created_instances[0].id if created_instances else None
+    if created_instances:
+        log_debug(
+            'Issue by ID created stacks for template=%s target_user=%s amounts=%s',
+            definition.id,
+            target_user_id,
+            [instance.amount for instance in created_instances],
+        )
     return jsonify({'status': 'ok', 'instance_id': issued_id})
 
 
