@@ -18,6 +18,12 @@
     box-sizing: border-box;
 }
 
+html,
+body {
+    height: 100%;
+    overflow: hidden;
+}
+
 body {
     margin: 0;
     font-family: 'Inter', 'Open Sans', sans-serif;
@@ -25,6 +31,8 @@ body {
         linear-gradient(135deg, #0c0f1f 0%, #1a1d2b 45%, #0b0d16 100%);
     color: var(--text);
     min-height: 100vh;
+    display: flex;
+    flex-direction: column;
 }
 
 @keyframes page-fade {
@@ -170,12 +178,16 @@ a {
     flex-direction: column;
     gap: 32px;
     animation: page-fade 0.6s ease both;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
 }
 
 .page--lobby {
-    padding-left: 4vw;
-    padding-right: 4vw;
+    padding: 16px 2vw 12px;
     font-size: 0.92rem;
+    overflow: hidden;
+    gap: 12px;
 }
 
 .page--lobby h2,
@@ -186,6 +198,10 @@ a {
 
 .page--lobby .dra-card {
     transition: none;
+}
+
+.page--lobby + .footer {
+    display: none;
 }
 
 .page--inventory {
@@ -751,19 +767,24 @@ textarea {
 .lobby-room {
     display: grid;
     gap: 12px;
+    min-height: 0;
+    flex: 1;
 }
 
 .workspace {
     width: 100%;
-    max-width: 1340px;
-    margin: 0 auto;
-    min-height: calc(100vh - 200px);
-    padding: 18px;
+    max-width: none;
+    margin: 0;
+    min-height: 0;
+    padding: 12px;
     border-radius: 26px;
     background: rgba(12, 14, 22, 0.75);
     display: flex;
     flex-direction: column;
     gap: 16px;
+    flex: 1;
+    height: 100%;
+    overflow: hidden;
 }
 
 .lobby-room__header {
@@ -818,6 +839,31 @@ textarea {
     min-height: 100%;
 }
 
+.lobby-room__grid--four {
+    grid-template-columns: 1fr 2fr 3fr 4fr;
+    align-items: stretch;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.lobby-column {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+.lobby-column__scroll {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    overflow: auto;
+}
+
 .lobby-roster {
     display: grid;
     gap: 12px;
@@ -825,6 +871,10 @@ textarea {
     min-height: 0;
     font-size: 0.82rem;
     color: rgba(255, 255, 255, 0.7);
+}
+
+.lobby-room__grid--four .lobby-roster {
+    grid-template-rows: auto 1fr;
 }
 
 .lobby-roster__header h3 {
@@ -837,6 +887,11 @@ textarea {
     overflow: auto;
     min-height: 0;
     padding-right: 4px;
+}
+
+.lobby-room__grid--four .lobby-roster__list {
+    overflow: visible;
+    padding-right: 0;
 }
 
 .lobby-info {
@@ -1038,13 +1093,12 @@ textarea {
 }
 
 .page--lobby .inventory--embedded {
-    display: block;
-    grid-template-columns: 1fr;
-    height: 100%;
+    display: contents;
 }
 
 .page--lobby .inventory--embedded > * {
     height: 100%;
+    min-height: 0;
 }
 
 .lobby-room__center .inventory--embedded {
@@ -1173,6 +1227,127 @@ textarea {
 .lobby-inventory__equipment {
     display: grid;
     gap: 8px;
+}
+
+.lobby-column--inventory {
+    gap: 12px;
+}
+
+.lobby-inventory-detail {
+    flex-shrink: 0;
+}
+
+.lobby-inventory-scroll {
+    min-height: 0;
+}
+
+.lobby-column--equipment .inventory-panel {
+    opacity: 1;
+}
+
+.lobby-chat {
+    display: grid;
+    gap: 10px;
+}
+
+.lobby-chat__messages {
+    min-height: 120px;
+    max-height: 220px;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.lobby-chat__form {
+    display: grid;
+    gap: 8px;
+}
+
+.lobby-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    height: 100%;
+}
+
+.lobby-tabs input[type='radio'] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.lobby-tabs__labels {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.lobby-tabs__labels label {
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 0.75rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.7);
+    background: rgba(12, 14, 22, 0.4);
+}
+
+.lobby-tabs__panels {
+    min-height: 0;
+    flex: 1;
+    overflow: hidden;
+}
+
+.lobby-tab__panel {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    height: 100%;
+    overflow: auto;
+}
+
+.lobby-tab__panel--summary {
+    padding-right: 4px;
+}
+
+.lobby-tabs input[id^='lobby-tab-summary']:checked ~ .lobby-tabs__labels label[for^='lobby-tab-summary'],
+.lobby-tabs input[id^='lobby-tab-health']:checked ~ .lobby-tabs__labels label[for^='lobby-tab-health'],
+.lobby-tabs input[id^='lobby-tab-admin']:checked ~ .lobby-tabs__labels label[for^='lobby-tab-admin'] {
+    background: rgba(245, 184, 107, 0.2);
+    color: var(--text);
+    border-color: rgba(245, 184, 107, 0.5);
+}
+
+.lobby-tabs input[id^='lobby-tab-summary']:checked ~ .lobby-tabs__panels .lobby-tab__panel--summary,
+.lobby-tabs input[id^='lobby-tab-health']:checked ~ .lobby-tabs__panels .lobby-tab__panel--health,
+.lobby-tabs input[id^='lobby-tab-admin']:checked ~ .lobby-tabs__panels .lobby-tab__panel--admin {
+    display: flex;
+}
+
+.character-summary {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.health-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+}
+
+.health-list li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba(10, 12, 20, 0.6);
 }
 
 .character-frame {
