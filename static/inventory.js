@@ -50,7 +50,7 @@
             this.transferClose = document.getElementById('transfer-close');
             this.transferAmount = document.getElementById('transfer-amount');
             this.transferItemName = document.getElementById('transfer-item-name');
-            this.transferItem = null;
+            this.transferItemData = null;
             this.inventoryActions = this.root.querySelector('[data-inventory-actions]');
             this.weightDisplay = this.root.querySelector('[data-weight-display]');
             this.playerName = this.root.querySelector('[data-player-name]');
@@ -1028,7 +1028,7 @@
             if (!this.transferModal || !this.transferPlayers) return;
             this.transferModal.classList.add('is-open');
             this.transferPlayers.innerHTML = '';
-            this.transferItem = item;
+            this.transferItemData = item;
             if (this.transferItemName) {
                 this.transferItemName.textContent = item.name || 'Предмет';
             }
@@ -1058,7 +1058,7 @@
         closeTransferModal() {
             if (!this.transferModal) return;
             this.transferModal.classList.remove('is-open');
-            this.transferItem = null;
+            this.transferItemData = null;
         }
 
         async transferItem(item, recipientId) {
@@ -1077,6 +1077,7 @@
                     recipient_id: recipientId,
                     amount,
                     version: item.version,
+                    lobby_id: this.lobbyId,
                 }),
             });
             if (response.ok) {
