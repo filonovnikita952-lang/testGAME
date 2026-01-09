@@ -146,17 +146,17 @@
                                         {% endif %}
                                     {% endfor %}
                                 </div>
-                                <div class="lobby-chat dra-card">
+                                <div class="lobby-chat dra-card" data-lobby-chat data-lobby-id="{{ membership.lobby.id }}">
                                     <div class="panel-header">
                                         <span class="panel-title">Чат лобі</span>
                                         <span class="panel-tag">LIVE</span>
                                     </div>
-                                    <div class="lobby-chat__messages">
+                                    <div class="lobby-chat__messages" data-chat-messages>
                                         <p class="muted">Чат поки порожній. Напишіть перше повідомлення!</p>
                                     </div>
-                                    <form class="form lobby-chat__form">
-                                        <input type="text" placeholder="Ваше повідомлення">
-                                        <button type="button" class="button ghost">Надіслати</button>
+                                    <form class="form lobby-chat__form" data-chat-form>
+                                        <input type="text" placeholder="Ваше повідомлення" data-chat-input>
+                                        <button type="submit" class="button ghost" data-chat-send>Надіслати</button>
                                     </form>
                                 </div>
                             </div>
