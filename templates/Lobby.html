@@ -317,6 +317,7 @@
                                                                     <option value="armor">Armor</option>
                                                                     <option value="shield">Shield</option>
                                                                     <option value="backpack">Backpack</option>
+                                                                    <option value="belt">Belt</option>
                                                                     <option value="head">Head</option>
                                                                     <option value="shirt">Shirt</option>
                                                                     <option value="pants">Pants</option>
@@ -381,6 +382,16 @@
                                                                     <div>
                                                                         <label for="item_bag_h_{{ membership.lobby.id }}">Bag H</label>
                                                                         <input type="number" id="item_bag_h_{{ membership.lobby.id }}" min="0" value="0">
+                                                                    </div>
+                                                                </div>
+                                                                <div class="form inline">
+                                                                    <div>
+                                                                        <label for="item_fast_w_{{ membership.lobby.id }}">Fast W</label>
+                                                                        <input type="number" id="item_fast_w_{{ membership.lobby.id }}" min="0" value="0">
+                                                                    </div>
+                                                                    <div>
+                                                                        <label for="item_fast_h_{{ membership.lobby.id }}">Fast H</label>
+                                                                        <input type="number" id="item_fast_h_{{ membership.lobby.id }}" min="0" value="0">
                                                                     </div>
                                                                 </div>
                                                                 <label for="item_image_{{ membership.lobby.id }}">Фото предмета</label>
@@ -466,7 +477,7 @@
                                         </div>
                                         <div class="item-detail">
                                             <img src="/static/images/default_avatar.png" alt="Item" class="item-detail__image" data-item-detail-image>
-                                            <div>
+                                            <div class="item-detail__content">
                                                 <strong class="item-detail__name" data-item-detail-name>Оберіть предмет</strong>
                                                 <p class="muted item-detail__description" data-item-detail-description></p>
                                             </div>
@@ -526,25 +537,32 @@
                                             </div>
                                             <div class="equipment-board__column">
                                                 <div class="equipment-group">
-                                                    <span class="equipment-group__label">Weapon</span>
-                                                    <div class="tetris-grid tetris-grid--equip" data-container-id="equip_weapon"></div>
-                                                </div>
-                                                <div class="equipment-group">
                                                     <span class="equipment-group__label">Back</span>
                                                     <div class="tetris-grid tetris-grid--equip" data-container-id="equip_back"></div>
+                                                </div>
+                                                <div class="equipment-group">
+                                                    <span class="equipment-group__label">Shield</span>
+                                                    <div class="tetris-grid tetris-grid--equip" data-container-id="equip_shield"></div>
+                                                </div>
+                                                <div class="equipment-group">
+                                                    <span class="equipment-group__label">Belt</span>
+                                                    <div class="tetris-grid tetris-grid--equip" data-container-id="equip_belt"></div>
+                                                </div>
+                                                <div class="equipment-group">
+                                                    <span class="equipment-group__label">Hands</span>
+                                                    <div class="tetris-grid tetris-grid--equip" data-container-id="hands"></div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
                                     <div class="inventory-panel panel-secondary lobby-panel dra-card">
                                         <div class="character-storage">
-                                            <h4 class="inventory-section__title">Швидкі слоти</h4>
+                                            <h4 class="inventory-section__title">Ready Weapon</h4>
                                             <div class="tetris-grid tetris-grid--compact" data-container-id="slot_weapon_main"></div>
-                                            <h4 class="inventory-section__title">Пояс</h4>
-                                            <div class="tetris-grid tetris-grid--shield" data-container-id="slot_shield"></div>
-                                            <h4 class="inventory-section__title">Руки</h4>
-                                            <div class="tetris-grid tetris-grid--compact" data-container-id="hands"></div>
                                         </div>
+                                    </div>
+                                    <div class="inventory-panel panel-secondary lobby-panel dra-card is-hidden" data-fast-slot-panel>
+                                        <div class="fast-slot-list" data-fast-slot-list></div>
                                     </div>
                                 </div>
                             </section>
