@@ -107,6 +107,8 @@
             this.shopDetailImage = this.shopOverlay?.querySelector('[data-shop-detail-image]');
             this.shopDetailName = this.shopOverlay?.querySelector('[data-shop-detail-name]');
             this.shopDetailDescription = this.shopOverlay?.querySelector('[data-shop-detail-description]');
+            this.shopDetailQty = this.shopOverlay?.querySelector('[data-shop-detail-qty]');
+            this.shopDetailDurability = this.shopOverlay?.querySelector('[data-shop-detail-durability]');
             this.shopPollInterval = 3000;
             this.shopPollTimer = null;
             this.shopActive = false;
@@ -447,6 +449,14 @@
                 this.shopDetailImage.alt = 'Item';
                 this.shopDetailName.textContent = 'Оберіть предмет';
                 this.shopDetailDescription.textContent = '';
+                if (this.shopDetailQty) {
+                    this.shopDetailQty.textContent = 'Qty: —';
+                    this.shopDetailQty.classList.add('is-hidden');
+                }
+                if (this.shopDetailDurability) {
+                    this.shopDetailDurability.textContent = 'Durability: —';
+                    this.shopDetailDurability.classList.add('is-hidden');
+                }
                 return;
             }
             const imageUrl = this.resolveImageUrl(item.image_path);
@@ -454,6 +464,25 @@
             this.shopDetailImage.alt = item.name || 'Item';
             this.shopDetailName.textContent = item.name || 'Item';
             this.shopDetailDescription.textContent = item.description || '';
+            if (this.shopDetailQty) {
+                if (item.stackable) {
+                    this.shopDetailQty.textContent = `Qty: x${item.amount}`;
+                    this.shopDetailQty.classList.remove('is-hidden');
+                } else {
+                    this.shopDetailQty.textContent = 'Qty: —';
+                    this.shopDetailQty.classList.add('is-hidden');
+                }
+            }
+            if (this.shopDetailDurability) {
+                if (item.has_durability) {
+                    const label = item.str_current <= 0 ? 'Broken' : `${item.str_current}/${item.max_str}`;
+                    this.shopDetailDurability.textContent = `Durability: ${label}`;
+                    this.shopDetailDurability.classList.remove('is-hidden');
+                } else {
+                    this.shopDetailDurability.textContent = 'Durability: —';
+                    this.shopDetailDurability.classList.add('is-hidden');
+                }
+            }
         }
 
         async refreshInventory(playerId) {

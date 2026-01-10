@@ -1,5 +1,6 @@
 (() => {
     const SKILL_CHECK_TIME_LIMIT = 30;
+    const DEBUG_SKILL_CHECK = String(window.DEBUG_SKILL_CHECK || '') === '1';
     const statGroups = document.querySelectorAll('[data-stat-group]');
     const statInputs = Array.from(document.querySelectorAll('[data-stat-key]'));
     if (statGroups.length) {
@@ -199,6 +200,10 @@
             this.deadline = null;
             this.resultSent = false;
             this.currentDifficulty = null;
+            this.attemptCooldown = 350;
+            this.lastAttemptAt = 0;
+            this.lastLoggedRemaining = null;
+            this.wasReloaded = performance.getEntriesByType('navigation')[0]?.type === 'reload';
             if (this.overlay) {
                 this.bind();
                 this.refresh();
@@ -210,6 +215,11 @@
         bind() {
             this.acceptButton?.addEventListener('click', () => this.accept());
             this.closeButton?.addEventListener('click', () => this.failAndClose(false));
+            this.activePanel?.addEventListener('click', (event) => {
+                if (this.state !== 'active') return;
+                if (event.target?.closest('button, input, textarea, select, a')) return;
+                this.handleAttempt();
+            });
             document.addEventListener('keydown', (event) => this.handleKey(event));
             window.addEventListener('beforeunload', () => this.handleUnload());
         }
@@ -245,6 +255,11 @@
                 return;
             }
             if (check.status === 'active') {
+                if (this.wasReloaded) {
+                    this.wasReloaded = false;
+                    this.handleReloadFailure();
+                    return;
+                }
                 if (this.state !== 'active' || this.currentCheckId !== check.id) {
                     this.startGame(check);
                 }
@@ -259,6 +274,7 @@
             this.overlay?.classList.add('is-open');
             this.overlay?.setAttribute('aria-hidden', 'false');
             document.body.classList.add('skill-check-lock');
+            this.debugLog('overlay open', { state: this.state });
         }
 
         closeOverlay() {
@@ -287,6 +303,7 @@
             this.activePanel?.classList.add('is-hidden');
             this.updateDifficultyLabels(check.difficulty);
             this.updateTimerDisplay(SKILL_CHECK_TIME_LIMIT);
+            this.logState('pending', SKILL_CHECK_TIME_LIMIT);
         }
 
         async accept() {
@@ -325,10 +342,12 @@
             this.deadline = check.expires_at
                 ? new Date(check.expires_at).getTime()
                 : Date.now() + SKILL_CHECK_TIME_LIMIT * 1000;
+            this.lastLoggedRemaining = null;
             this.updateDifficultyLabels(check.difficulty);
             this.updateProgress();
             this.updateSuccessZone(check.difficulty);
             this.startGameLoop();
+            this.logState('start', this.getRemainingSeconds());
         }
 
         startGameLoop() {
@@ -369,6 +388,10 @@
             if (!this.deadline) return;
             const remaining = Math.max(0, Math.ceil((this.deadline - Date.now()) / 1000));
             this.updateTimerDisplay(remaining);
+            if (DEBUG_SKILL_CHECK && this.lastLoggedRemaining !== remaining) {
+                this.lastLoggedRemaining = remaining;
+                this.logState('tick', remaining);
+            }
             if (remaining <= 0) {
                 this.finish(false);
             }
@@ -421,15 +444,19 @@
         }
 
         handleAttempt() {
+            const now = performance.now();
+            if (now - this.lastAttemptAt < this.attemptCooldown) return;
+            this.lastAttemptAt = now;
             const successAngle = (this.getSuccessFraction(this.getCurrentDifficulty()) || 0) * 360;
             const isSuccess = this.angle <= successAngle;
+            this.debugLog('attempt', { angle: Math.round(this.angle), insideZone: isSuccess });
             if (isSuccess) {
                 this.successes += 1;
                 this.speed = Math.max(10, this.speed * 1.1);
             } else {
                 this.failures += 1;
             }
-            this.reverseUntil = performance.now() + 180;
+            this.reverseUntil = performance.now() + 200;
             this.updateProgress();
             if (this.successes >= 3) {
                 this.finish(true);
@@ -450,10 +477,19 @@
             this.closeOverlay();
         }
 
+        async handleReloadFailure() {
+            if (this.resultSent) return;
+            this.resultSent = true;
+            this.debugLog('reload failure', { state: this.state });
+            await this.sendResult(false);
+            this.closeOverlay();
+        }
+
         async sendResult(success) {
             if (!this.lobbyId) return;
+            this.debugLog('sending result', { success, successes: this.successes, failures: this.failures });
             try {
-                await fetch(`/api/lobby/${this.lobbyId}/skill-check/result`, {
+                const response = await fetch(`/api/lobby/${this.lobbyId}/skill-check/result`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -462,7 +498,9 @@
                         failures: this.failures,
                     }),
                 });
+                this.debugLog('result response', { ok: response.ok, status: response.status });
             } catch (error) {
+                this.debugLog('result error', { error });
                 console.debug('Skill check result failed', error);
             }
         }
@@ -476,7 +514,7 @@
         }
 
         handleUnload() {
-            if (this.state === 'idle') return;
+            if (this.state !== 'active') return;
             const payload = JSON.stringify({
                 success: false,
                 successes: this.successes,
@@ -493,6 +531,29 @@
                     keepalive: true,
                 });
             }
+        }
+
+        getRemainingSeconds() {
+            if (!this.deadline) return SKILL_CHECK_TIME_LIMIT;
+            return Math.max(0, Math.ceil((this.deadline - Date.now()) / 1000));
+        }
+
+        logState(context, remainingOverride) {
+            if (!DEBUG_SKILL_CHECK) return;
+            const remaining = remainingOverride ?? this.getRemainingSeconds();
+            this.debugLog('state', {
+                context,
+                accepted: this.state === 'active',
+                running: this.isRunning,
+                successes: this.successes,
+                failures: this.failures,
+                timeLeft: remaining,
+            });
+        }
+
+        debugLog(message, payload = {}) {
+            if (!DEBUG_SKILL_CHECK) return;
+            console.log('[SkillCheck]', message, payload);
         }
 
         async startSkillCheck(targetId, difficulty, onStatus) {
