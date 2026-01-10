@@ -8,6 +8,7 @@ import random
 import secrets
 import ast
 import math
+import shutil
 from typing import Optional
 
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
@@ -17,11 +18,36 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.utils import secure_filename
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_DB_PATH = os.path.join(BASE_DIR, 'databases', 'databaseDRA.db')
+HOME_DIR = os.path.expanduser('~')
+DEFAULT_DB_DIR = os.path.join(HOME_DIR, 'DRAsite_data')
+DEFAULT_DB_PATH = os.path.join(DEFAULT_DB_DIR, 'databaseDRA.db')
+LEGACY_DB_PATHS = (
+    os.path.join(BASE_DIR, 'databases', 'databaseDRA.db'),
+    os.path.join(BASE_DIR, 'databaseDRA.db'),
+    os.path.join(BASE_DIR, 'dra.db'),
+)
+
+
+def _ensure_directory(path: str) -> None:
+    os.makedirs(path, exist_ok=True)
+
+
+def _migrate_legacy_sqlite_db(target_path: str) -> Optional[str]:
+    if os.path.exists(target_path):
+        return None
+    for legacy_path in LEGACY_DB_PATHS:
+        if os.path.exists(legacy_path):
+            _ensure_directory(os.path.dirname(target_path))
+            shutil.copy2(legacy_path, target_path)
+            print(f"[DB] Copied legacy SQLite DB from {legacy_path} to {target_path}")
+            return legacy_path
+    return None
 
 
 def _normalize_database_uri(db_uri: Optional[str]) -> str:
     if not db_uri:
+        _ensure_directory(DEFAULT_DB_DIR)
+        _migrate_legacy_sqlite_db(DEFAULT_DB_PATH)
         return f"sqlite:///{DEFAULT_DB_PATH}"
     if db_uri.startswith('sqlite:///'):
         sqlite_path = db_uri[len('sqlite:///'):]
@@ -450,6 +476,7 @@ def initialize_database_if_ready() -> None:
     sqlite_path = _sqlite_db_path(db_uri)
     if sqlite_path:
         abs_path = os.path.abspath(sqlite_path)
+        _migrate_legacy_sqlite_db(abs_path)
         exists = os.path.exists(abs_path)
         print(f"[DB] SQLite path: {abs_path} (exists={exists})")
         if not exists:
@@ -1863,92 +1890,107 @@ def split_inventory_item():
     version = parse_int(data.get('version'), 0)
     amount = parse_int(data.get('amount'), 0)
     split_half = str(data.get('split_half') or '').lower() in {'1', 'true', 'yes'}
-    inventory_debug = os.environ.get(INVENTORY_DEBUG_ENV, '').strip() in {'1', 'true', 'yes'}
-    if inventory_debug:
-        inventory_logger.debug(
-            'Split request user=%s payload=%s',
-            user.id,
-            data,
-        )
+    inventory_logger.info(
+        'Split request user=%s item_id=%s version=%s split_half=%s amount=%s',
+        user.id,
+        item_id,
+        version,
+        split_half,
+        amount,
+    )
 
-    def log_split_reject(reason: str, **context) -> None:
+    def log_split_reject(reason: str, status: int, **context) -> tuple[dict, int]:
         inventory_logger.warning(
-            'Split rejected reason=%s item_id=%s context=%s',
+            'Split rejected reason=%s item_id=%s status=%s context=%s',
             reason,
             item_id,
+            status,
             context,
         )
+        return {'ok': False, 'error': reason}, status
 
     instance = ItemInstance.query.get(item_id)
     if not instance:
-        return jsonify({'ok': False, 'error': 'not_found'}), 404
+        payload, status = log_split_reject('not_found', 404)
+        return jsonify(payload), status
     lobby_id = current_lobby_id_for(user)
     if not can_edit_inventory(user, instance.owner_id, lobby_id):
-        log_split_reject('forbidden', owner_id=instance.owner_id, lobby_id=lobby_id)
-        return jsonify({'ok': False, 'error': 'forbidden'}), 403
+        payload, status = log_split_reject('forbidden', 403, owner_id=instance.owner_id, lobby_id=lobby_id)
+        return jsonify(payload), status
     if not _require_version(version):
-        log_split_reject('missing_version', version=version)
-        return jsonify({'ok': False, 'error': 'missing_version'}), 400
-    if not _assert_version(instance, version):
-        log_split_reject('conflict', version=version, current_version=instance.version)
-        return jsonify({'ok': False, 'error': 'conflict'}), 409
+        payload, status = log_split_reject('missing_version', 400, version=version)
+        return jsonify(payload), status
     if not stackable_type(instance.definition) or has_durability(instance.definition):
-        log_split_reject('not_stackable', template_id=instance.template_id)
-        return jsonify({'ok': False, 'error': 'not_stackable'}), 400
-    current_amount = instance.amount
-    split_amount = current_amount // 2 if split_half else amount
-    if inventory_debug:
-        inventory_logger.debug(
-            'Split computed item_id=%s version=%s current_amount=%s split_amount=%s container_id=%s',
-            instance.id,
-            version,
-            current_amount,
-            split_amount,
-            instance.container_i,
-        )
-    if split_amount <= 0 or split_amount >= current_amount:
-        log_split_reject('invalid_amount', amount=split_amount, current_amount=current_amount)
-        return jsonify({'ok': False, 'error': 'invalid_amount'}), 400
-    max_amount = normalized_max_amount(instance.definition)
-    if split_amount > max_amount or (current_amount - split_amount) > max_amount:
-        log_split_reject('max_stack_exceeded', max_amount=max_amount, amount=split_amount)
-        return jsonify({'ok': False, 'error': 'max_stack_exceeded'}), 400
-    temp_instance = PlacementPreview(
-        owner_id=instance.owner_id,
-        definition=instance.definition,
-    )
-    target_pos = find_first_fit(temp_instance, instance.container_i, normalize_rotation_value(instance.rotated))
-    if not target_pos:
-        log_split_reject('no_space', container_id=instance.container_i)
-        return jsonify({'ok': False, 'error': 'no_space'}), 400
+        payload, status = log_split_reject('not_stackable', 400, template_id=instance.template_id)
+        return jsonify(payload), status
 
-    before_amount = instance.amount
-    with db.session.begin():
-        instance.amount = current_amount - split_amount
-        instance.version += 1
-        new_instance = ItemInstance(
-            owner_id=instance.owner_id,
-            template_id=instance.template_id,
-            container_i=instance.container_i,
-            pos_x=target_pos[0],
-            pos_y=target_pos[1],
-            rotated=normalize_rotation_value(instance.rotated),
-            str_current=instance.str_current,
-            amount=split_amount,
-            custom_name=instance.custom_name,
-            custom_description=instance.custom_description,
-            version=1,
-        )
-        db.session.add(new_instance)
-        db.session.flush()
+    class SplitError(Exception):
+        def __init__(self, reason: str, status: int = 400):
+            super().__init__(reason)
+            self.reason = reason
+            self.status = status
+
+    try:
+        with db.session.begin():
+            db.session.refresh(instance)
+            if instance.version != version:
+                raise SplitError('conflict', 409)
+            current_amount = instance.amount
+            split_amount = current_amount // 2 if split_half else amount
+            if split_amount <= 0 or split_amount >= current_amount:
+                raise SplitError('invalid_amount')
+            max_amount = normalized_max_amount(instance.definition)
+            if split_amount > max_amount or (current_amount - split_amount) > max_amount:
+                raise SplitError('max_stack_exceeded')
+            temp_instance = PlacementPreview(
+                owner_id=instance.owner_id,
+                definition=instance.definition,
+                id=instance.id,
+            )
+            target_pos = find_first_fit(
+                temp_instance,
+                instance.container_i,
+                normalize_rotation_value(instance.rotated),
+            )
+            if not target_pos:
+                raise SplitError('no_space')
+
+            before_amount = instance.amount
+            instance.amount = current_amount - split_amount
+            instance.version += 1
+            new_instance = ItemInstance(
+                owner_id=instance.owner_id,
+                template_id=instance.template_id,
+                container_i=instance.container_i,
+                pos_x=target_pos[0],
+                pos_y=target_pos[1],
+                rotated=normalize_rotation_value(instance.rotated),
+                str_current=instance.str_current,
+                amount=split_amount,
+                custom_name=instance.custom_name,
+                custom_description=instance.custom_description,
+                version=1,
+            )
+            db.session.add(new_instance)
+            db.session.flush()
+    except SplitError as exc:
+        db.session.rollback()
+        payload, status = log_split_reject(exc.reason, exc.status, version=version)
+        return jsonify(payload), status
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        inventory_logger.error('Split failed due to database error: %s', exc)
+        return jsonify({'ok': False, 'error': 'server_error'}), 500
+
     inventory_logger.info(
-        'Split applied item_id=%s before_amount=%s split_amount=%s after_amount=%s new_instance_id=%s container_id=%s',
+        'Split applied item_id=%s before_amount=%s split_amount=%s after_amount=%s new_instance_id=%s container_id=%s pos=%s',
         instance.id,
         before_amount,
         split_amount,
         instance.amount,
         new_instance.id,
         instance.container_i,
+        target_pos,
     )
     return jsonify({
         'ok': True,
