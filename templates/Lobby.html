@@ -497,19 +497,19 @@
                                                                             <label for="item_issue_self_{{ membership.lobby.id }}">Issue to me now</label>
                                                                             <input type="checkbox" id="item_issue_self_{{ membership.lobby.id }}" data-issue-self>
                                                                         </div>
-                                                                        <button type="button" class="button" data-create-submit>Створити шаблон</button>
+                                                                        <button type="button" class="button" data-create-submit>Створити визначення</button>
                                                                     </form>
                                                                 </div>
                                                                 <div class="admin-tab-panel" data-admin-panel="give">
                                                                     <form class="form" data-master-issue>
                                                                         <h4>Видати за ID</h4>
-                                                                        <label for="issue_template_search_{{ membership.lobby.id }}">Пошук шаблону</label>
+                                                                        <label for="issue_definition_search_{{ membership.lobby.id }}">Пошук визначення</label>
                                                                         <div class="issue-search">
-                                                                            <input type="text" id="issue_template_search_{{ membership.lobby.id }}" placeholder="Пошук за назвою" data-template-search>
-                                                                            <div class="issue-search__results" data-template-results></div>
+                                                                            <input type="text" id="issue_definition_search_{{ membership.lobby.id }}" placeholder="Пошук за назвою" data-definition-search>
+                                                                            <div class="issue-search__results" data-definition-results></div>
                                                                         </div>
-                                                                        <label for="issue_template_{{ membership.lobby.id }}">Template ID</label>
-                                                                        <input type="number" id="issue_template_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону" data-template-id>
+                                                                        <label for="issue_definition_{{ membership.lobby.id }}">Definition ID</label>
+                                                                        <input type="number" id="issue_definition_{{ membership.lobby.id }}" min="1" placeholder="ID визначення" data-definition-id>
                                                                         <label for="issue_target_{{ membership.lobby.id }}">Отримувач</label>
                                                                         <select id="issue_target_{{ membership.lobby.id }}">
                                                                             {% for member in membership.lobby.members %}
@@ -529,26 +529,26 @@
                                                                 </div>
                                                                 <div class="admin-tab-panel" data-admin-panel="setting">
                                                                     <form class="form" data-master-settings>
-                                                                        <h4>Template Settings</h4>
-                                                                        <label for="setting_template_id_search_{{ membership.lobby.id }}">Пошук за ID</label>
+                                                                        <h4>Definition Settings</h4>
+                                                                        <label for="setting_definition_id_search_{{ membership.lobby.id }}">Пошук за ID</label>
                                                                         <div class="form inline">
-                                                                            <input type="number" id="setting_template_id_search_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону" data-template-search-id>
-                                                                            <button type="button" class="button ghost" data-template-load>Завантажити</button>
+                                                                            <input type="number" id="setting_definition_id_search_{{ membership.lobby.id }}" min="1" placeholder="ID визначення" data-definition-search-id>
+                                                                            <button type="button" class="button ghost" data-definition-load>Завантажити</button>
                                                                         </div>
-                                                                        <label for="setting_template_search_{{ membership.lobby.id }}">Пошук за назвою</label>
+                                                                        <label for="setting_definition_search_{{ membership.lobby.id }}">Пошук за назвою</label>
                                                                         <div class="issue-search">
-                                                                            <input type="text" id="setting_template_search_{{ membership.lobby.id }}" placeholder="Пошук за назвою" data-template-search>
-                                                                            <div class="issue-search__results" data-template-results></div>
+                                                                            <input type="text" id="setting_definition_search_{{ membership.lobby.id }}" placeholder="Пошук за назвою" data-definition-search>
+                                                                            <div class="issue-search__results" data-definition-results></div>
                                                                         </div>
-                                                                        <input type="hidden" data-template-original-id>
-                                                                        <label for="setting_template_id_{{ membership.lobby.id }}">Template ID</label>
-                                                                        <input type="number" id="setting_template_id_{{ membership.lobby.id }}" min="1" placeholder="ID" data-template-id>
-                                                                        <label for="setting_template_name_{{ membership.lobby.id }}">Назва</label>
-                                                                        <input type="text" id="setting_template_name_{{ membership.lobby.id }}" placeholder="Назва" data-template-name>
-                                                                        <label for="setting_template_description_{{ membership.lobby.id }}">Опис</label>
-                                                                        <textarea id="setting_template_description_{{ membership.lobby.id }}" rows="3" placeholder="Короткий опис" data-template-description></textarea>
-                                                                        <label for="setting_template_type_{{ membership.lobby.id }}">Тип</label>
-                                                                        <select id="setting_template_type_{{ membership.lobby.id }}" data-template-type>
+                                                                        <input type="hidden" data-definition-original-id>
+                                                                        <label for="setting_definition_id_{{ membership.lobby.id }}">Definition ID</label>
+                                                                        <input type="number" id="setting_definition_id_{{ membership.lobby.id }}" min="1" placeholder="ID" data-definition-id>
+                                                                        <label for="setting_definition_name_{{ membership.lobby.id }}">Назва</label>
+                                                                        <input type="text" id="setting_definition_name_{{ membership.lobby.id }}" placeholder="Назва" data-definition-name>
+                                                                        <label for="setting_definition_description_{{ membership.lobby.id }}">Опис</label>
+                                                                        <textarea id="setting_definition_description_{{ membership.lobby.id }}" rows="3" placeholder="Короткий опис" data-definition-description></textarea>
+                                                                        <label for="setting_definition_type_{{ membership.lobby.id }}">Тип</label>
+                                                                        <select id="setting_definition_type_{{ membership.lobby.id }}" data-definition-type>
                                                                             <option value="weapon">Weapon</option>
                                                                             <option value="armor">Armor</option>
                                                                             <option value="shield">Shield</option>
@@ -564,8 +564,8 @@
                                                                             <option value="map">Map</option>
                                                                             <option value="other">Other</option>
                                                                         </select>
-                                                                        <label for="setting_template_quality_{{ membership.lobby.id }}">Редкість</label>
-                                                                        <select id="setting_template_quality_{{ membership.lobby.id }}" data-template-quality>
+                                                                        <label for="setting_definition_quality_{{ membership.lobby.id }}">Редкість</label>
+                                                                        <select id="setting_definition_quality_{{ membership.lobby.id }}" data-definition-quality>
                                                                             <option value="common">Common</option>
                                                                             <option value="uncommon">Uncommon</option>
                                                                             <option value="epic">Epic</option>
@@ -574,59 +574,59 @@
                                                                         </select>
                                                                         <div class="form inline">
                                                                             <div>
-                                                                                <label for="setting_template_w_{{ membership.lobby.id }}">W</label>
-                                                                                <input type="number" id="setting_template_w_{{ membership.lobby.id }}" min="1" max="7" value="1" data-template-width>
+                                                                                <label for="setting_definition_w_{{ membership.lobby.id }}">W</label>
+                                                                                <input type="number" id="setting_definition_w_{{ membership.lobby.id }}" min="1" max="7" value="1" data-definition-width>
                                                                             </div>
                                                                             <div>
-                                                                                <label for="setting_template_h_{{ membership.lobby.id }}">H</label>
-                                                                                <input type="number" id="setting_template_h_{{ membership.lobby.id }}" min="1" max="9" value="1" data-template-height>
+                                                                                <label for="setting_definition_h_{{ membership.lobby.id }}">H</label>
+                                                                                <input type="number" id="setting_definition_h_{{ membership.lobby.id }}" min="1" max="9" value="1" data-definition-height>
                                                                             </div>
                                                                             <div>
-                                                                                <label for="setting_template_weight_{{ membership.lobby.id }}">Вага</label>
-                                                                                <input type="number" id="setting_template_weight_{{ membership.lobby.id }}" min="0" step="0.1" value="0" data-template-weight>
+                                                                                <label for="setting_definition_weight_{{ membership.lobby.id }}">Вага</label>
+                                                                                <input type="number" id="setting_definition_weight_{{ membership.lobby.id }}" min="0" step="0.1" value="0" data-definition-weight>
                                                                             </div>
                                                                         </div>
                                                                         <div class="form inline">
                                                                             <div>
-                                                                                <label for="setting_template_durability_{{ membership.lobby.id }}">Max durability</label>
-                                                                                <input type="number" id="setting_template_durability_{{ membership.lobby.id }}" min="1" value="10" data-template-max-durability>
+                                                                                <label for="setting_definition_durability_{{ membership.lobby.id }}">Max durability</label>
+                                                                                <input type="number" id="setting_definition_durability_{{ membership.lobby.id }}" min="1" value="10" data-definition-max-durability>
                                                                             </div>
                                                                             <div>
-                                                                                <label for="setting_template_max_amount_{{ membership.lobby.id }}">Stack max</label>
-                                                                                <input type="number" id="setting_template_max_amount_{{ membership.lobby.id }}" min="1" value="1" data-template-max-amount>
+                                                                                <label for="setting_definition_max_amount_{{ membership.lobby.id }}">Stack max</label>
+                                                                                <input type="number" id="setting_definition_max_amount_{{ membership.lobby.id }}" min="1" value="1" data-definition-max-amount>
                                                                             </div>
                                                                         </div>
                                                                         <div class="form inline admin-form-section" data-cloth-fields>
                                                                             <div class="checkbox-row">
-                                                                                <label for="setting_template_is_cloth_{{ membership.lobby.id }}">Cloth item</label>
-                                                                                <input type="checkbox" id="setting_template_is_cloth_{{ membership.lobby.id }}" data-template-is-cloth>
+                                                                                <label for="setting_definition_is_cloth_{{ membership.lobby.id }}">Cloth item</label>
+                                                                                <input type="checkbox" id="setting_definition_is_cloth_{{ membership.lobby.id }}" data-definition-is-cloth>
                                                                             </div>
                                                                             <div>
-                                                                                <label for="setting_template_bag_w_{{ membership.lobby.id }}">Bag W</label>
-                                                                                <input type="number" id="setting_template_bag_w_{{ membership.lobby.id }}" min="0" value="0" data-template-bag-width>
+                                                                                <label for="setting_definition_bag_w_{{ membership.lobby.id }}">Bag W</label>
+                                                                                <input type="number" id="setting_definition_bag_w_{{ membership.lobby.id }}" min="0" value="0" data-definition-bag-width>
                                                                             </div>
                                                                             <div>
-                                                                                <label for="setting_template_bag_h_{{ membership.lobby.id }}">Bag H</label>
-                                                                                <input type="number" id="setting_template_bag_h_{{ membership.lobby.id }}" min="0" value="0" data-template-bag-height>
+                                                                                <label for="setting_definition_bag_h_{{ membership.lobby.id }}">Bag H</label>
+                                                                                <input type="number" id="setting_definition_bag_h_{{ membership.lobby.id }}" min="0" value="0" data-definition-bag-height>
                                                                             </div>
                                                                         </div>
                                                                         <div class="form inline admin-form-section" data-belt-fields>
                                                                             <div>
-                                                                                <label for="setting_template_fast_w_{{ membership.lobby.id }}">Fast W</label>
-                                                                                <input type="number" id="setting_template_fast_w_{{ membership.lobby.id }}" min="0" value="0" data-template-fast-w>
+                                                                                <label for="setting_definition_fast_w_{{ membership.lobby.id }}">Fast W</label>
+                                                                                <input type="number" id="setting_definition_fast_w_{{ membership.lobby.id }}" min="0" value="0" data-definition-fast-w>
                                                                             </div>
                                                                             <div>
-                                                                                <label for="setting_template_fast_h_{{ membership.lobby.id }}">Fast H</label>
-                                                                                <input type="number" id="setting_template_fast_h_{{ membership.lobby.id }}" min="0" value="0" data-template-fast-h>
+                                                                                <label for="setting_definition_fast_h_{{ membership.lobby.id }}">Fast H</label>
+                                                                                <input type="number" id="setting_definition_fast_h_{{ membership.lobby.id }}" min="0" value="0" data-definition-fast-h>
                                                                             </div>
                                                                         </div>
-                                                                        <button type="button" class="button" data-template-save>Зберегти</button>
-                                                                        <p class="muted" data-template-status></p>
+                                                                        <button type="button" class="button" data-definition-save>Зберегти</button>
+                                                                        <p class="muted" data-definition-status></p>
                                                                     </form>
                                                                     <form class="form" data-master-image-update>
                                                                         <h4>Оновити фото</h4>
-                                                                        <label for="image_template_{{ membership.lobby.id }}">Template ID</label>
-                                                                        <input type="number" id="image_template_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону">
+                                                                        <label for="image_definition_{{ membership.lobby.id }}">Definition ID</label>
+                                                                        <input type="number" id="image_definition_{{ membership.lobby.id }}" min="1" placeholder="ID визначення">
                                                                         <label for="item_image_update_{{ membership.lobby.id }}">Фото предмета</label>
                                                                         <input type="file" id="item_image_update_{{ membership.lobby.id }}" accept="image/*">
                                                                         <button type="button" class="button ghost">Оновити</button>
@@ -784,7 +784,7 @@
                             </div>
                             <p class="context-menu__meta" id="context-size">Розмір: 1×1</p>
                             <p class="context-menu__meta" id="context-weight">Вага: 0</p>
-                            <p class="context-menu__meta" id="context-template" data-master-only="true">Template ID: —</p>
+                            <p class="context-menu__meta" id="context-definition" data-master-only="true">Definition ID: —</p>
                             <p class="context-menu__description" id="context-description"></p>
                             <p class="context-menu__description" id="context-notes"></p>
                             <div class="context-menu__actions">

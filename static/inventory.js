@@ -420,10 +420,10 @@
                 const element = document.createElement('div');
                 const qualityClass = `inventory-item--quality-${item.quality}`;
                 element.className = `inventory-item inventory-item--${item.type} ${qualityClass}`;
-                if (item.has_durability && item.str_current <= 0) {
+                if (item.has_durability && item.durability_current <= 0) {
                     element.classList.add('is-broken');
                 }
-                if (item.is_cloth && item.has_durability && item.str_current <= 0) {
+                if (item.is_cloth && item.has_durability && item.durability_current <= 0) {
                     element.classList.add('is-broken');
                 }
                 element.dataset.itemId = item.id;
@@ -432,7 +432,7 @@
                 element.style.width = `${size.w * metrics.width + metrics.gapX * (size.w - 1) - 4}px`;
                 element.style.height = `${size.h * metrics.height + metrics.gapY * (size.h - 1) - 4}px`;
                 const durabilityLabel = item.has_durability
-                    ? (item.str_current <= 0 ? 'Broken' : `${item.str_current}/${item.max_durability}`)
+                    ? (item.durability_current <= 0 ? 'Broken' : `${item.durability_current}/${item.max_durability}`)
                     : '—';
                 element.innerHTML = `
                     <div class="inventory-item__label">${item.name}</div>
@@ -487,7 +487,7 @@
             }
             if (this.shopDetailDurability) {
                 if (item.has_durability) {
-                    const label = item.str_current <= 0 ? 'Broken' : `${item.str_current}/${item.max_durability}`;
+                    const label = item.durability_current <= 0 ? 'Broken' : `${item.durability_current}/${item.max_durability}`;
                     this.shopDetailDurability.textContent = `Durability: ${label}`;
                     this.shopDetailDurability.classList.remove('is-hidden');
                 } else {
@@ -675,10 +675,10 @@
                 const element = document.createElement('div');
                 const qualityClass = `inventory-item--quality-${item.quality}`;
                 element.className = `inventory-item inventory-item--${item.type} ${qualityClass}`;
-                if (item.has_durability && item.str_current <= 0) {
+                if (item.has_durability && item.durability_current <= 0) {
                     element.classList.add('is-broken');
                 }
-                if (item.is_cloth && item.has_durability && item.str_current <= 0) {
+                if (item.is_cloth && item.has_durability && item.durability_current <= 0) {
                     element.classList.add('is-broken');
                 }
                 element.dataset.itemId = item.id;
@@ -689,7 +689,7 @@
                 element.style.width = `${size.w * metrics.width + metrics.gapX * (size.w - 1) - 4}px`;
                 element.style.height = `${size.h * metrics.height + metrics.gapY * (size.h - 1) - 4}px`;
                 const durabilityLabel = item.has_durability
-                    ? (item.str_current <= 0 ? 'Broken' : `${item.str_current}/${item.max_durability}`)
+                    ? (item.durability_current <= 0 ? 'Broken' : `${item.durability_current}/${item.max_durability}`)
                     : '—';
                 element.innerHTML = `
                     <div class="inventory-item__label">${item.name}</div>
@@ -1086,7 +1086,7 @@
         async submitMerge(sourceItem, targetItem) {
             if (!this.permissions.can_edit) return false;
             if (!sourceItem.stackable || !targetItem.stackable) return false;
-            if (sourceItem.template_id !== targetItem.template_id) return false;
+            if (sourceItem.definition_id !== targetItem.definition_id) return false;
             if (sourceItem.id === targetItem.id) return false;
             const response = await fetch('/api/inventory/merge', {
                 method: 'POST',
@@ -1121,7 +1121,7 @@
             this.contextMenu.dataset.itemId = item.id;
             this.contextMenu.dataset.itemVersion = item.version;
             this.contextMenu.dataset.itemType = item.type;
-            this.contextMenu.dataset.itemTemplateId = item.template_id;
+            this.contextMenu.dataset.itemDefinitionId = item.definition_id;
             document.getElementById('context-name').textContent = item.name;
             document.getElementById('context-type').textContent = item.type;
             document.getElementById('context-quality').textContent = item.quality;
@@ -1165,14 +1165,14 @@
                     durabilityField.style.display = 'flex';
                     durabilityInput.min = '0';
                     durabilityInput.max = `${item.max_durability || 0}`;
-                    durabilityInput.value = `${item.str_current ?? 0}`;
+                    durabilityInput.value = `${item.durability_current ?? 0}`;
                 } else {
                     durabilityField.style.display = 'none';
                 }
             }
-            const templateMeta = document.getElementById('context-template');
-            if (templateMeta) {
-                templateMeta.textContent = `Template ID: ${item.template_id}`;
+            const definitionMeta = document.getElementById('context-definition');
+            if (definitionMeta) {
+                definitionMeta.textContent = `Definition ID: ${item.definition_id}`;
             }
             this.contextMenu.querySelectorAll('[data-master-only]').forEach((node) => {
                 node.style.display = this.permissions.is_master ? '' : 'none';
@@ -1469,27 +1469,27 @@
             if (!this.permissions.is_master) return;
             const issueForm = this.root.querySelector('[data-master-issue]');
             if (!issueForm) return;
-            const templateInput = issueForm.querySelector('input[id^="issue_template_"]');
+            const definitionInput = issueForm.querySelector('input[id^="issue_definition_"]');
             const targetInput = issueForm.querySelector('select[id^="issue_target_"]');
             const amountInput = issueForm.querySelector('input[id^="issue_amount_"]');
             const durabilityInput = issueForm.querySelector('input[id^="issue_durability_current_"]');
             const randomInput = issueForm.querySelector('input[id^="issue_random_durability_"]');
-            if (templateInput && item?.template_id) {
-                templateInput.value = `${item.template_id}`;
+            if (definitionInput && item?.definition_id) {
+                definitionInput.value = `${item.definition_id}`;
             }
-            const templateId = Number.parseInt(templateInput?.value || '0', 10);
+            const definitionId = Number.parseInt(definitionInput?.value || '0', 10);
             const target = Number.parseInt(targetInput?.value || '0', 10);
             const amount = Number.parseInt(amountInput?.value || '1', 10);
-            if (!templateId || !target) return;
-            const confirmed = window.confirm(`Видати шаблон #${templateId} для користувача ${target}?`);
+            if (!definitionId || !target) return;
+            const confirmed = window.confirm(`Видати визначення #${definitionId} для користувача ${target}?`);
             if (!confirmed) return;
-            this.trackAction(`issue-by-id:${templateId}:${target}`);
+            this.trackAction(`issue-by-id:${definitionId}:${target}`);
             if (DEBUG_INVENTORY) {
-                console.debug('[IssueById]', 'context issue start', { templateId, target, amount });
+                console.debug('[IssueById]', 'context issue start', { definitionId, target, amount });
             }
             const payload = {
                 lobby_id: this.lobbyId,
-                template_id: templateId,
+                definition_id: definitionId,
                 target_user_id: target,
                 amount: Number.isNaN(amount) ? 1 : amount,
                 durability_current: durabilityInput?.value || null,
@@ -1600,7 +1600,7 @@
                 if (canEdit) {
                     this.detailDurabilityInput.min = '0';
                     this.detailDurabilityInput.max = `${item.max_durability || 0}`;
-                    this.detailDurabilityInput.value = `${item.str_current ?? 0}`;
+                    this.detailDurabilityInput.value = `${item.durability_current ?? 0}`;
                 }
             }
         }
@@ -1939,8 +1939,8 @@
         };
 
         const updateClothBeltVisibility = (form) => {
-            const typeSelect = form.querySelector('select[id^="item_type_"], select[data-template-type]');
-            const clothToggle = form.querySelector('input[id^="item_is_cloth_"], input[data-template-is-cloth]');
+            const typeSelect = form.querySelector('select[id^="item_type_"], select[data-definition-type]');
+            const clothToggle = form.querySelector('input[id^="item_is_cloth_"], input[data-definition-is-cloth]');
             const clothFields = form.querySelector('[data-cloth-fields]');
             const beltFields = form.querySelector('[data-belt-fields]');
             const typeValue = typeSelect?.value || 'other';
@@ -2077,9 +2077,9 @@
             const randomButton = form.querySelector('[data-random-durability]');
             const durabilityInput = form.querySelector('input[id^="issue_durability_current_"]');
             const randomInput = form.querySelector('input[id^="issue_random_durability_"]');
-            const templateInput = form.querySelector('[data-template-id]');
-            const searchInput = form.querySelector('[data-template-search]');
-            const resultsBox = form.querySelector('[data-template-results]');
+            const definitionInput = form.querySelector('[data-definition-id]');
+            const searchInput = form.querySelector('[data-definition-search]');
+            const resultsBox = form.querySelector('[data-definition-results]');
             const max_durability_input = document.createElement('input');
             max_durability_input.type = 'hidden';
             max_durability_input.value = '';
@@ -2124,7 +2124,7 @@
                         </div>
                     `;
                     buttonEl.addEventListener('click', () => {
-                        if (templateInput) templateInput.value = `${result.id}`;
+                        if (definitionInput) definitionInput.value = `${result.id}`;
                         if (searchInput) searchInput.value = result.name;
                         max_durability_input.value = result.max_durability ?? '';
                         refreshRandom();
@@ -2162,17 +2162,17 @@
                     runSearch(query);
                 }, 200);
             });
-            templateInput?.addEventListener('change', async () => {
-                const templateId = parseNumber(templateInput.value, 0);
-                if (!templateId) return;
+            definitionInput?.addEventListener('change', async () => {
+                const definitionId = parseNumber(definitionInput.value, 0);
+                if (!definitionId) return;
                 const response = await fetch(
-                    `/api/master/item_template/${templateId}?lobby_id=${encodeURIComponent(lobbyId || '')}`,
+                    `/api/master/item_template/${definitionId}?lobby_id=${encodeURIComponent(lobbyId || '')}`,
                 );
                 if (!response.ok) return;
                 const payload = await response.json().catch(() => ({}));
-                const template = payload.template;
-                if (!template) return;
-                max_durability_input.value = template.max_durability ?? '';
+                const definition = payload.definition;
+                if (!definition) return;
+                max_durability_input.value = definition.max_durability ?? '';
                 refreshRandom();
             });
             document.addEventListener('click', (event) => {
@@ -2184,8 +2184,8 @@
             const submitIssue = async (event) => {
                 event?.preventDefault();
                 logIssueDebug('issue click', { lobbyId });
-                const templateId = Number.parseInt(
-                    form.querySelector('input[id^="issue_template_"]')?.value || '0',
+                const definitionId = Number.parseInt(
+                    form.querySelector('input[id^="issue_definition_"]')?.value || '0',
                     10,
                 );
                 const targetId = Number.parseInt(
@@ -2198,18 +2198,18 @@
                 );
                 const durabilityCurrent = form.querySelector('input[id^="issue_durability_current_"]')?.value || '';
                 const randomDurability = form.querySelector('input[id^="issue_random_durability_"]')?.value || '';
-                if (!templateId || !targetId) {
-                    logIssueDebug('issue validation failed', { templateId, targetId });
+                if (!definitionId || !targetId) {
+                    logIssueDebug('issue validation failed', { definitionId, targetId });
                     return;
                 }
-                const confirmed = window.confirm(`Видати шаблон #${templateId} для користувача ${targetId}?`);
+                const confirmed = window.confirm(`Видати визначення #${definitionId} для користувача ${targetId}?`);
                 if (!confirmed) {
-                    logIssueDebug('issue cancelled', { templateId, targetId });
+                    logIssueDebug('issue cancelled', { definitionId, targetId });
                     return;
                 }
-                controller.trackAction(`issue-by-id:${templateId}:${targetId}`);
-                logIssueDebug('issue fetch', { templateId, targetId, amount });
-                console.log('GiveID fetch starting', { templateId, targetId, amount });
+                controller.trackAction(`issue-by-id:${definitionId}:${targetId}`);
+                logIssueDebug('issue fetch', { definitionId, targetId, amount });
+                console.log('GiveID fetch starting', { definitionId, targetId, amount });
                 let response;
                 try {
                     response = await fetch('/api/master/issue_by_id', {
@@ -2217,7 +2217,7 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             lobby_id: lobbyId,
-                            template_id: templateId,
+                            definition_id: definitionId,
                             target_user_id: targetId,
                             amount,
                             durability_current: durabilityCurrent,
@@ -2245,28 +2245,28 @@
         root.querySelectorAll('[data-master-settings]').forEach((form) => {
             if (form.dataset.settingsBound) return;
             form.dataset.settingsBound = 'true';
-            const searchInput = form.querySelector('[data-template-search]');
-            const resultsBox = form.querySelector('[data-template-results]');
-            const searchIdInput = form.querySelector('[data-template-search-id]');
-            const loadButton = form.querySelector('[data-template-load]');
-            const originalIdInput = form.querySelector('[data-template-original-id]');
-            const templateIdInput = form.querySelector('[data-template-id]');
-            const nameInput = form.querySelector('[data-template-name]');
-            const descriptionInput = form.querySelector('[data-template-description]');
-            const typeSelect = form.querySelector('[data-template-type]');
-            const qualitySelect = form.querySelector('[data-template-quality]');
-            const widthInput = form.querySelector('[data-template-width]');
-            const heightInput = form.querySelector('[data-template-height]');
-            const weightInput = form.querySelector('[data-template-weight]');
-            const max_durability_input = form.querySelector('[data-template-max-durability]');
-            const maxAmountInput = form.querySelector('[data-template-max-amount]');
-            const clothToggle = form.querySelector('[data-template-is-cloth]');
-            const bagWidthInput = form.querySelector('[data-template-bag-width]');
-            const bagHeightInput = form.querySelector('[data-template-bag-height]');
-            const fastWInput = form.querySelector('[data-template-fast-w]');
-            const fastHInput = form.querySelector('[data-template-fast-h]');
-            const saveButton = form.querySelector('[data-template-save]');
-            const statusLine = form.querySelector('[data-template-status]');
+            const searchInput = form.querySelector('[data-definition-search]');
+            const resultsBox = form.querySelector('[data-definition-results]');
+            const searchIdInput = form.querySelector('[data-definition-search-id]');
+            const loadButton = form.querySelector('[data-definition-load]');
+            const originalIdInput = form.querySelector('[data-definition-original-id]');
+            const definitionIdInput = form.querySelector('[data-definition-id]');
+            const nameInput = form.querySelector('[data-definition-name]');
+            const descriptionInput = form.querySelector('[data-definition-description]');
+            const typeSelect = form.querySelector('[data-definition-type]');
+            const qualitySelect = form.querySelector('[data-definition-quality]');
+            const widthInput = form.querySelector('[data-definition-width]');
+            const heightInput = form.querySelector('[data-definition-height]');
+            const weightInput = form.querySelector('[data-definition-weight]');
+            const max_durability_input = form.querySelector('[data-definition-max-durability]');
+            const maxAmountInput = form.querySelector('[data-definition-max-amount]');
+            const clothToggle = form.querySelector('[data-definition-is-cloth]');
+            const bagWidthInput = form.querySelector('[data-definition-bag-width]');
+            const bagHeightInput = form.querySelector('[data-definition-bag-height]');
+            const fastWInput = form.querySelector('[data-definition-fast-w]');
+            const fastHInput = form.querySelector('[data-definition-fast-h]');
+            const saveButton = form.querySelector('[data-definition-save]');
+            const statusLine = form.querySelector('[data-definition-status]');
             let searchTimer = null;
 
             const clearResults = () => {
@@ -2274,38 +2274,38 @@
                 resultsBox.innerHTML = '';
                 resultsBox.classList.remove('is-open');
             };
-            const applyTemplate = (template) => {
-                if (!template) return;
-                if (originalIdInput) originalIdInput.value = `${template.id}`;
-                if (templateIdInput) templateIdInput.value = `${template.id}`;
-                if (nameInput) nameInput.value = template.name || '';
-                if (descriptionInput) descriptionInput.value = template.description || '';
-                if (typeSelect) typeSelect.value = template.type || 'other';
-                if (qualitySelect) qualitySelect.value = template.quality || 'common';
-                if (widthInput) widthInput.value = `${template.width || 1}`;
-                if (heightInput) heightInput.value = `${template.height || 1}`;
-                if (weightInput) weightInput.value = `${template.weight || 0}`;
-                if (max_durability_input) max_durability_input.value = template.max_durability ?? '';
-                if (maxAmountInput) maxAmountInput.value = `${template.max_amount || 1}`;
-                if (clothToggle) clothToggle.checked = Boolean(template.is_cloth);
-                if (bagWidthInput) bagWidthInput.value = `${template.bag_width || 0}`;
-                if (bagHeightInput) bagHeightInput.value = `${template.bag_height || 0}`;
-                if (fastWInput) fastWInput.value = `${template.fast_w || 0}`;
-                if (fastHInput) fastHInput.value = `${template.fast_h || 0}`;
+            const applyDefinition = (definition) => {
+                if (!definition) return;
+                if (originalIdInput) originalIdInput.value = `${definition.id}`;
+                if (definitionIdInput) definitionIdInput.value = `${definition.id}`;
+                if (nameInput) nameInput.value = definition.name || '';
+                if (descriptionInput) descriptionInput.value = definition.description || '';
+                if (typeSelect) typeSelect.value = definition.type || 'other';
+                if (qualitySelect) qualitySelect.value = definition.quality || 'common';
+                if (widthInput) widthInput.value = `${definition.width || 1}`;
+                if (heightInput) heightInput.value = `${definition.height || 1}`;
+                if (weightInput) weightInput.value = `${definition.weight || 0}`;
+                if (max_durability_input) max_durability_input.value = definition.max_durability ?? '';
+                if (maxAmountInput) maxAmountInput.value = `${definition.max_amount || 1}`;
+                if (clothToggle) clothToggle.checked = Boolean(definition.is_cloth);
+                if (bagWidthInput) bagWidthInput.value = `${definition.bag_width || 0}`;
+                if (bagHeightInput) bagHeightInput.value = `${definition.bag_height || 0}`;
+                if (fastWInput) fastWInput.value = `${definition.fast_w || 0}`;
+                if (fastHInput) fastHInput.value = `${definition.fast_h || 0}`;
                 updateClothBeltVisibility(form);
                 if (statusLine) statusLine.textContent = '';
             };
-            const loadTemplate = async (templateId) => {
-                if (!templateId) return;
+            const loadDefinition = async (definitionId) => {
+                if (!definitionId) return;
                 const response = await fetch(
-                    `/api/master/item_template/${templateId}?lobby_id=${encodeURIComponent(lobbyId || '')}`,
+                    `/api/master/item_template/${definitionId}?lobby_id=${encodeURIComponent(lobbyId || '')}`,
                 );
                 if (!response.ok) {
-                    if (statusLine) statusLine.textContent = 'Не вдалося знайти шаблон.';
+                    if (statusLine) statusLine.textContent = 'Не вдалося знайти визначення.';
                     return;
                 }
                 const payload = await response.json().catch(() => ({}));
-                applyTemplate(payload.template);
+                applyDefinition(payload.definition);
             };
 
             const renderResults = (results) => {
@@ -2331,7 +2331,7 @@
                     buttonEl.addEventListener('click', () => {
                         if (searchInput) searchInput.value = result.name;
                         clearResults();
-                        loadTemplate(result.id);
+                        loadDefinition(result.id);
                     });
                     resultsBox.appendChild(buttonEl);
                 });
@@ -2368,14 +2368,14 @@
                 }, 200);
             });
             loadButton?.addEventListener('click', () => {
-                const templateId = parseNumber(searchIdInput?.value || '', 0);
-                loadTemplate(templateId);
+                const definitionId = parseNumber(searchIdInput?.value || '', 0);
+                loadDefinition(definitionId);
             });
             searchIdInput?.addEventListener('keydown', (event) => {
                 if (event.key !== 'Enter') return;
                 event.preventDefault();
-                const templateId = parseNumber(searchIdInput?.value || '', 0);
-                loadTemplate(templateId);
+                const definitionId = parseNumber(searchIdInput?.value || '', 0);
+                loadDefinition(definitionId);
             });
             document.addEventListener('click', (event) => {
                 if (!resultsBox || !searchInput) return;
@@ -2391,15 +2391,15 @@
             });
 
             saveButton?.addEventListener('click', async () => {
-                const templateId = parseNumber(originalIdInput?.value || '', 0);
-                const newId = parseNumber(templateIdInput?.value || '', 0);
-                if (!templateId || !newId) {
-                    if (statusLine) statusLine.textContent = 'Вкажіть ID шаблону.';
+                const definitionId = parseNumber(originalIdInput?.value || '', 0);
+                const newId = parseNumber(definitionIdInput?.value || '', 0);
+                if (!definitionId || !newId) {
+                    if (statusLine) statusLine.textContent = 'Вкажіть ID визначення.';
                     return;
                 }
                 const payload = {
                     lobby_id: lobbyId,
-                    template_id: templateId,
+                    definition_id: definitionId,
                     new_id: newId,
                     name: nameInput?.value?.trim() || '',
                     description: descriptionInput?.value?.trim() || '',
@@ -2425,17 +2425,17 @@
                 if (response.ok) {
                     if (statusLine) {
                         statusLine.textContent = responsePayload.warning
-                            ? 'Шаблон збережено. Частину предметів не вдалося розмістити.'
-                            : 'Шаблон збережено.';
+                            ? 'Визначення збережено. Частину предметів не вдалося розмістити.'
+                            : 'Визначення збережено.';
                     }
-                    if (originalIdInput) originalIdInput.value = `${responsePayload.template_id || newId}`;
+                    if (originalIdInput) originalIdInput.value = `${responsePayload.definition_id || newId}`;
                     await controller.refreshInventory(controller.selectedPlayerId);
                     return;
                 }
                 if (statusLine) {
                     statusLine.textContent = responsePayload.error === 'duplicate_id'
                         ? 'ID вже існує. Оберіть інший.'
-                        : 'Не вдалося зберегти шаблон.';
+                        : 'Не вдалося зберегти визначення.';
                 }
             });
         });
@@ -2443,16 +2443,16 @@
         root.querySelectorAll('[data-master-image-update]').forEach((form) => {
             const button = form.querySelector('button');
             button?.addEventListener('click', async () => {
-                const templateId = Number.parseInt(
-                    form.querySelector('input[id^="image_template_"]')?.value || '0',
+                const definitionId = Number.parseInt(
+                    form.querySelector('input[id^="image_definition_"]')?.value || '0',
                     10,
                 );
                 const imageInput = form.querySelector('input[type="file"]');
-                if (!templateId || !imageInput?.files?.length) return;
+                if (!definitionId || !imageInput?.files?.length) return;
                 const payload = new FormData();
                 payload.append('lobby_id', lobbyId);
                 payload.append('image', imageInput.files[0]);
-                const response = await fetch(`/api/master/item_template/${templateId}/image`, {
+                const response = await fetch(`/api/master/item_template/${definitionId}/image`, {
                     method: 'POST',
                     body: payload,
                 });

@@ -314,12 +314,12 @@ class ItemInstance(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     lobby_id = db.Column(db.Integer, db.ForeignKey('lobby.id'), nullable=True)
     owner_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False)
-    template_id = db.Column('definition_id', db.Integer, db.ForeignKey('item_definition.id'), nullable=False)
+    definition_id = db.Column('definition_id', db.Integer, db.ForeignKey('item_definition.id'), nullable=False)
     container_i = db.Column('container_id', db.String(40), nullable=False, default='inv_main')
     pos_x = db.Column(db.Integer, nullable=True)
     pos_y = db.Column(db.Integer, nullable=True)
     rotated = db.Column(db.Integer, nullable=False, default=0)
-    str_current = db.Column('durability_current', db.Integer, nullable=True, default=None)
+    durability_current = db.Column('durability_current', db.Integer, nullable=True, default=None)
     amount = db.Column(db.Integer, nullable=False, default=1)
     custom_name = db.Column(db.String(120), nullable=True)
     custom_description = db.Column(db.Text, nullable=True)
@@ -839,10 +839,10 @@ def split_stack_amounts(definition: ItemDefinition, amount: int) -> list[int]:
     return stacks
 
 
-def initial_str_current(definition: ItemDefinition) -> int:
+def initial_durability_current(definition: ItemDefinition) -> Optional[int]:
     if has_durability(definition):
         return max(definition.max_durability or 1, 1)
-    return 0
+    return None
 
 
 def compute_inventory_weight(
@@ -864,11 +864,11 @@ def compute_inventory_weight(
         weights.append(item_weight)
         if inventory_debug:
             inventory_logger.debug(
-                'Inventory weight item id=%s template=%s weight=%s amount=%s contribution=%.2f',
-                instance.id,
-                definition.id,
-                definition.weight,
-                effective_amount,
+            'Inventory weight item id=%s definition=%s weight=%s amount=%s contribution=%.2f',
+            instance.id,
+            definition.id,
+            definition.weight,
+            effective_amount,
                 item_weight,
             )
     total_weight = sum(weights)
@@ -1087,7 +1087,7 @@ def cleanup_starter_kit() -> None:
     if not starter_defs:
         return
     starter_ids = [definition.id for definition in starter_defs]
-    ItemInstance.query.filter(ItemInstance.template_id.in_(starter_ids)).delete(synchronize_session=False)
+    ItemInstance.query.filter(ItemInstance.definition_id.in_(starter_ids)).delete(synchronize_session=False)
     for definition in starter_defs:
         db.session.delete(definition)
     db.session.commit()
@@ -1263,10 +1263,10 @@ def build_instance_payload(
     current_durability = None
     if durability_enabled:
         max_durability = max(definition.max_durability or 0, 0)
-        current_durability = min(max(instance.str_current or 0, 0), max_durability)
+        current_durability = min(max(instance.durability_current or 0, 0), max_durability)
     return {
         'id': instance.id,
-        'template_id': definition.id,
+        'definition_id': definition.id,
         'owner_id': instance.owner_id,
         'name': instance.custom_name or definition.name,
         'base_name': definition.name,
@@ -1284,7 +1284,7 @@ def build_instance_payload(
         'max_stack': max_amount,
         'weight': definition.weight,
         'max_durability': max_durability,
-        'str_current': current_durability,
+        'durability_current': current_durability,
         'has_durability': durability_enabled,
         'amount': effective_amount,
         'container_id': instance.container_i,
@@ -1396,7 +1396,7 @@ def build_inventory_payload(
             'bag_broken': bool(
                 bag_instance.definition.is_cloth
                 and has_durability(bag_instance.definition)
-                and (bag_instance.str_current or 0) <= 0
+                and (bag_instance.durability_current or 0) <= 0
             ),
         })
     belt_instances = []
@@ -2144,7 +2144,7 @@ def find_preferred_placement(
 def repack_instances_for_definition(definition: ItemDefinition) -> list[int]:
     instances = (
         ItemInstance.query
-        .filter_by(template_id=definition.id)
+        .filter_by(definition_id=definition.id)
         .order_by(ItemInstance.owner_id.asc(), ItemInstance.id.asc())
         .all()
     )
@@ -2204,7 +2204,7 @@ def log_weight_breakdown(instances: list[ItemInstance], reason: str) -> None:
         definition = instance.definition
         amount = max(instance.amount or 0, 0)
         inventory_logger.error(
-            'Weight item %s template=%s amount=%s weight=%s',
+            'Weight item %s definition=%s amount=%s weight=%s',
             instance.id,
             definition.id,
             amount,
@@ -2426,12 +2426,12 @@ def split_inventory_item():
         instance.version += 1
         new_instance = ItemInstance(
             owner_id=instance.owner_id,
-            template_id=instance.template_id,
+            definition_id=instance.definition_id,
             container_i=instance.container_i,
             pos_x=target_pos[0],
             pos_y=target_pos[1],
             rotated=normalize_rotation_value(instance.rotated),
-            str_current=instance.str_current,
+            durability_current=instance.durability_current,
             amount=split_amount,
             custom_name=instance.custom_name,
             custom_description=instance.custom_description,
@@ -2496,8 +2496,8 @@ def merge_inventory_items():
         return jsonify({'ok': False, 'error': 'conflict'}), 409
     if not is_master(user, lobby_id) and source.owner_id != target.owner_id:
         return jsonify({'ok': False, 'error': 'forbidden'}), 403
-    if source.template_id != target.template_id:
-        return jsonify({'ok': False, 'error': 'template_mismatch'}), 400
+    if source.definition_id != target.definition_id:
+        return jsonify({'ok': False, 'error': 'definition_mismatch'}), 400
     if not stackable_type(source.definition):
         return jsonify({'ok': False, 'error': 'not_stackable'}), 400
     max_amount = normalized_max_amount(source.definition)
@@ -2570,7 +2570,7 @@ def use_inventory_item():
             log_debug('Use rejected for item %s: missing durability', instance.id)
             return jsonify({'ok': False, 'error': 'invalid_item'}), 400
         roll = random.randint(0, 3)
-        instance.str_current = max((instance.str_current or 0) - roll, 0)
+        instance.durability_current = max((instance.durability_current or 0) - roll, 0)
         instance.version += 1
         if lobby_id:
             create_chat_message(
@@ -2622,7 +2622,7 @@ def update_inventory_durability():
         if inventory_logger.handlers:
             inventory_logger.error('Durability update rejected for item %s: out of range', instance.id)
         return jsonify({'ok': False, 'error': 'invalid_value'}), 400
-    instance.str_current = value
+    instance.durability_current = value
     instance.version += 1
     db.session.commit()
     return jsonify({
@@ -2656,7 +2656,7 @@ def set_master_durability():
         return jsonify({'ok': False, 'error': 'invalid_item'}), 400
     max_durability = max(instance.definition.max_durability or 0, 0)
     value = min(max(value, 0), max_durability)
-    instance.str_current = value
+    instance.durability_current = value
     instance.version += 1
     db.session.commit()
     return jsonify({
@@ -2944,12 +2944,12 @@ def transfer_inventory_item():
         instance.amount = normalize_stack_amount(instance.definition, instance.amount - amount)
         new_instance = ItemInstance(
             owner_id=recipient_id,
-            template_id=instance.template_id,
+            definition_id=instance.definition_id,
             container_i='inv_main',
             pos_x=target_pos[0],
             pos_y=target_pos[1],
             rotated=target_pos[2],
-            str_current=instance.str_current,
+            durability_current=instance.durability_current,
             amount=amount,
             custom_name=instance.custom_name,
             custom_description=instance.custom_description,
@@ -3024,7 +3024,7 @@ def create_item_template():
         item_type.has_durability = False
     if item_type.stackable:
         if max_amount < 1:
-            log_debug('Item template create failed: invalid max amount %s for type %s', max_amount, type_name)
+            log_debug('Item definition create failed: invalid max amount %s for type %s', max_amount, type_name)
             return jsonify({'error': 'invalid_max_amount'}), 400
         item_type.max_amount = max(item_type.max_amount or 1, max_amount)
         max_durability = None
@@ -3063,7 +3063,7 @@ def create_item_template():
             user_id=issue_to,
         ).first()
         if not recipient_membership:
-            log_debug('Item template issue failed: target user %s not in lobby %s', issue_to, lobby_id)
+            log_debug('Item definition issue failed: target user %s not in lobby %s', issue_to, lobby_id)
             db.session.rollback()
             return jsonify({'error': 'invalid_recipient'}), 400
         stack_amounts = split_stack_amounts(definition, issue_amount)
@@ -3075,7 +3075,7 @@ def create_item_template():
             )
             placement = find_preferred_placement(temp_instance, issue_to)
             if not placement:
-                log_debug('Item template issue failed: no space for user %s', issue_to)
+                log_debug('Item definition issue failed: no space for user %s', issue_to)
                 db.session.rollback()
                 return jsonify({'error': 'no_space'}), 400
             resolved_durability = resolve_durability_value(
@@ -3086,12 +3086,12 @@ def create_item_template():
             container_id, pos_x, pos_y, rotation = placement
             new_instance = ItemInstance(
                 owner_id=issue_to,
-                template_id=definition.id,
+                definition_id=definition.id,
                 container_i=container_id,
                 pos_x=pos_x,
                 pos_y=pos_y,
                 rotated=rotation,
-                str_current=resolved_durability,
+                durability_current=resolved_durability,
                 amount=stack_amount,
             )
             db.session.add(new_instance)
@@ -3105,9 +3105,9 @@ def create_item_template():
     except SQLAlchemyError as exc:
         db.session.rollback()
         if inventory_logger.handlers:
-            inventory_logger.error('Item template create failed: %s', exc)
+        inventory_logger.error('Item definition create failed: %s', exc)
         return jsonify({'error': 'db_error'}), 500
-    return jsonify({'status': 'ok', 'template_id': definition.id, 'instance_id': issued_instance_id})
+    return jsonify({'status': 'ok', 'definition_id': definition.id, 'instance_id': issued_instance_id})
 
 
 @app.route('/api/master/item_template/search')
@@ -3145,18 +3145,18 @@ def search_item_templates():
     return jsonify({'ok': True, 'results': payload})
 
 
-@app.route('/api/master/item_template/<int:template_id>')
-def get_item_template(template_id: int):
+@app.route('/api/master/item_template/<int:definition_id>')
+def get_item_template(definition_id: int):
     user = require_user()
     lobby_id = parse_int(request.args.get('lobby_id'), 0)
     if not is_master(user, lobby_id):
         return jsonify({'error': 'forbidden'}), 403
-    definition = ItemDefinition.query.get(template_id)
+    definition = ItemDefinition.query.get(definition_id)
     if not definition:
         return jsonify({'error': 'not_found'}), 404
     return jsonify({
         'ok': True,
-        'template': {
+        'definition': {
             'id': definition.id,
             'name': definition.name,
             'description': definition.description,
@@ -3183,13 +3183,13 @@ def update_item_template():
     lobby_id = parse_int(data.get('lobby_id'), 0)
     if not is_master(user, lobby_id):
         return jsonify({'error': 'forbidden'}), 403
-    template_id = parse_int(data.get('template_id'), 0)
-    if not template_id:
-        return jsonify({'error': 'invalid_template'}), 400
-    definition = ItemDefinition.query.get(template_id)
+    definition_id = parse_int(data.get('definition_id'), 0)
+    if not definition_id:
+        return jsonify({'error': 'invalid_definition'}), 400
+    definition = ItemDefinition.query.get(definition_id)
     if not definition:
         return jsonify({'error': 'not_found'}), 404
-    new_id = parse_int(data.get('new_id'), template_id)
+    new_id = parse_int(data.get('new_id'), definition_id)
     name = (data.get('name') or '').strip()
     description = (data.get('description') or '').strip() or 'Опис не додано.'
     type_name = (data.get('type') or '').strip().lower() or 'other'
@@ -3214,7 +3214,7 @@ def update_item_template():
     if type_name == 'belt':
         is_cloth = True
 
-    if new_id != template_id and ItemDefinition.query.get(new_id):
+    if new_id != definition_id and ItemDefinition.query.get(new_id):
         return jsonify({'error': 'duplicate_id'}), 400
 
     item_type = get_or_create_item_type(type_name)
@@ -3224,7 +3224,7 @@ def update_item_template():
         item_type.has_durability = False
     if item_type.stackable:
         if max_amount < 1:
-            log_debug('Item template update failed: invalid max amount %s for type %s', max_amount, type_name)
+            log_debug('Item definition update failed: invalid max amount %s for type %s', max_amount, type_name)
             return jsonify({'error': 'invalid_max_amount'}), 400
         item_type.max_amount = max(item_type.max_amount or 1, max_amount)
         max_durability = None
@@ -3253,11 +3253,11 @@ def update_item_template():
     definition.fast_h = fast_h if type_name == 'belt' and fast_h > 0 else None
     definition.item_type = item_type
 
-    old_id = template_id
-    if new_id != template_id:
+    old_id = definition_id
+    if new_id != definition_id:
         definition.id = new_id
-        ItemInstance.query.filter_by(template_id=old_id).update(
-            {'template_id': new_id},
+        ItemInstance.query.filter_by(definition_id=old_id).update(
+            {'definition_id': new_id},
             synchronize_session=False,
         )
 
@@ -3267,13 +3267,13 @@ def update_item_template():
     except SQLAlchemyError as exc:
         db.session.rollback()
         if inventory_logger.handlers:
-            inventory_logger.error('Item template update failed: %s', exc)
+        inventory_logger.error('Item definition update failed: %s', exc)
         return jsonify({'error': 'db_error'}), 500
 
     payload = {
         'ok': True,
         'status': 'ok',
-        'template_id': definition.id,
+        'definition_id': definition.id,
         'unplaced': unplaced_ids,
     }
     if unplaced_ids:
@@ -3283,6 +3283,10 @@ def update_item_template():
 
 @app.route('/api/master/issue_by_id', methods=['POST'])
 def issue_item_by_id():
+    # Manual test:
+    # 1) POST /api/master/issue_by_id with JSON:
+    #    {"lobby_id":1,"definition_id":123,"target_user_id":2,"amount":5}
+    # 2) Verify response includes request_id and created instance ids in stderr logs.
     request_id = str(uuid4())
     logger = logging.LoggerAdapter(giveid_logger, {'request_id': request_id})
     debug_enabled = giveid_debug_enabled()
@@ -3347,10 +3351,16 @@ def issue_item_by_id():
 
         data = request.get_json(silent=True) or {}
         lobby_id = parse_int(data.get('lobby_id'), 0)
-        template_id = parse_int(data.get('template_id'), 0)
+        definition_id = parse_int(data.get('definition_id'), 0)
         target_user_id = parse_int(data.get('target_user_id') or data.get('to_user_id'), 0)
-        if not lobby_id or not template_id or not target_user_id:
+        if not lobby_id or not definition_id or not target_user_id:
             log_return('missing_fields')
+            logger.warning(
+                'GiveID failed: missing_fields lobby_id=%s definition_id=%s target_user_id=%s',
+                lobby_id,
+                definition_id,
+                target_user_id,
+            )
             return jsonify({'ok': False, 'request_id': request_id, 'error': 'missing_fields'}), 400
         is_master_user = is_master(user, lobby_id)
         debug(
@@ -3375,18 +3385,18 @@ def issue_item_by_id():
             target_user_id,
         )
         debug(
-            'GiveID payload template_id=%s amount=%s durability_current=%s random_durability=%s',
-            template_id,
+            'GiveID payload definition_id=%s amount=%s durability_current=%s random_durability=%s',
+            definition_id,
             amount,
             durability_current_value,
             random_durability,
         )
 
-        definition = ItemDefinition.query.get(template_id)
-        debug('GiveID template lookup template_id=%s found=%s', template_id, bool(definition))
+        definition = ItemDefinition.query.get(definition_id)
+        debug('GiveID definition lookup definition_id=%s found=%s', definition_id, bool(definition))
         if not definition:
             log_return('not_found')
-            logger.warning('GiveID failed: template %s not found', template_id)
+            logger.warning('GiveID failed: definition %s not found', definition_id)
             return jsonify({'ok': False, 'request_id': request_id, 'error': 'not_found'}), 404
         if durability_current_value is not None:
             if has_durability(definition):
@@ -3394,7 +3404,7 @@ def issue_item_by_id():
                 if durability_current_value < 0 or durability_current_value > max_durability:
                     log_return('invalid_durability')
                     logger.warning(
-                        'GiveID failed: durability %s out of range for template %s',
+                        'GiveID failed: durability %s out of range for definition %s',
                         durability_current_value,
                         definition.id,
                     )
@@ -3424,7 +3434,7 @@ def issue_item_by_id():
         stackable = stackable_type(definition)
         max_amount = normalized_max_amount(definition)
         debug(
-            'GiveID template=%s stackable=%s max_amount=%s',
+            'GiveID definition=%s stackable=%s max_amount=%s',
             definition.id,
             stackable,
             max_amount,
@@ -3442,7 +3452,7 @@ def issue_item_by_id():
                     placement = find_preferred_placement_with_logs(temp_instance, target_user_id)
                     if not placement:
                         logger.warning(
-                            'GiveID failed: no space for user %s template=%s stack=%s/%s amount=%s cloth=%s type=%s',
+                            'GiveID failed: no space for user %s definition=%s stack=%s/%s amount=%s cloth=%s type=%s',
                             target_user_id,
                             definition.id,
                             index,
@@ -3469,12 +3479,12 @@ def issue_item_by_id():
                     )
                     new_instance = ItemInstance(
                         owner_id=target_user_id,
-                        template_id=definition.id,
+                        definition_id=definition.id,
                         container_i=container_id,
                         pos_x=pos_x,
                         pos_y=pos_y,
                         rotated=rotation,
-                        str_current=resolved_durability,
+                        durability_current=resolved_durability,
                         amount=stack_amount,
                     )
                     db.session.add(new_instance)
@@ -3492,6 +3502,7 @@ def issue_item_by_id():
         except ValueError:
             db.session.rollback()
             log_return('no_space')
+            logger.warning('GiveID failed: no space for definition=%s target_user_id=%s', definition.id, target_user_id)
             return jsonify({'ok': False, 'request_id': request_id, 'error': 'no_space'}), 400
         except SQLAlchemyError:
             db.session.rollback()
@@ -3503,6 +3514,14 @@ def issue_item_by_id():
             'GiveID created instance_ids=%s amounts=%s',
             [instance.id for instance in created_instances],
             [instance.amount for instance in created_instances],
+        )
+        logger.info(
+            'GiveID success master_id=%s target_user_id=%s definition_id=%s amount=%s created_instance_ids=%s',
+            user.id,
+            target_user_id,
+            definition.id,
+            amount,
+            [instance.id for instance in created_instances],
         )
         return jsonify({
             'ok': True,
@@ -3522,13 +3541,13 @@ def issue_item_by_id():
         return jsonify({'ok': False, 'request_id': request_id, 'error': 'server_error'}), 500
 
 
-@app.route('/api/master/item_template/<int:template_id>/image', methods=['POST'])
-def update_item_template_image(template_id: int):
+@app.route('/api/master/item_template/<int:definition_id>/image', methods=['POST'])
+def update_item_template_image(definition_id: int):
     user = require_user()
     lobby_id = parse_int(request.form.get('lobby_id'), 0)
     if not is_master(user, lobby_id):
         return jsonify({'error': 'forbidden'}), 403
-    definition = ItemDefinition.query.get(template_id)
+    definition = ItemDefinition.query.get(definition_id)
     if not definition:
         return jsonify({'error': 'not_found'}), 404
     image_file = request.files.get('image')
