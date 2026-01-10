@@ -1871,14 +1871,14 @@ def split_inventory_item():
 
     instance = ItemInstance.query.get(item_id)
     if not instance:
-        return jsonify({'error': 'not_found'}), 404
+        return jsonify({'ok': False, 'error': 'not_found'}), 404
     lobby_id = current_lobby_id_for(user)
     if not can_edit_inventory(user, instance.owner_id, lobby_id):
-        return jsonify({'error': 'forbidden'}), 403
+        return jsonify({'ok': False, 'error': 'forbidden'}), 403
     if not _require_version(version):
-        return jsonify({'error': 'missing_version'}), 400
+        return jsonify({'ok': False, 'error': 'missing_version'}), 400
     if not _assert_version(instance, version):
-        return jsonify({'error': 'conflict'}), 409
+        return jsonify({'ok': False, 'error': 'conflict'}), 409
     if (
         instance.container_i not in {'inv_main', 'hands'}
         and not instance.container_i.startswith('bag:')
@@ -1897,6 +1897,15 @@ def split_inventory_item():
         if inventory_logger.handlers:
             inventory_logger.error('Split rejected for item %s: invalid amount %s', instance.id, amount)
         return jsonify({'ok': False, 'error': 'invalid_amount'}), 400
+    max_amount = normalized_max_amount(instance.definition)
+    if amount > max_amount or (instance.amount - amount) > max_amount:
+        if inventory_logger.handlers:
+            inventory_logger.error(
+                'Split rejected for item %s: exceeds max stack %s',
+                instance.id,
+                max_amount,
+            )
+        return jsonify({'ok': False, 'error': 'max_stack_exceeded'}), 400
     temp_instance = PlacementPreview(
         owner_id=instance.owner_id,
         definition=instance.definition,
