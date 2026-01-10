@@ -678,6 +678,7 @@
         }
 
         logConflict(action, item, payload = {}) {
+            if (!DEBUG_INVENTORY) return;
             console.debug('[Inventory] Conflict detected', {
                 action,
                 instance_id: item?.instance_id ?? item?.id ?? null,

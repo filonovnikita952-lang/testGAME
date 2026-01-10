@@ -19,6 +19,7 @@ ENV/
 *.sqlite3
 *.db
 databases/
+databases/databaseDRA.db
 
 # OS junk
 .DS_Store
