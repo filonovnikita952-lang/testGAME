@@ -65,6 +65,7 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'supersecretkey')
 UPLOAD_SUBDIR = 'uploads'
 RESET_DB_ENV = 'RESET_DB_ON_START'
 INVENTORY_DEBUG_ENV = 'DEBUG_INVENTORY'
+SHOP_DEBUG_ENV = 'DEBUG_SHOP'
 INVENTORY_LOG_FILE = 'inventory_debug.log'
 ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 ALLOWED_IMAGE_MIME_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
@@ -105,6 +106,17 @@ class ActiveSkillCheck:
 
 
 ACTIVE_SKILL_CHECKS: dict[int, ActiveSkillCheck] = {}
+
+
+@dataclass
+class ActiveShop:
+    lobby_id: int
+    owner_id: int
+    container_id: str
+    started_at: datetime = field(default_factory=datetime.utcnow)
+
+
+ACTIVE_SHOPS: dict[int, ActiveShop] = {}
 EQUIPMENT_GRIDS = {
     'equip_head': (3, 2),
     'equip_shirt': (3, 2),
@@ -677,6 +689,11 @@ def log_debug(message: str, *args) -> None:
         app.logger.debug(message, *args)
 
 
+def log_shop_debug(message: str, *args) -> None:
+    if os.environ.get(SHOP_DEBUG_ENV, '').strip() in {'1', 'true', 'yes'}:
+        log_debug(message, *args)
+
+
 def serialize_chat_message(message: ChatMessage) -> dict:
     return {
         'id': message.id,
@@ -1124,6 +1141,72 @@ def container_label(container_id: str) -> str:
     if container_id.startswith('bag:'):
         return 'Cloth Bag'
     return CONTAINER_LABELS.get(container_id, container_id)
+
+
+def shop_container_definition(owner_id: int, container_id: str) -> Optional[dict]:
+    if container_id == 'inv_main':
+        return {
+            'id': container_id,
+            'label': container_label(container_id),
+            'w': MAIN_GRID_WIDTH,
+            'h': MAIN_GRID_HEIGHT,
+        }
+    if container_id == 'hands':
+        return {
+            'id': container_id,
+            'label': container_label(container_id),
+            'w': HANDS_GRID_WIDTH,
+            'h': HANDS_GRID_HEIGHT,
+        }
+    if container_id in EQUIPMENT_GRIDS:
+        width, height = EQUIPMENT_GRIDS[container_id]
+        return {
+            'id': container_id,
+            'label': container_label(container_id),
+            'w': width,
+            'h': height,
+        }
+    if container_id in SPECIAL_GRIDS:
+        width, height = SPECIAL_GRIDS[container_id]
+        return {
+            'id': container_id,
+            'label': container_label(container_id),
+            'w': width,
+            'h': height,
+        }
+    if container_id.startswith('bag:'):
+        bag_id = parse_int(container_id.split(':', 1)[1], 0)
+        bag_instance = get_bag_instance(owner_id, bag_id)
+        if not bag_instance:
+            return None
+        return {
+            'id': container_id,
+            'label': f'{bag_instance.definition.name} Bag',
+            'w': bag_instance.definition.bag_width,
+            'h': bag_instance.definition.bag_height,
+        }
+    if container_id.startswith('fast:'):
+        belt_id = parse_int(container_id.split(':', 1)[1], 0)
+        belt_instance = ItemInstance.query.get(belt_id)
+        if (
+            not belt_instance
+            or belt_instance.owner_id != owner_id
+            or belt_instance.container_i != 'equip_belt'
+            or not belt_instance.definition.item_type
+            or belt_instance.definition.item_type.name != 'belt'
+        ):
+            return None
+        fast_w = belt_instance.definition.fast_w or 0
+        fast_h = belt_instance.definition.fast_h or 0
+        if fast_w <= 0 or fast_h <= 0:
+            return None
+        return {
+            'id': container_id,
+            'label': f'Fast Slot ({belt_instance.definition.name})',
+            'w': fast_w,
+            'h': fast_h,
+        }
+    return None
 
 
 def build_instance_payload(
@@ -1732,6 +1815,70 @@ def lobby_chat_api(lobby_id: int):
     return jsonify({
         'messages': [serialize_chat_message(message) for message in messages],
         'latest_id': latest_id,
+    })
+
+
+@app.route('/api/lobby/<int:lobby_id>/shop/start', methods=['POST'])
+def lobby_shop_start(lobby_id: int):
+    user = require_user()
+    if not is_master(user, lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    container_id = (data.get('container_id') or '').strip()
+    if not container_id:
+        return jsonify({'error': 'missing_container'}), 400
+    membership = get_membership(user, lobby_id)
+    if not membership:
+        return jsonify({'error': 'forbidden'}), 403
+    container_def = shop_container_definition(user.id, container_id)
+    if not container_def:
+        return jsonify({'error': 'invalid_container'}), 400
+    ACTIVE_SHOPS[lobby_id] = ActiveShop(
+        lobby_id=lobby_id,
+        owner_id=user.id,
+        container_id=container_id,
+    )
+    log_shop_debug('Shop started lobby=%s owner=%s container=%s', lobby_id, user.id, container_id)
+    return jsonify({'ok': True})
+
+
+@app.route('/api/lobby/<int:lobby_id>/shop/stop', methods=['POST'])
+def lobby_shop_stop(lobby_id: int):
+    user = require_user()
+    if not is_master(user, lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    membership = get_membership(user, lobby_id)
+    if not membership:
+        return jsonify({'error': 'forbidden'}), 403
+    if ACTIVE_SHOPS.pop(lobby_id, None):
+        log_shop_debug('Shop stopped lobby=%s user=%s', lobby_id, user.id)
+    return jsonify({'ok': True})
+
+
+@app.route('/api/lobby/<int:lobby_id>/shop/status')
+def lobby_shop_status(lobby_id: int):
+    user = require_user()
+    membership = get_membership(user, lobby_id)
+    if not membership:
+        return jsonify({'error': 'forbidden'}), 403
+    shop = ACTIVE_SHOPS.get(lobby_id)
+    if not shop:
+        return jsonify({'active': False})
+    container_def = shop_container_definition(shop.owner_id, shop.container_id)
+    if not container_def:
+        ACTIVE_SHOPS.pop(lobby_id, None)
+        log_shop_debug('Shop reset lobby=%s invalid container', lobby_id)
+        return jsonify({'active': False})
+    instances = ItemInstance.query.filter_by(
+        owner_id=shop.owner_id,
+        container_i=shop.container_id,
+    ).all()
+    items_payload = [build_instance_payload(instance, user, lobby_id) for instance in instances]
+    return jsonify({
+        'active': True,
+        'container_id': shop.container_id,
+        'container': container_def,
+        'items': items_payload,
     })
 
 
@@ -2793,6 +2940,32 @@ def create_item_template():
     return jsonify({'status': 'ok', 'template_id': definition.id, 'instance_id': issued_instance_id})
 
 
+@app.route('/api/master/item_template/search')
+def search_item_templates():
+    user = require_user()
+    lobby_id = parse_int(request.args.get('lobby_id'), 0)
+    if not is_master(user, lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    query = (request.args.get('q') or '').strip()
+    if not query:
+        return jsonify({'ok': True, 'results': []})
+    results = (
+        ItemDefinition.query
+        .filter(ItemDefinition.name.ilike(f'%{query}%'))
+        .order_by(ItemDefinition.name.asc())
+        .all()
+    )
+    payload = []
+    for definition in results:
+        payload.append({
+            'id': definition.id,
+            'name': definition.name,
+            'type': definition.item_type.name if definition.item_type else '',
+            'quality': definition.quality,
+        })
+    return jsonify({'ok': True, 'results': payload})
+
+
 @app.route('/api/master/issue_by_id', methods=['POST'])
 def issue_item_by_id():
     user = require_user()
@@ -2824,6 +2997,18 @@ def issue_item_by_id():
     if not definition:
         log_debug('Issue by ID failed: template %s not found', template_id)
         return jsonify({'error': 'not_found'}), 404
+    if durability_current_value is not None:
+        if has_durability(definition):
+            max_str = max(definition.max_str or 1, 1)
+            if durability_current_value < 0 or durability_current_value > max_str:
+                log_debug(
+                    'Issue by ID failed: durability %s out of range for template %s',
+                    durability_current_value,
+                    definition.id,
+                )
+                return jsonify({'error': 'invalid_durability'}), 400
+        else:
+            durability_current_value = None
     target_user = User.query.get(target_user_id)
     if not target_user:
         log_debug('Issue by ID failed: target user %s not found', target_user_id)
@@ -2843,9 +3028,9 @@ def issue_item_by_id():
         stackable,
         max_amount,
     )
-    if not stackable and amount != 1:
-        log_debug('Issue by ID: forcing amount to 1 for non-stackable template %s', definition.id)
-        amount = 1
+    if not stackable and amount > 1:
+        log_debug('Issue by ID failed: non-stackable amount %s for template %s', amount, definition.id)
+        return jsonify({'error': 'non_stackable_amount'}), 400
     container_id = 'inv_main'
     if not container_size(container_id):
         log_debug('Issue by ID failed: invalid container %s', container_id)
@@ -2893,7 +3078,7 @@ def issue_item_by_id():
                 created_instances.append(new_instance)
     except ValueError:
         db.session.rollback()
-        return jsonify({'ok': False, 'error': 'no_space'}), 400
+        return jsonify({'error': 'no_space'}), 400
     except SQLAlchemyError as exc:
         db.session.rollback()
         if inventory_logger.handlers:
