@@ -488,6 +488,53 @@ a {
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
+.issue-search {
+    position: relative;
+}
+
+.issue-search__results {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: rgba(12, 16, 26, 0.96);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 6px;
+    display: none;
+    z-index: 40;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.issue-search__results.is-open {
+    display: grid;
+    gap: 6px;
+}
+
+.issue-search__result {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 8px 10px;
+    text-align: left;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text);
+    cursor: pointer;
+}
+
+.issue-search__result:hover {
+    border-color: rgba(109, 211, 255, 0.4);
+    background: rgba(109, 211, 255, 0.1);
+}
+
+.issue-search__meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
 input,
 select,
 textarea {
@@ -1811,12 +1858,28 @@ textarea {
     color: rgba(255, 255, 255, 0.55);
 }
 
+.panel-header__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .panel-title {
     font-weight: 600;
 }
 
 .panel-tag {
     opacity: 0.6;
+}
+
+.shop-button {
+    border-color: rgba(109, 211, 255, 0.6);
+    color: var(--accent);
+    background: rgba(109, 211, 255, 0.12);
+}
+
+.shop-button:hover {
+    box-shadow: 0 10px 20px rgba(109, 211, 255, 0.2);
 }
 
 .viewing-banner {
@@ -2500,6 +2563,66 @@ textarea {
 .fast-slot-panel {
     display: grid;
     gap: 8px;
+}
+
+.shop-toggle.is-hidden {
+    display: none;
+}
+
+.shop-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(6, 8, 14, 0.85);
+    z-index: 65;
+}
+
+.shop-overlay.is-open {
+    display: flex;
+}
+
+.shop-modal {
+    width: min(96vw, 1200px);
+    height: min(94vh, 860px);
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    background: rgba(10, 14, 24, 0.98);
+    padding: 20px;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    gap: 16px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.shop-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.shop-title {
+    margin: 0 0 4px;
+}
+
+.shop-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    gap: 16px;
+    min-height: 0;
+}
+
+.shop-content .inventory-grid-panel {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    min-height: 0;
+}
+
+.tetris-grid--shop {
+    height: 100%;
+    min-height: 320px;
 }
 
 .map-overlay {

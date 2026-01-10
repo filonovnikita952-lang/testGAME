@@ -490,8 +490,13 @@
                                                             </form>
                                                             <form class="form" data-master-issue>
                                                                 <h4>Видати за ID</h4>
+                                                                <label for="issue_template_search_{{ membership.lobby.id }}">Пошук шаблону</label>
+                                                                <div class="issue-search">
+                                                                    <input type="text" id="issue_template_search_{{ membership.lobby.id }}" placeholder="Пошук за назвою" data-template-search>
+                                                                    <div class="issue-search__results" data-template-results></div>
+                                                                </div>
                                                                 <label for="issue_template_{{ membership.lobby.id }}">Template ID</label>
-                                                                <input type="number" id="issue_template_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону">
+                                                                <input type="number" id="issue_template_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону" data-template-id>
                                                                 <label for="issue_target_{{ membership.lobby.id }}">Отримувач</label>
                                                                 <select id="issue_target_{{ membership.lobby.id }}">
                                                                     {% for member in membership.lobby.members %}
@@ -531,11 +536,20 @@
                                         <div class="inventory-grid-panel panel-main dra-card">
                                             <div class="panel-header">
                                                 <span class="panel-title">Inventory</span>
-                                                <span class="panel-tag" data-weight-display>0 / 5</span>
+                                                <div class="panel-header__actions">
+                                                    <span class="panel-tag" data-weight-display>0 / 5</span>
+                                                    {% if is_master_user %}
+                                                        <button class="button ghost shop-button" type="button" data-shop-start data-container-id="inv_main" title="Open Shop">🛒</button>
+                                                    {% endif %}
+                                                </div>
                                             </div>
                                             <div class="inventory-actions" data-inventory-actions>
                                                 <button class="button ghost" type="button" data-action="auto-pack">Auto-pack</button>
                                                 <button class="button" type="button" data-action="rotate-item">Rotate (R)</button>
+                                                <button class="button ghost shop-toggle is-hidden" type="button" data-shop-open>Go to Shop</button>
+                                                {% if is_master_user %}
+                                                    <button class="button ghost shop-toggle is-hidden" type="button" data-shop-stop>Close Shop</button>
+                                                {% endif %}
                                             </div>
                                             <div class="tetris-grid" data-container-id="inv_main" aria-label="Рюкзак"></div>
                                             <p class="muted inventory-hint">Перетягуйте предмети, натискайте R для повороту та ПКМ для контекстного меню.</p>
@@ -689,6 +703,37 @@
                                 <input type="number" id="transfer-amount" min="1" value="1">
                                 <div class="transfer-modal__players" id="transfer-players"></div>
                                 <button class="button ghost" type="button" id="transfer-close">Скасувати</button>
+                            </div>
+                        </div>
+                        <div class="shop-overlay" data-shop-overlay data-lobby-id="{{ membership.lobby.id }}" aria-hidden="true">
+                            <div class="shop-modal">
+                                <div class="shop-header">
+                                    <div>
+                                        <h3 class="shop-title">Shop</h3>
+                                        <p class="muted" data-shop-container-label>—</p>
+                                    </div>
+                                    <button class="button ghost" type="button" data-shop-close>Back to Lobby</button>
+                                </div>
+                                <div class="shop-content">
+                                    <div class="inventory-grid-panel panel-main dra-card">
+                                        <div class="panel-header">
+                                            <span class="panel-title">Assortment</span>
+                                        </div>
+                                        <div class="tetris-grid tetris-grid--shop" data-shop-grid></div>
+                                    </div>
+                                    <div class="inventory-panel panel-secondary lobby-panel dra-card">
+                                        <div class="panel-header">
+                                            <span class="panel-title">Деталі предмета</span>
+                                        </div>
+                                        <div class="item-detail">
+                                            <img src="/static/images/default_avatar.png" alt="Item" class="item-detail__image" data-shop-detail-image>
+                                            <div class="item-detail__content">
+                                                <strong class="item-detail__name" data-shop-detail-name>Оберіть предмет</strong>
+                                                <p class="muted item-detail__description" data-shop-detail-description></p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div class="map-overlay" id="map-overlay" aria-hidden="true">

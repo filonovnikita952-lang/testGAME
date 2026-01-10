@@ -98,12 +98,28 @@
             this.mapOverlay = document.getElementById('map-overlay');
             this.mapImage = this.mapOverlay?.querySelector('[data-map-image]');
             this.mapClose = this.mapOverlay?.querySelector('[data-map-close]');
+            this.shopOverlay = document.querySelector(`[data-shop-overlay][data-lobby-id="${this.lobbyId}"]`);
+            this.shopGrid = this.shopOverlay?.querySelector('[data-shop-grid]');
+            this.shopContainerLabel = this.shopOverlay?.querySelector('[data-shop-container-label]');
+            this.shopOpenButton = this.root.querySelector('[data-shop-open]');
+            this.shopStopButton = this.root.querySelector('[data-shop-stop]');
+            this.shopCloseButton = this.shopOverlay?.querySelector('[data-shop-close]');
+            this.shopDetailImage = this.shopOverlay?.querySelector('[data-shop-detail-image]');
+            this.shopDetailName = this.shopOverlay?.querySelector('[data-shop-detail-name]');
+            this.shopDetailDescription = this.shopOverlay?.querySelector('[data-shop-detail-description]');
+            this.shopPollInterval = 3000;
+            this.shopPollTimer = null;
+            this.shopActive = false;
+            this.shopContainer = null;
+            this.shopItems = [];
+            this.shopDetailItemId = null;
             this.lastPointer = null;
             this.debugActionTimestamps = new Map();
             this.pendingSplits = new Set();
 
             this.bindEvents();
             this.loadInitialState();
+            this.initShop();
         }
 
         trackAction(actionKey) {
@@ -140,6 +156,10 @@
                 }
                 if (event.key === 'Escape' && this.mapOverlay?.classList.contains('is-open')) {
                     this.closeMapOverlay();
+                    return;
+                }
+                if (event.key === 'Escape' && this.shopOverlay?.classList.contains('is-open')) {
+                    this.closeShopOverlay();
                     return;
                 }
                 if (event.key.toLowerCase() === 'r') {
@@ -244,6 +264,13 @@
             this.mapOverlay?.addEventListener('click', (event) => {
                 if (event.target === this.mapOverlay) this.closeMapOverlay();
             });
+
+            this.shopOpenButton?.addEventListener('click', () => this.openShopOverlay());
+            this.shopCloseButton?.addEventListener('click', () => this.closeShopOverlay());
+            this.shopOverlay?.addEventListener('click', (event) => {
+                if (event.target === this.shopOverlay) this.closeShopOverlay();
+            });
+            this.shopStopButton?.addEventListener('click', () => this.confirmShopStop());
         }
 
         loadInitialState() {
@@ -258,6 +285,175 @@
             if (this.selectedPlayerId) {
                 this.refreshInventory(this.selectedPlayerId);
             }
+        }
+
+        initShop() {
+            if (!this.lobbyId || !this.shopOverlay) return;
+            this.refreshShopStatus();
+            this.shopPollTimer = window.setInterval(() => this.refreshShopStatus(), this.shopPollInterval);
+        }
+
+        async refreshShopStatus() {
+            if (!this.lobbyId) return;
+            try {
+                const response = await fetch(`/api/lobby/${this.lobbyId}/shop/status`);
+                if (!response.ok) return;
+                const payload = await response.json().catch(() => ({}));
+                this.handleShopStatus(payload || {});
+            } catch (error) {
+                console.debug('[Shop] Status refresh failed', error);
+            }
+        }
+
+        handleShopStatus(payload) {
+            const isActive = Boolean(payload?.active);
+            if (!isActive) {
+                this.shopActive = false;
+                this.shopContainer = null;
+                this.shopItems = [];
+                this.updateShopButtons(false);
+                if (this.shopOverlay?.classList.contains('is-open')) {
+                    this.closeShopOverlay();
+                }
+                return;
+            }
+            this.shopActive = true;
+            this.shopContainer = payload.container || null;
+            this.shopItems = Array.isArray(payload.items) ? payload.items : [];
+            if (this.shopContainerLabel) {
+                this.shopContainerLabel.textContent = this.shopContainer?.label || '—';
+            }
+            this.updateShopButtons(true);
+            if (this.shopOverlay?.classList.contains('is-open')) {
+                this.renderShopGrid();
+            }
+        }
+
+        updateShopButtons(isActive) {
+            this.shopOpenButton?.classList.toggle('is-hidden', !isActive);
+            const shouldHideStop = !isActive || !this.permissions.is_master;
+            this.shopStopButton?.classList.toggle('is-hidden', shouldHideStop);
+        }
+
+        openShopOverlay() {
+            if (!this.shopActive || !this.shopOverlay) return;
+            this.shopOverlay.classList.add('is-open');
+            this.shopOverlay.setAttribute('aria-hidden', 'false');
+            this.renderShopGrid();
+        }
+
+        closeShopOverlay() {
+            if (!this.shopOverlay) return;
+            this.shopOverlay.classList.remove('is-open');
+            this.shopOverlay.setAttribute('aria-hidden', 'true');
+            this.shopDetailItemId = null;
+            this.updateShopDetails(null);
+        }
+
+        async confirmShopStop() {
+            if (!this.permissions.is_master) return;
+            if (!this.shopActive) return;
+            const confirmed = window.confirm('Закрити магазин для всіх гравців?');
+            if (!confirmed) return;
+            await this.stopShop();
+        }
+
+        async stopShop() {
+            if (!this.lobbyId) return;
+            const response = await fetch(`/api/lobby/${this.lobbyId}/shop/stop`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            });
+            if (response.ok) {
+                await this.refreshShopStatus();
+            }
+        }
+
+        async startShop(containerId) {
+            if (!this.lobbyId || !this.permissions.is_master) return;
+            if (!containerId) return;
+            const response = await fetch(`/api/lobby/${this.lobbyId}/shop/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ container_id: containerId }),
+            });
+            if (response.ok) {
+                await this.refreshShopStatus();
+            }
+        }
+
+        bindShopContainerButtons() {
+            this.root.querySelectorAll('[data-shop-start]').forEach((button) => {
+                if (button.dataset.shopBound === 'true') return;
+                button.dataset.shopBound = 'true';
+                button.addEventListener('click', () => {
+                    const containerId = button.dataset.containerId;
+                    this.startShop(containerId);
+                });
+            });
+        }
+
+        renderShopGrid() {
+            if (!this.shopGrid || !this.shopContainer) return;
+            this.buildGrid(this.shopGrid, this.shopContainer);
+            this.shopGrid.querySelectorAll('.inventory-item, .inventory-ghost').forEach((node) => node.remove());
+            this.shopItems.forEach((item) => {
+                if (item.container_id !== this.shopContainer.id) return;
+                if (item.pos_x === null || item.pos_y === null) return;
+                const size = this.getItemSize(item);
+                const metrics = this.cellSize(this.shopGrid, this.shopContainer);
+                const element = document.createElement('div');
+                const qualityClass = `inventory-item--quality-${item.quality}`;
+                element.className = `inventory-item inventory-item--${item.type} ${qualityClass}`;
+                if (item.has_durability && item.str_current <= 0) {
+                    element.classList.add('is-broken');
+                }
+                if (item.is_cloth && item.has_durability && item.str_current <= 0) {
+                    element.classList.add('is-broken');
+                }
+                element.dataset.itemId = item.id;
+                element.style.left = `${metrics.paddingX + (item.pos_x - 1) * (metrics.width + metrics.gapX)}px`;
+                element.style.top = `${metrics.paddingY + (item.pos_y - 1) * (metrics.height + metrics.gapY)}px`;
+                element.style.width = `${size.w * metrics.width + metrics.gapX * (size.w - 1) - 4}px`;
+                element.style.height = `${size.h * metrics.height + metrics.gapY * (size.h - 1) - 4}px`;
+                const durabilityLabel = item.has_durability
+                    ? (item.str_current <= 0 ? 'Broken' : `${item.str_current}/${item.max_str}`)
+                    : '—';
+                element.innerHTML = `
+                    <div class="inventory-item__label">${item.name}</div>
+                    <div class="inventory-item__meta">${durabilityLabel}</div>
+                    ${item.stackable ? `<div class="inventory-item__qty">x${item.amount}</div>` : ''}
+                `;
+                element.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    this.shopDetailItemId = item.id;
+                    this.updateShopDetails(item);
+                });
+                this.shopGrid.appendChild(element);
+            });
+            if (this.shopDetailItemId) {
+                const detailItem = this.shopItems.find((entry) => String(entry.id) === String(this.shopDetailItemId));
+                this.updateShopDetails(detailItem || null);
+            } else {
+                this.updateShopDetails(null);
+            }
+        }
+
+        updateShopDetails(item) {
+            if (!this.shopDetailImage || !this.shopDetailName || !this.shopDetailDescription) return;
+            if (!item) {
+                this.shopDetailImage.src = '/static/images/default_avatar.png';
+                this.shopDetailImage.alt = 'Item';
+                this.shopDetailName.textContent = 'Оберіть предмет';
+                this.shopDetailDescription.textContent = '';
+                return;
+            }
+            const imageUrl = this.resolveImageUrl(item.image_path);
+            this.shopDetailImage.src = imageUrl || '/static/images/default_avatar.png';
+            this.shopDetailImage.alt = item.name || 'Item';
+            this.shopDetailName.textContent = item.name || 'Item';
+            this.shopDetailDescription.textContent = item.description || '';
         }
 
         async refreshInventory(playerId) {
@@ -319,9 +515,11 @@
             if (this.inventoryActions) {
                 this.inventoryActions.classList.toggle('is-disabled', !this.permissions.can_edit);
             }
+            this.updateShopButtons(this.shopActive);
             this.refreshMasterModeState();
             this.rebuildBagGrids();
             this.rebuildFastSlots();
+            this.bindShopContainerButtons();
             if (this.detailItemId) {
                 const detailItem = this.items.find((entry) => String(entry.id) === String(this.detailItemId));
                 this.updateDetailsPanel(detailItem || null);
@@ -347,10 +545,19 @@
                     if (container.bag_broken) {
                         panel.classList.add('is-broken');
                     }
+                    const headerActions = [];
+                    if (container.bag_broken) {
+                        headerActions.push('<span class="panel-tag danger">Broken</span>');
+                    }
+                    if (this.permissions.is_master) {
+                        headerActions.push(
+                            `<button class="button ghost shop-button" type="button" data-shop-start data-container-id="${container.id}" title="Open Shop">🛒</button>`,
+                        );
+                    }
                     panel.innerHTML = `
                         <div class="panel-header">
                             <span class="panel-title">${container.label || 'Bag'}</span>
-                            ${container.bag_broken ? '<span class="panel-tag danger">Broken</span>' : ''}
+                            ${headerActions.length ? `<div class="panel-header__actions">${headerActions.join('')}</div>` : ''}
                         </div>
                         <div class="tetris-grid tetris-grid--backpack" data-container-id="${container.id}"></div>
                     `;
@@ -374,9 +581,15 @@
             fastContainers.forEach((container) => {
                 const panel = document.createElement('div');
                 panel.className = 'fast-slot-panel';
+                const headerActions = this.permissions.is_master
+                    ? `<div class="panel-header__actions">
+                        <button class="button ghost shop-button" type="button" data-shop-start data-container-id="${container.id}" title="Open Shop">🛒</button>
+                    </div>`
+                    : '';
                 panel.innerHTML = `
                     <div class="panel-header">
                         <span class="panel-title">${container.label || 'Fast Slot'}</span>
+                        ${headerActions}
                     </div>
                     <div class="tetris-grid tetris-grid--compact" data-container-id="${container.id}"></div>
                 `;
@@ -1227,6 +1440,8 @@
             const target = Number.parseInt(targetInput?.value || '0', 10);
             const amount = Number.parseInt(amountInput?.value || '1', 10);
             if (!templateId || !target) return;
+            const confirmed = window.confirm(`Видати шаблон #${templateId} для користувача ${target}?`);
+            if (!confirmed) return;
             this.trackAction(`issue-by-id:${templateId}:${target}`);
             const response = await fetch('/api/master/issue_by_id', {
                 method: 'POST',
@@ -1244,8 +1459,22 @@
                 await this.refreshInventory(this.selectedPlayerId);
                 return;
             }
-            await response.json().catch(() => ({}));
+            const payload = await response.json().catch(() => ({}));
+            this.showIssueByIdError(payload);
             await this.refreshInventory(this.selectedPlayerId);
+        }
+
+        showIssueByIdError(payload) {
+            const error = payload?.error || '';
+            let message = 'Не вдалося видати предмет.';
+            if (error === 'no_space') {
+                message = 'Немає місця у інвентарі для цього предмета.';
+            } else if (error === 'non_stackable_amount') {
+                message = 'Цей предмет не є стековим. Кількість має бути 1.';
+            } else if (error === 'invalid_durability') {
+                message = 'Некоректне значення durability.';
+            }
+            window.alert(message);
         }
 
         resolveImageUrl(path) {
@@ -1702,12 +1931,84 @@
             const randomButton = form.querySelector('[data-random-durability]');
             const durabilityInput = form.querySelector('input[id^="issue_durability_current_"]');
             const randomInput = form.querySelector('input[id^="issue_random_durability_"]');
+            const templateInput = form.querySelector('[data-template-id]');
+            const searchInput = form.querySelector('[data-template-search]');
+            const resultsBox = form.querySelector('[data-template-results]');
+            let searchTimer = null;
             randomButton?.addEventListener('click', () => {
                 if (randomInput) randomInput.value = '1';
                 if (durabilityInput) durabilityInput.value = '';
             });
             durabilityInput?.addEventListener('input', () => {
                 if (randomInput) randomInput.value = '0';
+            });
+            const clearResults = () => {
+                if (!resultsBox) return;
+                resultsBox.innerHTML = '';
+                resultsBox.classList.remove('is-open');
+            };
+            const renderResults = (results) => {
+                if (!resultsBox) return;
+                resultsBox.innerHTML = '';
+                if (!results.length) {
+                    resultsBox.innerHTML = '<div class="issue-search__meta">Нічого не знайдено.</div>';
+                    resultsBox.classList.add('is-open');
+                    return;
+                }
+                results.forEach((result) => {
+                    const buttonEl = document.createElement('button');
+                    buttonEl.type = 'button';
+                    buttonEl.className = 'issue-search__result';
+                    buttonEl.innerHTML = `
+                        <strong>${result.name}</strong>
+                        <div class="issue-search__meta">
+                            <span>${result.type || 'other'}</span>
+                            <span>${result.quality}</span>
+                            <span>#${result.id}</span>
+                        </div>
+                    `;
+                    buttonEl.addEventListener('click', () => {
+                        if (templateInput) templateInput.value = `${result.id}`;
+                        if (searchInput) searchInput.value = result.name;
+                        clearResults();
+                    });
+                    resultsBox.appendChild(buttonEl);
+                });
+                resultsBox.classList.add('is-open');
+            };
+            const runSearch = async (query) => {
+                if (!query) {
+                    clearResults();
+                    return;
+                }
+                const response = await fetch(
+                    `/api/master/item_template/search?lobby_id=${encodeURIComponent(lobbyId)}&q=${encodeURIComponent(query)}`,
+                );
+                if (!response.ok) {
+                    clearResults();
+                    return;
+                }
+                const payload = await response.json().catch(() => ({}));
+                const results = Array.isArray(payload.results) ? payload.results : [];
+                if (searchInput && searchInput.value.trim() !== query) {
+                    return;
+                }
+                renderResults(results);
+            };
+            searchInput?.addEventListener('input', () => {
+                const query = searchInput.value.trim();
+                if (searchTimer) {
+                    window.clearTimeout(searchTimer);
+                }
+                searchTimer = window.setTimeout(() => {
+                    runSearch(query);
+                }, 200);
+            });
+            document.addEventListener('click', (event) => {
+                if (!resultsBox || !searchInput) return;
+                if (!form.contains(event.target)) {
+                    clearResults();
+                }
             });
             button?.addEventListener('click', async () => {
                 const templateId = Number.parseInt(
@@ -1727,6 +2028,10 @@
                 if (!templateId || !targetId) {
                     return;
                 }
+                const confirmed = window.confirm(`Видати шаблон #${templateId} для користувача ${targetId}?`);
+                if (!confirmed) {
+                    return;
+                }
                 controller.trackAction(`issue-by-id:${templateId}:${targetId}`);
                 const response = await fetch('/api/master/issue_by_id', {
                     method: 'POST',
@@ -1744,7 +2049,8 @@
                     await controller.refreshInventory(controller.selectedPlayerId);
                     return;
                 }
-                await response.json().catch(() => ({}));
+                const payload = await response.json().catch(() => ({}));
+                controller.showIssueByIdError(payload);
                 await controller.refreshInventory(controller.selectedPlayerId);
             });
         });
