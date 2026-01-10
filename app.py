@@ -719,6 +719,13 @@ def log_debug(message: str, *args) -> None:
         app.logger.debug(message, *args)
 
 
+def inventory_debug_enabled() -> bool:
+    config_value = app.config.get('DEBUG_INVENTORY')
+    if config_value is not None:
+        return str(config_value).strip().lower() in {'1', 'true', 'yes', 'on'}
+    return os.environ.get(INVENTORY_DEBUG_ENV, '').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 def giveid_debug_enabled() -> bool:
     config_value = app.config.get('DEBUG_GIVEID')
     if config_value is not None:
@@ -2360,7 +2367,8 @@ def split_inventory_item():
     version = parse_int(data.get('version'), 0)
     amount = parse_int(data.get('amount'), 0)
     split_half = str(data.get('split_half') or '').lower() in {'1', 'true', 'yes'}
-    if inventory_logger.handlers:
+    inventory_debug = inventory_debug_enabled()
+    if inventory_debug:
         inventory_logger.info(
             'Split request user=%s item_id=%s version=%s split_half=%s amount=%s',
             user.id,
@@ -2397,7 +2405,7 @@ def split_inventory_item():
             raise SplitError('conflict', 409)
         current_amount = instance.amount
         split_amount = current_amount // 2 if split_half else amount
-        if inventory_logger.handlers:
+        if inventory_debug:
             inventory_logger.info(
                 'Split decision item_id=%s current_amount=%s split_amount=%s',
                 instance.id,
@@ -2438,20 +2446,18 @@ def split_inventory_item():
             version=1,
         )
         db.session.add(new_instance)
-        db.session.flush()
         db.session.commit()
     except SplitError as exc:
         db.session.rollback()
-        if inventory_logger.handlers:
+        if inventory_debug:
             inventory_logger.info('Split rejected item_id=%s reason=%s', item_id, exc.reason)
         return jsonify({'ok': False, 'error': exc.reason}), exc.status
     except SQLAlchemyError as exc:
         db.session.rollback()
-        if inventory_logger.handlers:
-            inventory_logger.error('Split failed due to database error: %s', exc)
+        inventory_logger.error('Split failed due to database error: %s', exc)
         return jsonify({'ok': False, 'error': 'server_error'}), 500
 
-    if inventory_logger.handlers:
+    if inventory_debug:
         inventory_logger.info(
             'Split applied item_id=%s before_amount=%s split_amount=%s after_amount=%s new_instance_id=%s container_id=%s pos=%s',
             instance.id,
@@ -3105,7 +3111,7 @@ def create_item_template():
     except SQLAlchemyError as exc:
         db.session.rollback()
         if inventory_logger.handlers:
-        inventory_logger.error('Item definition create failed: %s', exc)
+            inventory_logger.error('Item definition create failed: %s', exc)
         return jsonify({'error': 'db_error'}), 500
     return jsonify({'status': 'ok', 'definition_id': definition.id, 'instance_id': issued_instance_id})
 
@@ -3267,7 +3273,7 @@ def update_item_template():
     except SQLAlchemyError as exc:
         db.session.rollback()
         if inventory_logger.handlers:
-        inventory_logger.error('Item definition update failed: %s', exc)
+            inventory_logger.error('Item definition update failed: %s', exc)
         return jsonify({'error': 'db_error'}), 500
 
     payload = {
