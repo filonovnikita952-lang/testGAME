@@ -193,6 +193,7 @@ class ItemDefinition(db.Model):
     h = db.Column('height', db.Integer, nullable=False, default=1)
     weight = db.Column(db.Float, nullable=False, default=0)
     max_str = db.Column('max_durability', db.Integer, nullable=True)
+    max_stack = db.Column(db.Integer, nullable=True)
     quality = db.Column(db.String(20), nullable=False, default='common')
     is_cloth = db.Column(db.Boolean, nullable=False, default=False)
     bag_width = db.Column(db.Integer, nullable=True)
@@ -224,6 +225,13 @@ class ItemInstance(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     definition = db.relationship('ItemDefinition', back_populates='instances')
+
+
+@dataclass
+class PlacementPreview:
+    definition: ItemDefinition
+    owner_id: int
+    id: int = 0
 
 
 class CharacterStats(db.Model):
@@ -364,6 +372,27 @@ def _ensure_item_definition_columns():
         if 'fast_h' not in columns:
             db.session.execute(text('ALTER TABLE item_definition ADD COLUMN fast_h INTEGER'))
             db.session.commit()
+        if 'max_stack' not in columns:
+            db.session.execute(text('ALTER TABLE item_definition ADD COLUMN max_stack INTEGER'))
+            db.session.commit()
+        db.session.execute(text(
+            'UPDATE item_definition '
+            'SET max_stack = ('
+            'SELECT CASE '
+            'WHEN item_type.stackable = 1 THEN item_type.max_amount '
+            'ELSE 1 '
+            'END '
+            'FROM item_type '
+            'WHERE item_type.id = item_definition.type_id'
+            ') '
+            'WHERE max_stack IS NULL'
+        ))
+        db.session.execute(text(
+            'UPDATE item_definition '
+            'SET max_stack = 1 '
+            'WHERE max_stack IS NULL OR max_stack < 1'
+        ))
+        db.session.commit()
 
 
 def _ensure_character_stats_columns():
@@ -631,13 +660,20 @@ def item_display_name(instance: ItemInstance) -> str:
 def stackable_type(definition: ItemDefinition) -> bool:
     if has_durability(definition):
         return False
+    max_amount = definition.max_stack
+    if max_amount is not None:
+        return max_amount > 1
     return bool(definition.item_type and definition.item_type.stackable)
 
 
 def normalized_max_amount(definition: ItemDefinition) -> int:
-    if not stackable_type(definition):
+    if has_durability(definition):
         return 1
-    max_amount = definition.item_type.max_amount or DEFAULT_MAX_STACK
+    max_amount = definition.max_stack
+    if max_amount is None:
+        if not definition.item_type or not definition.item_type.stackable:
+            return 1
+        max_amount = definition.item_type.max_amount or DEFAULT_MAX_STACK
     return max(max_amount, 1)
 
 
@@ -985,7 +1021,7 @@ def build_instance_payload(
     lobby_id: Optional[int],
 ) -> dict:
     definition = instance.definition
-    effective_amount = normalize_stack_amount(definition, instance.amount)
+    effective_amount = max(instance.amount or 0, 0)
     max_amount = normalized_max_amount(definition)
     stackable = stackable_type(definition)
     durability_enabled = has_durability(definition)
@@ -1153,9 +1189,21 @@ def build_inventory_payload(
     for instance in instances:
         items_payload.append(build_instance_payload(instance, viewer, lobby_id))
     current_weight = 0.0
+    inventory_debug = os.environ.get(INVENTORY_DEBUG_ENV, '').strip() in {'1', 'true', 'yes'}
     for instance in instances:
         definition = instance.definition
-        current_weight += (definition.weight or 0) * max(instance.amount or 0, 0)
+        amount = max(instance.amount or 0, 0)
+        contribution = (definition.weight or 0) * amount
+        current_weight += contribution
+        if inventory_debug:
+            inventory_logger.debug(
+                'Inventory weight item id=%s template=%s weight=%s amount=%s contribution=%.2f',
+                instance.id,
+                definition.id,
+                definition.weight,
+                amount,
+                contribution,
+            )
     permissions = {
         'can_edit': can_edit_inventory(viewer, user.id, lobby_id),
         'is_master': is_master(viewer, lobby_id),
@@ -1163,11 +1211,16 @@ def build_inventory_payload(
     stats = ensure_character_stats(user.id)
     strength_modifier = (stats.strength - 10) // 2
     capacity = max(5, 5 + 5 * strength_modifier)
-    if os.environ.get(INVENTORY_DEBUG_ENV, '').strip() in {'1', 'true', 'yes'}:
+    if inventory_debug:
         inventory_logger.debug(
             'Inventory payload user=%s instances=%s current=%.2f',
             user.id,
             len(instances),
+            current_weight,
+        )
+        inventory_logger.debug(
+            'Inventory payload weight user=%s current=%.2f',
+            user.id,
             current_weight,
         )
     return {
@@ -1641,7 +1694,7 @@ def log_weight_breakdown(instances: list[ItemInstance], reason: str) -> None:
     inventory_logger.error('Weight calculation warning: %s', reason)
     for instance in instances:
         definition = instance.definition
-        amount = normalize_stack_amount(definition, instance.amount)
+        amount = max(instance.amount or 0, 0)
         inventory_logger.error(
             'Weight item %s template=%s amount=%s weight=%s',
             instance.id,
@@ -1799,6 +1852,13 @@ def split_inventory_item():
     amount = parse_int(data.get('amount'), 0)
     split_half = str(data.get('split_half') or '').lower() in {'1', 'true', 'yes'}
     version = parse_int(data.get('version'), 0)
+    inventory_debug = os.environ.get(INVENTORY_DEBUG_ENV, '').strip() in {'1', 'true', 'yes'}
+    if inventory_debug:
+        inventory_logger.debug(
+            'Split request user=%s payload=%s',
+            user.id,
+            data,
+        )
 
     instance = ItemInstance.query.get(item_id)
     if not instance:
@@ -1834,9 +1894,8 @@ def split_inventory_item():
             inventory_logger.error('Split rejected for item %s: exceeds max stack', instance.id)
         return jsonify({'ok': False, 'error': 'invalid_amount'}), 400
 
-    temp_instance = ItemInstance(
+    temp_instance = PlacementPreview(
         owner_id=instance.owner_id,
-        lobby_id=instance.lobby_id,
         definition=instance.definition,
     )
     target_pos = find_first_fit(temp_instance, instance.container_i, normalize_rotation_value(instance.rotated))
@@ -1845,22 +1904,28 @@ def split_inventory_item():
             inventory_logger.error('Split failed for item %s: no space', instance.id)
         return jsonify({'ok': False, 'error': 'no_space'}), 400
 
-    instance.amount = normalize_stack_amount(instance.definition, instance.amount - amount)
-    instance.version += 1
-    new_instance = ItemInstance(
-        owner_id=instance.owner_id,
-        template_id=instance.template_id,
-        container_i=instance.container_i,
-        pos_x=target_pos[0],
-        pos_y=target_pos[1],
-        rotated=normalize_rotation_value(instance.rotated),
-        str_current=instance.str_current,
-        amount=amount,
-        custom_name=instance.custom_name,
-        custom_description=instance.custom_description,
-    )
-    db.session.add(new_instance)
-    db.session.commit()
+    with db.session.begin():
+        instance.amount = normalize_stack_amount(instance.definition, instance.amount - amount)
+        instance.version += 1
+        new_instance = ItemInstance(
+            owner_id=instance.owner_id,
+            template_id=instance.template_id,
+            container_i=instance.container_i,
+            pos_x=target_pos[0],
+            pos_y=target_pos[1],
+            rotated=normalize_rotation_value(instance.rotated),
+            str_current=instance.str_current,
+            amount=amount,
+            custom_name=instance.custom_name,
+            custom_description=instance.custom_description,
+        )
+        db.session.add(new_instance)
+    if inventory_debug:
+        inventory_logger.debug(
+            'Split created instance_ids=%s amounts=%s',
+            [instance.id, new_instance.id],
+            [instance.amount, new_instance.amount],
+        )
     return jsonify({
         'ok': True,
         'instances': [
@@ -2242,7 +2307,7 @@ def drop_inventory_item():
     if not master_id:
         return jsonify({'ok': False, 'error': 'missing_master'}), 400
     target_container = 'inv_main'
-    temp_instance = ItemInstance(
+    temp_instance = PlacementPreview(
         owner_id=master_id,
         definition=instance.definition,
     )
@@ -2325,7 +2390,7 @@ def transfer_inventory_item():
         log_debug('Transfer failed: amount %s exceeds max stack %s', amount, max_amount)
         return jsonify({'error': 'invalid_amount'}), 400
 
-    temp_instance = ItemInstance(
+    temp_instance = PlacementPreview(
         owner_id=recipient_id,
         definition=instance.definition,
     )
@@ -2444,6 +2509,7 @@ def create_item_template():
         h=height,
         weight=weight,
         max_str=max_str,
+        max_stack=max_amount,
         quality=quality,
         is_cloth=is_cloth,
         bag_width=bag_width if is_cloth and bag_width > 0 else None,
@@ -2473,7 +2539,7 @@ def create_item_template():
         stack_amounts = split_stack_amounts(definition, issue_amount)
         created_instances = []
         for stack_amount in stack_amounts:
-            temp_instance = ItemInstance(
+            temp_instance = PlacementPreview(
                 owner_id=issue_to,
                 definition=definition,
             )
@@ -2523,6 +2589,13 @@ def issue_item_by_id():
     template_id = parse_int(data.get('template_id'), 0)
     target_user_id = parse_int(data.get('target_user_id'), 0)
     amount = parse_int(data.get('amount'), 1, minimum=1)
+    inventory_debug = os.environ.get(INVENTORY_DEBUG_ENV, '').strip() in {'1', 'true', 'yes'}
+    if inventory_debug:
+        inventory_logger.debug(
+            'Issue by ID request user=%s payload=%s',
+            user.id,
+            data,
+        )
     log_debug(
         'Issue by ID request: template=%s target_user=%s amount=%s',
         template_id,
@@ -2566,51 +2639,59 @@ def issue_item_by_id():
     stack_amounts = split_stack_amounts(definition, amount)
     log_debug('Issue by ID stack splits: %s', stack_amounts)
     created_instances = []
-    for index, stack_amount in enumerate(stack_amounts, start=1):
-        temp_instance = ItemInstance(
-            owner_id=target_user_id,
-            definition=definition,
-        )
-        target_pos = auto_place_item(temp_instance, container_id)
-        if not target_pos:
-            log_debug(
-                'Issue by ID failed: no space for user %s template=%s stack=%s/%s amount=%s cloth=%s type=%s',
-                target_user_id,
-                definition.id,
-                index,
-                len(stack_amounts),
-                stack_amount,
-                definition.is_cloth,
-                definition.item_type.name if definition.item_type else None,
-            )
-            db.session.rollback()
-            return jsonify({'ok': False, 'error': 'no_space'}), 400
-        resolved_durability = resolve_durability_value(
-            definition,
-            durability_current_value,
-            randomize=random_durability,
-        )
-        new_instance = ItemInstance(
-            owner_id=target_user_id,
-            template_id=definition.id,
-            container_i=container_id,
-            pos_x=target_pos[0],
-            pos_y=target_pos[1],
-            rotated=target_pos[2],
-            str_current=resolved_durability,
-            amount=stack_amount,
-        )
-        db.session.add(new_instance)
-        db.session.flush()
-        created_instances.append(new_instance)
     try:
-        db.session.commit()
+        with db.session.begin():
+            for index, stack_amount in enumerate(stack_amounts, start=1):
+                temp_instance = PlacementPreview(
+                    owner_id=target_user_id,
+                    definition=definition,
+                )
+                target_pos = auto_place_item(temp_instance, container_id)
+                if not target_pos:
+                    log_debug(
+                        'Issue by ID failed: no space for user %s template=%s stack=%s/%s amount=%s cloth=%s type=%s',
+                        target_user_id,
+                        definition.id,
+                        index,
+                        len(stack_amounts),
+                        stack_amount,
+                        definition.is_cloth,
+                        definition.item_type.name if definition.item_type else None,
+                    )
+                    raise ValueError('no_space')
+                resolved_durability = resolve_durability_value(
+                    definition,
+                    durability_current_value,
+                    randomize=random_durability,
+                )
+                new_instance = ItemInstance(
+                    owner_id=target_user_id,
+                    template_id=definition.id,
+                    container_i=container_id,
+                    pos_x=target_pos[0],
+                    pos_y=target_pos[1],
+                    rotated=target_pos[2],
+                    str_current=resolved_durability,
+                    amount=stack_amount,
+                )
+                db.session.add(new_instance)
+                db.session.flush()
+                created_instances.append(new_instance)
+    except ValueError:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': 'no_space'}), 400
     except SQLAlchemyError as exc:
         db.session.rollback()
         if inventory_logger.handlers:
             inventory_logger.error('Issue by ID failed: %s', exc)
         return jsonify({'error': 'db_error'}), 500
     issued_id = created_instances[0].id if created_instances else None
+    if inventory_debug:
+        inventory_logger.debug(
+            'Issue by ID created instance_ids=%s amounts=%s',
+            [instance.id for instance in created_instances],
+            [instance.amount for instance in created_instances],
+        )
     if created_instances:
         log_debug(
             'Issue by ID created stacks for template=%s target_user=%s amounts=%s',

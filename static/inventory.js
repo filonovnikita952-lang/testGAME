@@ -99,9 +99,19 @@
             this.mapImage = this.mapOverlay?.querySelector('[data-map-image]');
             this.mapClose = this.mapOverlay?.querySelector('[data-map-close]');
             this.lastPointer = null;
+            this.debugActionTimestamps = new Map();
 
             this.bindEvents();
             this.loadInitialState();
+        }
+
+        trackAction(actionKey) {
+            const now = Date.now();
+            const last = this.debugActionTimestamps.get(actionKey);
+            if (last && now - last < 400) {
+                console.debug('[Inventory] Duplicate action detected', actionKey);
+            }
+            this.debugActionTimestamps.set(actionKey, now);
         }
 
         bindEvents() {
@@ -987,6 +997,7 @@
         async splitItem(item, options = {}) {
             if (!this.permissions.can_edit) return;
             if (!this.canSplitItem(item)) return;
+            this.trackAction(`split:${item.id}`);
             const amount = Number.isFinite(options.amount)
                 ? options.amount
                 : Number.parseInt(this.contextMenu?.querySelector('[data-split-amount]')?.value || '1', 10);
@@ -1174,6 +1185,7 @@
             const target = Number.parseInt(targetInput?.value || '0', 10);
             const amount = Number.parseInt(amountInput?.value || '1', 10);
             if (!templateId || !target) return;
+            this.trackAction(`issue-by-id:${templateId}:${target}`);
             const response = await fetch('/api/master/issue_by_id', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1673,6 +1685,7 @@
                 if (!templateId || !targetId) {
                     return;
                 }
+                controller.trackAction(`issue-by-id:${templateId}:${targetId}`);
                 const response = await fetch('/api/master/issue_by_id', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
