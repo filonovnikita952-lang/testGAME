@@ -1031,7 +1031,7 @@
                 await this.handleConflict('split', item, payload);
                 return;
             }
-            console.debug('[Inventory] Split rejected', payload);
+            console.warn('[Inventory] Split rejected', payload);
             await this.refreshInventory(this.selectedPlayerId);
         }
 
