@@ -2532,6 +2532,19 @@ textarea {
     margin-top: 6px;
 }
 
+.item-detail__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    margin-top: 10px;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.item-detail__meta-item.is-hidden {
+    display: none;
+}
+
 .item-detail__actions {
     display: grid;
     gap: 10px;
@@ -2593,6 +2606,8 @@ textarea {
     display: grid;
     grid-template-rows: auto 1fr;
     gap: 16px;
+    overflow: hidden;
+    --cell-size: 24px;
     box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
 }
 
@@ -2618,11 +2633,12 @@ textarea {
     display: grid;
     grid-template-rows: auto 1fr;
     min-height: 0;
+    overflow: auto;
+    align-items: start;
 }
 
 .tetris-grid--shop {
-    height: 100%;
-    min-height: 320px;
+    align-self: start;
 }
 
 .map-overlay {
