@@ -193,6 +193,7 @@ class ItemDefinition(db.Model):
     h = db.Column('height', db.Integer, nullable=False, default=1)
     weight = db.Column(db.Float, nullable=False, default=0)
     max_str = db.Column('max_durability', db.Integer, nullable=True)
+    max_stack = db.Column(db.Integer, nullable=True)
     quality = db.Column(db.String(20), nullable=False, default='common')
     is_cloth = db.Column(db.Boolean, nullable=False, default=False)
     bag_width = db.Column(db.Integer, nullable=True)
@@ -364,6 +365,27 @@ def _ensure_item_definition_columns():
         if 'fast_h' not in columns:
             db.session.execute(text('ALTER TABLE item_definition ADD COLUMN fast_h INTEGER'))
             db.session.commit()
+        if 'max_stack' not in columns:
+            db.session.execute(text('ALTER TABLE item_definition ADD COLUMN max_stack INTEGER'))
+            db.session.commit()
+        db.session.execute(text(
+            'UPDATE item_definition '
+            'SET max_stack = ('
+            'SELECT CASE '
+            'WHEN item_type.stackable = 1 THEN item_type.max_amount '
+            'ELSE 1 '
+            'END '
+            'FROM item_type '
+            'WHERE item_type.id = item_definition.type_id'
+            ') '
+            'WHERE max_stack IS NULL'
+        ))
+        db.session.execute(text(
+            'UPDATE item_definition '
+            'SET max_stack = 1 '
+            'WHERE max_stack IS NULL OR max_stack < 1'
+        ))
+        db.session.commit()
 
 
 def _ensure_character_stats_columns():
@@ -631,13 +653,20 @@ def item_display_name(instance: ItemInstance) -> str:
 def stackable_type(definition: ItemDefinition) -> bool:
     if has_durability(definition):
         return False
+    max_amount = definition.max_stack
+    if max_amount is not None:
+        return max_amount > 1
     return bool(definition.item_type and definition.item_type.stackable)
 
 
 def normalized_max_amount(definition: ItemDefinition) -> int:
-    if not stackable_type(definition):
+    if has_durability(definition):
         return 1
-    max_amount = definition.item_type.max_amount or DEFAULT_MAX_STACK
+    max_amount = definition.max_stack
+    if max_amount is None:
+        if not definition.item_type or not definition.item_type.stackable:
+            return 1
+        max_amount = definition.item_type.max_amount or DEFAULT_MAX_STACK
     return max(max_amount, 1)
 
 
@@ -985,7 +1014,7 @@ def build_instance_payload(
     lobby_id: Optional[int],
 ) -> dict:
     definition = instance.definition
-    effective_amount = normalize_stack_amount(definition, instance.amount)
+    effective_amount = max(instance.amount or 0, 0)
     max_amount = normalized_max_amount(definition)
     stackable = stackable_type(definition)
     durability_enabled = has_durability(definition)
@@ -1153,9 +1182,21 @@ def build_inventory_payload(
     for instance in instances:
         items_payload.append(build_instance_payload(instance, viewer, lobby_id))
     current_weight = 0.0
+    inventory_debug = os.environ.get(INVENTORY_DEBUG_ENV, '').strip() in {'1', 'true', 'yes'}
     for instance in instances:
         definition = instance.definition
-        current_weight += (definition.weight or 0) * max(instance.amount or 0, 0)
+        amount = max(instance.amount or 0, 0)
+        contribution = (definition.weight or 0) * amount
+        current_weight += contribution
+        if inventory_debug:
+            inventory_logger.debug(
+                'Inventory weight item id=%s template=%s weight=%s amount=%s contribution=%.2f',
+                instance.id,
+                definition.id,
+                definition.weight,
+                amount,
+                contribution,
+            )
     permissions = {
         'can_edit': can_edit_inventory(viewer, user.id, lobby_id),
         'is_master': is_master(viewer, lobby_id),
@@ -1163,11 +1204,16 @@ def build_inventory_payload(
     stats = ensure_character_stats(user.id)
     strength_modifier = (stats.strength - 10) // 2
     capacity = max(5, 5 + 5 * strength_modifier)
-    if os.environ.get(INVENTORY_DEBUG_ENV, '').strip() in {'1', 'true', 'yes'}:
+    if inventory_debug:
         inventory_logger.debug(
             'Inventory payload user=%s instances=%s current=%.2f',
             user.id,
             len(instances),
+            current_weight,
+        )
+        inventory_logger.debug(
+            'Inventory payload weight user=%s current=%.2f',
+            user.id,
             current_weight,
         )
     return {
@@ -1641,7 +1687,7 @@ def log_weight_breakdown(instances: list[ItemInstance], reason: str) -> None:
     inventory_logger.error('Weight calculation warning: %s', reason)
     for instance in instances:
         definition = instance.definition
-        amount = normalize_stack_amount(definition, instance.amount)
+        amount = max(instance.amount or 0, 0)
         inventory_logger.error(
             'Weight item %s template=%s amount=%s weight=%s',
             instance.id,
@@ -2444,6 +2490,7 @@ def create_item_template():
         h=height,
         weight=weight,
         max_str=max_str,
+        max_stack=max_amount,
         quality=quality,
         is_cloth=is_cloth,
         bag_width=bag_width if is_cloth and bag_width > 0 else None,
