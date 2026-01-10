@@ -2312,6 +2312,41 @@ textarea {
     gap: 6px;
 }
 
+.skill-check-menu {
+    position: fixed;
+    right: auto;
+    bottom: auto;
+    width: min(260px, 80vw);
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: rgba(12, 16, 26, 0.96);
+    padding: 14px;
+    display: none;
+    gap: 10px;
+    z-index: 40;
+}
+
+.skill-check-menu.is-open {
+    display: grid;
+}
+
+.skill-check-menu__header {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: center;
+    font-weight: 600;
+}
+
+.skill-check-menu input {
+    width: 100%;
+}
+
+.skill-check-menu__actions {
+    display: flex;
+    gap: 8px;
+}
+
 .attributes-formula {
     display: flex;
     flex-direction: column;

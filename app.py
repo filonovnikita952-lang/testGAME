@@ -1811,13 +1811,17 @@ def skill_check_result(lobby_id: int):
     if check.target_user_id != user.id:
         return jsonify({'error': 'forbidden'}), 403
     data = request.get_json(silent=True) or {}
-    result = (data.get('result') or '').strip().lower()
-    if result not in {'success', 'failure'}:
+    success = data.get('success')
+    if not isinstance(success, bool):
         return jsonify({'error': 'invalid_result'}), 400
-    if result == 'success' and check.status != 'active':
+    successes = parse_int(str(data.get('successes') or ''), -1)
+    failures = parse_int(str(data.get('failures') or ''), -1)
+    if successes < 0 or failures < 0:
+        return jsonify({'error': 'invalid_result'}), 400
+    if success and check.status != 'active':
         return jsonify({'error': 'not_active'}), 409
     if check.status in {'pending', 'active'}:
-        complete_skill_check(check, success=(result == 'success'))
+        complete_skill_check(check, success=success)
     return jsonify({'status': 'ok'})
 
 
