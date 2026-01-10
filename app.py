@@ -1899,30 +1899,16 @@ def split_inventory_item():
         amount,
     )
 
-    def log_split_reject(reason: str, status: int, **context) -> tuple[dict, int]:
-        inventory_logger.warning(
-            'Split rejected reason=%s item_id=%s status=%s context=%s',
-            reason,
-            item_id,
-            status,
-            context,
-        )
-        return {'ok': False, 'error': reason}, status
-
     instance = ItemInstance.query.get(item_id)
     if not instance:
-        payload, status = log_split_reject('not_found', 404)
-        return jsonify(payload), status
+        return jsonify({'ok': False, 'error': 'not_found'}), 404
     lobby_id = current_lobby_id_for(user)
     if not can_edit_inventory(user, instance.owner_id, lobby_id):
-        payload, status = log_split_reject('forbidden', 403, owner_id=instance.owner_id, lobby_id=lobby_id)
-        return jsonify(payload), status
+        return jsonify({'ok': False, 'error': 'forbidden'}), 403
     if not _require_version(version):
-        payload, status = log_split_reject('missing_version', 400, version=version)
-        return jsonify(payload), status
+        return jsonify({'ok': False, 'error': 'missing_version'}), 400
     if not stackable_type(instance.definition) or has_durability(instance.definition):
-        payload, status = log_split_reject('not_stackable', 400, template_id=instance.template_id)
-        return jsonify(payload), status
+        return jsonify({'ok': False, 'error': 'not_stackable'}), 400
 
     class SplitError(Exception):
         def __init__(self, reason: str, status: int = 400):
@@ -1930,6 +1916,10 @@ def split_inventory_item():
             self.reason = reason
             self.status = status
 
+    before_amount = instance.amount
+    split_amount = 0
+    target_pos = None
+    new_instance = None
     try:
         with db.session.begin():
             db.session.refresh(instance)
@@ -1945,7 +1935,7 @@ def split_inventory_item():
             temp_instance = PlacementPreview(
                 owner_id=instance.owner_id,
                 definition=instance.definition,
-                id=instance.id,
+                id=0,
             )
             target_pos = find_first_fit(
                 temp_instance,
@@ -1955,7 +1945,6 @@ def split_inventory_item():
             if not target_pos:
                 raise SplitError('no_space')
 
-            before_amount = instance.amount
             instance.amount = current_amount - split_amount
             instance.version += 1
             new_instance = ItemInstance(
@@ -1975,8 +1964,7 @@ def split_inventory_item():
             db.session.flush()
     except SplitError as exc:
         db.session.rollback()
-        payload, status = log_split_reject(exc.reason, exc.status, version=version)
-        return jsonify(payload), status
+        return jsonify({'ok': False, 'error': exc.reason}), exc.status
     except SQLAlchemyError as exc:
         db.session.rollback()
         inventory_logger.error('Split failed due to database error: %s', exc)

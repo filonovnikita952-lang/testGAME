@@ -1029,9 +1029,7 @@
             } else {
                 payload.amount = amount;
             }
-            if (DEBUG_INVENTORY) {
-                console.debug('[Inventory] Split request', payload);
-            }
+            console.debug('[Inventory] Split request', payload);
             try {
                 const response = await fetch('/api/inventory/split', {
                     method: 'POST',
@@ -1039,21 +1037,19 @@
                     body: JSON.stringify(payload),
                 });
                 const json = await response.json().catch(() => ({}));
-                if (DEBUG_INVENTORY) {
-                    console.debug('[Inventory] Split response', {
-                        ok: response.ok,
-                        status: response.status,
-                        payload: json,
-                    });
-                }
+                console.debug('[Inventory] Split response', {
+                    ok: response.ok,
+                    status: response.status,
+                    payload: json,
+                });
                 if (response.ok) {
-                    if (Array.isArray(json.instances)) {
-                        this.applyInstanceUpdates(json.instances);
-                        if (json.weight) {
-                            this.updateWeightDisplay(json.weight);
-                        }
-                    } else {
-                        await this.refreshInventory(this.selectedPlayerId);
+                    if (!Array.isArray(json.instances)) {
+                        console.warn('[Inventory] Split missing instances payload', json);
+                        return;
+                    }
+                    this.applyInstanceUpdates(json.instances);
+                    if (json.weight) {
+                        this.updateWeightDisplay(json.weight);
                     }
                     if (options.attachDrag && json?.new_instance_id) {
                         const newItem = this.getItemById(json.new_instance_id);
@@ -1064,10 +1060,10 @@
                     return;
                 }
                 if (response.status === 409) {
-                    await this.handleConflict('split', item, json);
+                    await this.refreshInventory(this.selectedPlayerId);
                     return;
                 }
-                if (['invalid_amount', 'no_space', 'not_stackable'].includes(json?.error)) {
+                if (response.status === 400) {
                     console.warn('[Inventory] Split rejected', {
                         error: json?.error,
                         item_id: item.id,
