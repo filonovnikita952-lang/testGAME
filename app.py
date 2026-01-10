@@ -1872,6 +1872,7 @@ def split_inventory_item():
     instance = ItemInstance.query.get(item_id)
     if not instance:
         return jsonify({'ok': False, 'error': 'not_found'}), 404
+    current_amount = instance.amount
     lobby_id = current_lobby_id_for(user)
     if not can_edit_inventory(user, instance.owner_id, lobby_id):
         return jsonify({'ok': False, 'error': 'forbidden'}), 403
@@ -1893,6 +1894,16 @@ def split_inventory_item():
     if split_half:
         # Split amount uses floor: 5 -> 2 (new) + 3 (original).
         amount = instance.amount // 2
+    split_amount = amount
+    if inventory_debug:
+        inventory_logger.debug(
+            'Split computed item_id=%s version=%s current_amount=%s split_amount=%s container_id=%s',
+            instance.id,
+            version,
+            current_amount,
+            split_amount,
+            instance.container_i,
+        )
     if amount <= 0 or amount >= instance.amount:
         if inventory_logger.handlers:
             inventory_logger.error('Split rejected for item %s: invalid amount %s', instance.id, amount)
@@ -1933,6 +1944,7 @@ def split_inventory_item():
             custom_description=instance.custom_description,
         )
         db.session.add(new_instance)
+        db.session.flush()
     if inventory_debug:
         inventory_logger.debug(
             'Split applied item_id=%s before_amount=%s split_amount=%s after_amount=%s new_instance_id=%s container_id=%s',
