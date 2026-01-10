@@ -2310,6 +2310,70 @@ textarea {
     gap: 6px;
 }
 
+.attributes-formula {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.attributes-formula__controls {
+    display: flex;
+    gap: 8px;
+}
+
+.attributes-formula__controls input {
+    flex: 1;
+}
+
+.attributes-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.attribute-row {
+    display: grid;
+    grid-template-columns: 60px 1fr 80px 140px;
+    align-items: center;
+    gap: 12px;
+}
+
+.attribute-label {
+    font-weight: 600;
+}
+
+.attribute-value {
+    display: flex;
+    align-items: center;
+}
+
+.attribute-value input {
+    width: 100%;
+}
+
+.attribute-value span {
+    display: none;
+    font-weight: 600;
+}
+
+.attribute-row.is-readonly .attribute-value input {
+    display: none;
+}
+
+.attribute-row.is-readonly .attribute-value span {
+    display: inline;
+}
+
+.attribute-modifier {
+    font-weight: 600;
+    text-align: center;
+}
+
+.attribute-row.is-proficient .attribute-modifier {
+    color: #62d9a1;
+}
+
 .context-menu__field input {
     width: 100%;
 }
