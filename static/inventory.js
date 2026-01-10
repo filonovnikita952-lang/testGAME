@@ -100,6 +100,7 @@
             this.mapClose = this.mapOverlay?.querySelector('[data-map-close]');
             this.lastPointer = null;
             this.debugActionTimestamps = new Map();
+            this.pendingSplits = new Set();
 
             this.bindEvents();
             this.loadInitialState();
@@ -175,8 +176,10 @@
 
             if (this.detailActions) {
                 this.detailActions.querySelectorAll('[data-detail-action]').forEach((button) => {
+                    if (button.dataset.detailActionBound === 'true') return;
+                    button.dataset.detailActionBound = 'true';
                     button.addEventListener('click', () => {
-                        this.handleDetailAction(button.dataset.detailAction);
+                        this.handleDetailAction(button.dataset.detailAction, button);
                     });
                 });
             }
@@ -710,7 +713,7 @@
             this.splitItem(item, { splitHalf: true, attachDrag: true });
         }
 
-        handleDetailAction(action) {
+        handleDetailAction(action, triggerButton = null) {
             const item = this.getItemById(this.detailItemId);
             if (!item) return;
             switch (action) {
@@ -724,7 +727,12 @@
                     {
                         const amount = Number.parseInt(this.detailSplitAmount?.value || '1', 10);
                         if (Number.isNaN(amount)) return;
-                        this.splitItem(item, { amount, attachDrag: true });
+                        this.splitItem(item, {
+                            amount,
+                            attachDrag: true,
+                            triggerButton,
+                            source: 'detail',
+                        });
                     }
                     break;
                 case 'set-durability':
@@ -997,43 +1005,58 @@
         async splitItem(item, options = {}) {
             if (!this.permissions.can_edit) return;
             if (!this.canSplitItem(item)) return;
+            if (this.pendingSplits.has(item.id)) return;
             this.trackAction(`split:${item.id}`);
-            const amount = Number.isFinite(options.amount)
+            const hasProvidedAmount = Object.prototype.hasOwnProperty.call(options, 'amount');
+            const amount = hasProvidedAmount
                 ? options.amount
                 : Number.parseInt(this.contextMenu?.querySelector('[data-split-amount]')?.value || '1', 10);
             if (!options.splitHalf) {
                 if (!amount || Number.isNaN(amount)) return;
                 if (amount < 1 || amount >= item.amount) return;
             }
-            const response = await fetch('/api/inventory/split', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    item_id: item.id,
-                    amount: options.splitHalf ? null : amount,
-                    split_half: options.splitHalf ? true : null,
-                    version: item.version,
-                }),
-            });
-            if (response.ok) {
-                const payload = await response.json().catch(() => ({}));
-                await this.refreshInventory(this.selectedPlayerId);
-                if (options.attachDrag && payload?.new_instance_id) {
-                    const newItem = this.getItemById(payload.new_instance_id);
-                    if (newItem) {
-                        this.attachDragToItem(newItem);
+            if (options.triggerButton) {
+                options.triggerButton.disabled = true;
+            }
+            this.pendingSplits.add(item.id);
+            const payload = {
+                item_id: item.id,
+                version: item.version,
+            };
+            if (options.splitHalf) {
+                payload.split_half = true;
+            } else {
+                payload.amount = amount;
+            }
+            try {
+                const response = await fetch('/api/inventory/split', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                if (response.ok) {
+                    const payload = await response.json().catch(() => ({}));
+                    await this.refreshInventory(this.selectedPlayerId);
+                    if (options.attachDrag && payload?.new_instance_id) {
+                        const newItem = this.getItemById(payload.new_instance_id);
+                        if (newItem) {
+                            this.attachDragToItem(newItem);
+                        }
                     }
+                    return;
                 }
-                return;
+                const payload = await response.json().catch(() => ({}));
+                if (response.status === 409) {
+                    await this.handleConflict('split', item, payload);
+                    return;
+                }
+                await this.refreshInventory(this.selectedPlayerId);
+            } finally {
+                this.pendingSplits.delete(item.id);
+                if (options.triggerButton) {
+                    options.triggerButton.disabled = false;
+                }
             }
-            const payload = await response.json().catch(() => ({}));
-            if (response.status === 409) {
-                console.warn('[Inventory] Split rejected', payload);
-                await this.handleConflict('split', item, payload);
-                return;
-            }
-            console.warn('[Inventory] Split rejected', payload);
-            await this.refreshInventory(this.selectedPlayerId);
         }
 
         async dropItem(item) {
