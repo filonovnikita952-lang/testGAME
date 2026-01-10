@@ -1028,6 +1028,7 @@
             }
             const payload = await response.json().catch(() => ({}));
             if (response.status === 409) {
+                console.warn('[Inventory] Split rejected', payload);
                 await this.handleConflict('split', item, payload);
                 return;
             }
