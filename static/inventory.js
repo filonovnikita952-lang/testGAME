@@ -1472,6 +1472,9 @@
             const confirmed = window.confirm(`Видати шаблон #${templateId} для користувача ${target}?`);
             if (!confirmed) return;
             this.trackAction(`issue-by-id:${templateId}:${target}`);
+            if (DEBUG_INVENTORY) {
+                console.debug('[IssueById]', 'context issue start', { templateId, target, amount });
+            }
             const response = await fetch('/api/master/issue_by_id', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1964,6 +1967,12 @@
             const searchInput = form.querySelector('[data-template-search]');
             const resultsBox = form.querySelector('[data-template-results]');
             let searchTimer = null;
+            if (form.dataset.issueByIdBound) return;
+            form.dataset.issueByIdBound = 'true';
+            const logIssueDebug = (message, payload) => {
+                if (!DEBUG_INVENTORY) return;
+                console.debug('[IssueById]', message, payload);
+            };
             randomButton?.addEventListener('click', () => {
                 if (randomInput) randomInput.value = '1';
                 if (durabilityInput) durabilityInput.value = '';
@@ -2039,7 +2048,9 @@
                     clearResults();
                 }
             });
-            button?.addEventListener('click', async () => {
+            const submitIssue = async (event) => {
+                event?.preventDefault();
+                logIssueDebug('issue click', { lobbyId });
                 const templateId = Number.parseInt(
                     form.querySelector('input[id^="issue_template_"]')?.value || '0',
                     10,
@@ -2055,13 +2066,16 @@
                 const durabilityCurrent = form.querySelector('input[id^="issue_durability_current_"]')?.value || '';
                 const randomDurability = form.querySelector('input[id^="issue_random_durability_"]')?.value || '';
                 if (!templateId || !targetId) {
+                    logIssueDebug('issue validation failed', { templateId, targetId });
                     return;
                 }
                 const confirmed = window.confirm(`Видати шаблон #${templateId} для користувача ${targetId}?`);
                 if (!confirmed) {
+                    logIssueDebug('issue cancelled', { templateId, targetId });
                     return;
                 }
                 controller.trackAction(`issue-by-id:${templateId}:${targetId}`);
+                logIssueDebug('issue fetch', { templateId, targetId, amount });
                 const response = await fetch('/api/master/issue_by_id', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -2081,7 +2095,9 @@
                 const payload = await response.json().catch(() => ({}));
                 controller.showIssueByIdError(payload);
                 await controller.refreshInventory(controller.selectedPlayerId);
-            });
+            };
+            button?.addEventListener('click', submitIssue);
+            form.addEventListener('submit', submitIssue);
         });
 
         root.querySelectorAll('[data-master-image-update]').forEach((form) => {
