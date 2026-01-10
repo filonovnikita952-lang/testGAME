@@ -432,7 +432,7 @@
                 element.style.width = `${size.w * metrics.width + metrics.gapX * (size.w - 1) - 4}px`;
                 element.style.height = `${size.h * metrics.height + metrics.gapY * (size.h - 1) - 4}px`;
                 const durabilityLabel = item.has_durability
-                    ? (item.str_current <= 0 ? 'Broken' : `${item.str_current}/${item.max_str}`)
+                    ? (item.str_current <= 0 ? 'Broken' : `${item.str_current}/${item.max_durability}`)
                     : '—';
                 element.innerHTML = `
                     <div class="inventory-item__label">${item.name}</div>
@@ -487,7 +487,7 @@
             }
             if (this.shopDetailDurability) {
                 if (item.has_durability) {
-                    const label = item.str_current <= 0 ? 'Broken' : `${item.str_current}/${item.max_str}`;
+                    const label = item.str_current <= 0 ? 'Broken' : `${item.str_current}/${item.max_durability}`;
                     this.shopDetailDurability.textContent = `Durability: ${label}`;
                     this.shopDetailDurability.classList.remove('is-hidden');
                 } else {
@@ -689,7 +689,7 @@
                 element.style.width = `${size.w * metrics.width + metrics.gapX * (size.w - 1) - 4}px`;
                 element.style.height = `${size.h * metrics.height + metrics.gapY * (size.h - 1) - 4}px`;
                 const durabilityLabel = item.has_durability
-                    ? (item.str_current <= 0 ? 'Broken' : `${item.str_current}/${item.max_str}`)
+                    ? (item.str_current <= 0 ? 'Broken' : `${item.str_current}/${item.max_durability}`)
                     : '—';
                 element.innerHTML = `
                     <div class="inventory-item__label">${item.name}</div>
@@ -1164,7 +1164,7 @@
                 if (this.permissions.is_master && item.has_durability && !item.stackable) {
                     durabilityField.style.display = 'flex';
                     durabilityInput.min = '0';
-                    durabilityInput.max = `${item.max_str || 0}`;
+                    durabilityInput.max = `${item.max_durability || 0}`;
                     durabilityInput.value = `${item.str_current ?? 0}`;
                 } else {
                     durabilityField.style.display = 'none';
@@ -1377,7 +1377,7 @@
             const durabilityInput = this.detailDurabilityInput || this.contextMenu?.querySelector('[data-durability-input]');
             const value = Number.parseInt(durabilityInput?.value || '0', 10);
             if (Number.isNaN(value)) return;
-            if (value < 0 || (item.max_str != null && value > item.max_str)) return;
+            if (value < 0 || (item.max_durability != null && value > item.max_durability)) return;
             const response = await fetch('/api/master/item_instance/set_durability', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1599,7 +1599,7 @@
                 this.detailDurabilityField.classList.toggle('is-hidden', !canEdit);
                 if (canEdit) {
                     this.detailDurabilityInput.min = '0';
-                    this.detailDurabilityInput.max = `${item.max_str || 0}`;
+                    this.detailDurabilityInput.max = `${item.max_durability || 0}`;
                     this.detailDurabilityInput.value = `${item.str_current ?? 0}`;
                 }
             }
@@ -1983,13 +1983,13 @@
             const randomButton = form.querySelector('[data-random-durability]');
             const durabilityInput = form.querySelector('input[id^="item_durability_current_"]');
             const randomInput = form.querySelector('input[id^="item_random_durability_"]');
-            const maxDurabilityInput = form.querySelector('input[id^="item_durability_"]');
+            const max_durability_input = form.querySelector('input[id^="item_durability_"]');
             const typeSelect = form.querySelector('select[id^="item_type_"]');
             const clothToggle = form.querySelector('input[id^="item_is_cloth_"]');
             const issueSelfToggle = form.querySelector('[data-issue-self]');
             const refreshRandom = wireRandomDurability({
                 randomButton,
-                maxInput: maxDurabilityInput,
+                maxInput: max_durability_input,
                 durabilityInput,
             });
             if (randomInput) randomInput.value = '0';
@@ -2008,7 +2008,10 @@
                 const width = Number.parseInt(form.querySelector('input[id^="item_w_"]')?.value || '1', 10);
                 const height = Number.parseInt(form.querySelector('input[id^="item_h_"]')?.value || '1', 10);
                 const weight = parseFloat(form.querySelector('input[id^="item_weight_"]')?.value || '0');
-                const maxDurability = Number.parseInt(form.querySelector('input[id^="item_durability_"]')?.value || '1', 10);
+                const max_durability_value = Number.parseInt(
+                    form.querySelector('input[id^="item_durability_"]')?.value || '1',
+                    10,
+                );
                 const durabilityCurrent = form.querySelector('input[id^="item_durability_current_"]')?.value || '';
                 const randomDurability = form.querySelector('input[id^="item_random_durability_"]')?.value || '';
                 const maxAmount = Number.parseInt(form.querySelector('input[id^="item_max_amount_"]')?.value || '1', 10);
@@ -2035,7 +2038,7 @@
                 payload.append('width', width);
                 payload.append('height', height);
                 payload.append('weight', weight);
-                payload.append('max_durability', maxDurability);
+                payload.append('max_durability', max_durability_value);
                 payload.append('durability_current', durabilityCurrent);
                 payload.append('random_durability', randomDurability);
                 payload.append('max_amount', maxAmount);
@@ -2077,10 +2080,10 @@
             const templateInput = form.querySelector('[data-template-id]');
             const searchInput = form.querySelector('[data-template-search]');
             const resultsBox = form.querySelector('[data-template-results]');
-            const maxDurabilityInput = document.createElement('input');
-            maxDurabilityInput.type = 'hidden';
-            maxDurabilityInput.value = '';
-            form.appendChild(maxDurabilityInput);
+            const max_durability_input = document.createElement('input');
+            max_durability_input.type = 'hidden';
+            max_durability_input.value = '';
+            form.appendChild(max_durability_input);
             let searchTimer = null;
             updateClothBeltVisibility(form);
             if (form.dataset.issueByIdBound) return;
@@ -2091,7 +2094,7 @@
             };
             const refreshRandom = wireRandomDurability({
                 randomButton,
-                maxInput: maxDurabilityInput,
+                maxInput: max_durability_input,
                 durabilityInput,
             });
             if (randomInput) randomInput.value = '0';
@@ -2123,7 +2126,7 @@
                     buttonEl.addEventListener('click', () => {
                         if (templateInput) templateInput.value = `${result.id}`;
                         if (searchInput) searchInput.value = result.name;
-                        maxDurabilityInput.value = result.max_str ?? '';
+                        max_durability_input.value = result.max_durability ?? '';
                         refreshRandom();
                         clearResults();
                     });
@@ -2169,7 +2172,7 @@
                 const payload = await response.json().catch(() => ({}));
                 const template = payload.template;
                 if (!template) return;
-                maxDurabilityInput.value = template.max_durability ?? '';
+                max_durability_input.value = template.max_durability ?? '';
                 refreshRandom();
             });
             document.addEventListener('click', (event) => {
@@ -2255,7 +2258,7 @@
             const widthInput = form.querySelector('[data-template-width]');
             const heightInput = form.querySelector('[data-template-height]');
             const weightInput = form.querySelector('[data-template-weight]');
-            const maxDurabilityInput = form.querySelector('[data-template-max-durability]');
+            const max_durability_input = form.querySelector('[data-template-max-durability]');
             const maxAmountInput = form.querySelector('[data-template-max-amount]');
             const clothToggle = form.querySelector('[data-template-is-cloth]');
             const bagWidthInput = form.querySelector('[data-template-bag-width]');
@@ -2282,7 +2285,7 @@
                 if (widthInput) widthInput.value = `${template.width || 1}`;
                 if (heightInput) heightInput.value = `${template.height || 1}`;
                 if (weightInput) weightInput.value = `${template.weight || 0}`;
-                if (maxDurabilityInput) maxDurabilityInput.value = template.max_durability ?? '';
+                if (max_durability_input) max_durability_input.value = template.max_durability ?? '';
                 if (maxAmountInput) maxAmountInput.value = `${template.max_amount || 1}`;
                 if (clothToggle) clothToggle.checked = Boolean(template.is_cloth);
                 if (bagWidthInput) bagWidthInput.value = `${template.bag_width || 0}`;
@@ -2405,7 +2408,7 @@
                     width: parseNumber(widthInput?.value || '1', 1),
                     height: parseNumber(heightInput?.value || '1', 1),
                     weight: parseFloat(weightInput?.value || '0') || 0,
-                    max_durability: parseNumber(maxDurabilityInput?.value || '1', 1),
+                    max_durability: parseNumber(max_durability_input?.value || '1', 1),
                     max_amount: parseNumber(maxAmountInput?.value || '1', 1),
                     is_cloth: clothToggle?.checked ? '1' : '0',
                     bag_width: parseNumber(bagWidthInput?.value || '0', 0),

@@ -294,7 +294,7 @@ class ItemDefinition(db.Model):
     w = db.Column('width', db.Integer, nullable=False, default=1)
     h = db.Column('height', db.Integer, nullable=False, default=1)
     weight = db.Column(db.Float, nullable=False, default=0)
-    max_str = db.Column('max_durability', db.Integer, nullable=True)
+    max_durability = db.Column(db.Integer, nullable=True)
     max_stack = db.Column(db.Integer, nullable=True)
     quality = db.Column(db.String(20), nullable=False, default='common')
     is_cloth = db.Column(db.Boolean, nullable=False, default=False)
@@ -709,9 +709,7 @@ def normalize_rotation_value(rotated: Optional[int]) -> int:
 
 
 def has_durability(definition: ItemDefinition) -> bool:
-    if definition.max_str is not None:
-        return True
-    return bool(definition.item_type and definition.item_type.has_durability)
+    return definition.max_durability is not None
 
 
 def log_debug(message: str, *args) -> None:
@@ -843,7 +841,7 @@ def split_stack_amounts(definition: ItemDefinition, amount: int) -> list[int]:
 
 def initial_str_current(definition: ItemDefinition) -> int:
     if has_durability(definition):
-        return max(definition.max_str or 1, 1)
+        return max(definition.max_durability or 1, 1)
     return 0
 
 
@@ -1261,6 +1259,11 @@ def build_instance_payload(
     visible_custom_description = None
     if viewer and (viewer.id == instance.owner_id or is_master(viewer, lobby_id)):
         visible_custom_description = instance.custom_description
+    max_durability = None
+    current_durability = None
+    if durability_enabled:
+        max_durability = max(definition.max_durability or 0, 0)
+        current_durability = min(max(instance.str_current or 0, 0), max_durability)
     return {
         'id': instance.id,
         'template_id': definition.id,
@@ -1280,8 +1283,8 @@ def build_instance_payload(
         'stackable': stackable,
         'max_stack': max_amount,
         'weight': definition.weight,
-        'max_str': definition.max_str if durability_enabled else None,
-        'str_current': max(instance.str_current or 0, 0) if durability_enabled else None,
+        'max_durability': max_durability,
+        'str_current': current_durability,
         'has_durability': durability_enabled,
         'amount': effective_amount,
         'container_id': instance.container_i,
@@ -2217,12 +2220,12 @@ def resolve_durability_value(
 ) -> Optional[int]:
     if not has_durability(definition):
         return None
-    max_str = max(definition.max_str or 1, 1)
+    max_durability = max(definition.max_durability or 1, 1)
     if randomize:
-        return random.randint(0, max_str)
+        return random.randint(0, max_durability)
     if requested_value is None:
-        return max_str
-    return min(max(requested_value, 0), max_str)
+        return max_durability
+    return min(max(requested_value, 0), max_durability)
 
 
 @app.route('/api/inventory/move', methods=['POST'])
@@ -2614,8 +2617,8 @@ def update_inventory_durability():
         if inventory_logger.handlers:
             inventory_logger.error('Durability update rejected for item %s', instance.id)
         return jsonify({'ok': False, 'error': 'invalid_item'}), 400
-    max_str = max(instance.definition.max_str or 0, 0)
-    if value < 0 or value > max_str:
+    max_durability = max(instance.definition.max_durability or 0, 0)
+    if value < 0 or value > max_durability:
         if inventory_logger.handlers:
             inventory_logger.error('Durability update rejected for item %s: out of range', instance.id)
         return jsonify({'ok': False, 'error': 'invalid_value'}), 400
@@ -2651,8 +2654,8 @@ def set_master_durability():
         if inventory_logger.handlers:
             inventory_logger.error('Durability update rejected for item %s', instance.id)
         return jsonify({'ok': False, 'error': 'invalid_item'}), 400
-    max_str = max(instance.definition.max_str or 0, 0)
-    value = min(max(value, 0), max_str)
+    max_durability = max(instance.definition.max_durability or 0, 0)
+    value = min(max(value, 0), max_durability)
     instance.str_current = value
     instance.version += 1
     db.session.commit()
@@ -3024,14 +3027,14 @@ def create_item_template():
             log_debug('Item template create failed: invalid max amount %s for type %s', max_amount, type_name)
             return jsonify({'error': 'invalid_max_amount'}), 400
         item_type.max_amount = max(item_type.max_amount or 1, max_amount)
-        max_str = None
+        max_durability = None
     else:
         if type_name in DURABLE_ITEM_TYPES:
             item_type.has_durability = True
         if item_type.has_durability:
-            max_str = max(max_durability, 1)
+            max_durability = max(max_durability, 1)
         else:
-            max_str = None
+            max_durability = None
         max_amount = 1
     definition = ItemDefinition(
         name=name,
@@ -3040,7 +3043,7 @@ def create_item_template():
         w=width,
         h=height,
         weight=weight,
-        max_str=max_str,
+        max_durability=max_durability,
         max_stack=max_amount,
         quality=quality,
         is_cloth=is_cloth,
@@ -3137,7 +3140,7 @@ def search_item_templates():
             'name': definition.name,
             'type': definition.item_type.name if definition.item_type else '',
             'quality': definition.quality,
-            'max_str': definition.max_str,
+            'max_durability': definition.max_durability,
         })
     return jsonify({'ok': True, 'results': payload})
 
@@ -3162,7 +3165,7 @@ def get_item_template(template_id: int):
             'width': definition.w,
             'height': definition.h,
             'weight': definition.weight,
-            'max_durability': definition.max_str,
+            'max_durability': definition.max_durability,
             'max_amount': normalized_max_amount(definition),
             'is_cloth': bool(definition.is_cloth),
             'bag_width': definition.bag_width,
@@ -3194,7 +3197,7 @@ def update_item_template():
     width = parse_int(data.get('width'), definition.w or 1, minimum=1)
     height = parse_int(data.get('height'), definition.h or 1, minimum=1)
     weight = float(data.get('weight') or 0)
-    max_durability = parse_int(data.get('max_durability'), definition.max_str or 1, minimum=1)
+    max_durability = parse_int(data.get('max_durability'), definition.max_durability or 1, minimum=1)
     max_amount = parse_int(data.get('max_amount'), normalized_max_amount(definition), minimum=1)
     is_cloth = str(data.get('is_cloth') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
     bag_width = parse_int(data.get('bag_width'), 0, minimum=0)
@@ -3224,15 +3227,15 @@ def update_item_template():
             log_debug('Item template update failed: invalid max amount %s for type %s', max_amount, type_name)
             return jsonify({'error': 'invalid_max_amount'}), 400
         item_type.max_amount = max(item_type.max_amount or 1, max_amount)
-        max_str = None
+        max_durability = None
         max_amount = max_amount
     else:
         if type_name in DURABLE_ITEM_TYPES:
             item_type.has_durability = True
         if item_type.has_durability:
-            max_str = max(max_durability, 1)
+            max_durability = max(max_durability, 1)
         else:
-            max_str = None
+            max_durability = None
         max_amount = 1
 
     definition.name = name
@@ -3240,7 +3243,7 @@ def update_item_template():
     definition.w = width
     definition.h = height
     definition.weight = weight
-    definition.max_str = max_str
+    definition.max_durability = max_durability
     definition.max_stack = max_amount
     definition.quality = quality
     definition.is_cloth = is_cloth
@@ -3387,8 +3390,8 @@ def issue_item_by_id():
             return jsonify({'ok': False, 'request_id': request_id, 'error': 'not_found'}), 404
         if durability_current_value is not None:
             if has_durability(definition):
-                max_str = max(definition.max_str or 1, 1)
-                if durability_current_value < 0 or durability_current_value > max_str:
+                max_durability = max(definition.max_durability or 1, 1)
+                if durability_current_value < 0 or durability_current_value > max_durability:
                     log_return('invalid_durability')
                     logger.warning(
                         'GiveID failed: durability %s out of range for template %s',
