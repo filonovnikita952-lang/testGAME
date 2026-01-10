@@ -175,12 +175,14 @@
                                 <div class="lobby-tabs">
                                     <input type="radio" name="lobby-tab-{{ membership.lobby.id }}" id="lobby-tab-summary-{{ membership.lobby.id }}" checked>
                                     <input type="radio" name="lobby-tab-{{ membership.lobby.id }}" id="lobby-tab-health-{{ membership.lobby.id }}">
+                                    <input type="radio" name="lobby-tab-{{ membership.lobby.id }}" id="lobby-tab-attributes-{{ membership.lobby.id }}">
                                     {% if is_master_user %}
                                         <input type="radio" name="lobby-tab-{{ membership.lobby.id }}" id="lobby-tab-admin-{{ membership.lobby.id }}">
                                     {% endif %}
                                     <div class="lobby-tabs__labels">
                                         <label for="lobby-tab-summary-{{ membership.lobby.id }}">Персонаж</label>
                                         <label for="lobby-tab-health-{{ membership.lobby.id }}">Здоровʼя</label>
+                                        <label for="lobby-tab-attributes-{{ membership.lobby.id }}">Характеристики</label>
                                         {% if is_master_user %}
                                             <label for="lobby-tab-admin-{{ membership.lobby.id }}">Адмін</label>
                                         {% endif %}
@@ -200,7 +202,15 @@
                                                 </div>
                                                 <div>
                                                     <span class="lobby-info__label">Клас</span>
-                                                    <strong data-character-class>Невідомо</strong>
+                                                    <strong data-character-class-text>???</strong>
+                                                    <select class="is-hidden" data-character-class-select>
+                                                        <option value="control">control</option>
+                                                        <option value="creation">creation</option>
+                                                        <option value="mutation">mutation</option>
+                                                        <option value="summoning">summoning</option>
+                                                        <option value="psychic">psychic</option>
+                                                        <option value="???">???</option>
+                                                    </select>
                                                 </div>
                                                 <div>
                                                     <span class="lobby-info__label">Armor Class</span>
@@ -294,6 +304,77 @@
                                                     <span class="panel-title">Хвороби</span>
                                                 </div>
                                                 <p class="muted">Немає активних хвороб.</p>
+                                            </div>
+                                        </section>
+                                        <section class="lobby-tab__panel lobby-tab__panel--attributes">
+                                            <div class="inventory-panel panel-secondary lobby-panel dra-card">
+                                                <div class="panel-header">
+                                                    <span class="panel-title">Характеристики</span>
+                                                    <span class="panel-tag">STATS</span>
+                                                </div>
+                                                <div class="attributes-formula" data-attribute-formula>
+                                                    <label for="attribute-formula-{{ membership.lobby.id }}">Формула модифікатора</label>
+                                                    <div class="attributes-formula__controls">
+                                                        <input type="text" id="attribute-formula-{{ membership.lobby.id }}" data-attribute-formula-input>
+                                                        <button type="button" class="button ghost" data-attribute-formula-save>Зберегти</button>
+                                                    </div>
+                                                </div>
+                                                <div class="attributes-grid">
+                                                    <div class="attribute-row" data-attribute-row data-attribute-key="str">
+                                                        <span class="attribute-label">STR</span>
+                                                        <div class="attribute-value">
+                                                            <input type="number" min="0" data-attribute-input>
+                                                            <span data-attribute-readonly>0</span>
+                                                        </div>
+                                                        <span class="attribute-modifier" data-attribute-modifier>+0</span>
+                                                        <button type="button" class="button ghost" data-attribute-prof-toggle>Proficiency</button>
+                                                    </div>
+                                                    <div class="attribute-row" data-attribute-row data-attribute-key="dex">
+                                                        <span class="attribute-label">DEX</span>
+                                                        <div class="attribute-value">
+                                                            <input type="number" min="0" data-attribute-input>
+                                                            <span data-attribute-readonly>0</span>
+                                                        </div>
+                                                        <span class="attribute-modifier" data-attribute-modifier>+0</span>
+                                                        <button type="button" class="button ghost" data-attribute-prof-toggle>Proficiency</button>
+                                                    </div>
+                                                    <div class="attribute-row" data-attribute-row data-attribute-key="con">
+                                                        <span class="attribute-label">CON</span>
+                                                        <div class="attribute-value">
+                                                            <input type="number" min="0" data-attribute-input>
+                                                            <span data-attribute-readonly>0</span>
+                                                        </div>
+                                                        <span class="attribute-modifier" data-attribute-modifier>+0</span>
+                                                        <button type="button" class="button ghost" data-attribute-prof-toggle>Proficiency</button>
+                                                    </div>
+                                                    <div class="attribute-row" data-attribute-row data-attribute-key="int">
+                                                        <span class="attribute-label">INT</span>
+                                                        <div class="attribute-value">
+                                                            <input type="number" min="0" data-attribute-input>
+                                                            <span data-attribute-readonly>0</span>
+                                                        </div>
+                                                        <span class="attribute-modifier" data-attribute-modifier>+0</span>
+                                                        <button type="button" class="button ghost" data-attribute-prof-toggle>Proficiency</button>
+                                                    </div>
+                                                    <div class="attribute-row" data-attribute-row data-attribute-key="wis">
+                                                        <span class="attribute-label">WIS</span>
+                                                        <div class="attribute-value">
+                                                            <input type="number" min="0" data-attribute-input>
+                                                            <span data-attribute-readonly>0</span>
+                                                        </div>
+                                                        <span class="attribute-modifier" data-attribute-modifier>+0</span>
+                                                        <button type="button" class="button ghost" data-attribute-prof-toggle>Proficiency</button>
+                                                    </div>
+                                                    <div class="attribute-row" data-attribute-row data-attribute-key="cha">
+                                                        <span class="attribute-label">CHA</span>
+                                                        <div class="attribute-value">
+                                                            <input type="number" min="0" data-attribute-input>
+                                                            <span data-attribute-readonly>0</span>
+                                                        </div>
+                                                        <span class="attribute-modifier" data-attribute-modifier>+0</span>
+                                                        <button type="button" class="button ghost" data-attribute-prof-toggle>Proficiency</button>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </section>
                                         {% if is_master_user %}

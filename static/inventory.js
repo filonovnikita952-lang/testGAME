@@ -66,6 +66,7 @@
             this.detailDurabilityInput = this.root.querySelector('[data-detail-durability-input]');
             this.detailItemId = null;
             this.stats = null;
+            this.attributes = null;
             this.statsValues = {
                 hp: this.root.querySelector('[data-stat-value="hp"]'),
                 mana: this.root.querySelector('[data-stat-value="mana"]'),
@@ -84,6 +85,12 @@
             this.masterToggle = this.root.querySelector('[data-master-toggle]');
             this.masterMode = 'view';
             this.gridElements = Array.from(this.root.querySelectorAll('.tetris-grid'));
+            this.characterClassText = this.root.querySelector('[data-character-class-text]');
+            this.characterClassSelect = this.root.querySelector('[data-character-class-select]');
+            this.attributeRows = Array.from(this.root.querySelectorAll('[data-attribute-row]'));
+            this.attributeFormulaInput = this.root.querySelector('[data-attribute-formula-input]');
+            this.attributeFormulaSave = this.root.querySelector('[data-attribute-formula-save]');
+            this.attributeFormulaWrap = this.root.querySelector('[data-attribute-formula]');
             this.rosterList = this.lobbyId
                 ? document.querySelector(`.lobby-roster__list[data-lobby-id="${this.lobbyId}"]`)
                 : null;
@@ -183,6 +190,35 @@
                 });
             });
 
+            if (this.characterClassSelect) {
+                this.characterClassSelect.addEventListener('change', () => {
+                    if (!this.canEditAttributes()) return;
+                    this.updateCharacterClass();
+                });
+            }
+
+            if (this.attributeFormulaSave) {
+                this.attributeFormulaSave.addEventListener('click', () => {
+                    if (!this.canEditAttributes()) return;
+                    this.updateAttributeFormula();
+                });
+            }
+
+            this.attributeRows.forEach((row) => {
+                const input = row.querySelector('[data-attribute-input]');
+                const toggle = row.querySelector('[data-attribute-prof-toggle]');
+                input?.addEventListener('change', () => {
+                    if (!this.canEditAttributes()) return;
+                    this.submitAttributeUpdate();
+                });
+                toggle?.addEventListener('click', () => {
+                    if (!this.canEditAttributes()) return;
+                    const statKey = row.dataset.attributeKey;
+                    if (!statKey) return;
+                    this.toggleAttributeProficiency(statKey);
+                });
+            });
+
             this.mapClose?.addEventListener('click', () => this.closeMapOverlay());
             this.mapOverlay?.addEventListener('click', (event) => {
                 if (event.target === this.mapOverlay) this.closeMapOverlay();
@@ -253,7 +289,10 @@
                 }
             }
             this.stats = payload.stats || null;
+            this.attributes = payload.attributes || null;
             this.updateStatsUI();
+            this.updateClassUI(payload.user);
+            this.updateAttributesUI();
             this.updateWeightDisplay(payload.weight);
             this.root.classList.toggle('is-readonly', !this.permissions.can_edit);
             if (this.inventoryActions) {
@@ -759,6 +798,7 @@
                 return false;
             }
             console.debug('[Inventory] Move rejected', payload);
+            await this.refreshInventory(this.selectedPlayerId);
             return false;
         }
 
@@ -767,7 +807,6 @@
             if (!sourceItem.stackable || !targetItem.stackable) return false;
             if (sourceItem.template_id !== targetItem.template_id) return false;
             if (sourceItem.id === targetItem.id) return false;
-            if ((sourceItem.amount + targetItem.amount) > targetItem.max_stack) return false;
             const response = await fetch('/api/inventory/merge', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -779,17 +818,15 @@
                 }),
             });
             if (response.ok) {
-                const payload = await response.json().catch(() => ({}));
-                if (payload?.instance) {
-                    this.applyInstanceUpdates([payload.instance], payload?.deleted_instance_id ? [payload.deleted_instance_id] : []);
-                }
-                this.updateWeightDisplay(payload?.weight);
+                await response.json().catch(() => ({}));
+                await this.refreshInventory(this.selectedPlayerId);
                 return true;
             }
             const payload = await response.json().catch(() => ({}));
             if (response.status === 409) {
                 await this.handleConflict('merge', sourceItem, payload);
             }
+            await this.refreshInventory(this.selectedPlayerId);
             return false;
         }
 
@@ -926,22 +963,8 @@
                 body: JSON.stringify({ item_id: item.id, version: item.version }),
             });
             if (response.ok) {
-                const payload = await response.json().catch(() => ({}));
-                if (payload?.instance) {
-                    this.applyInstanceUpdates([payload.instance]);
-                    if (this.dragState?.lastPointer) {
-                        this.updateGhost({
-                            clientX: this.dragState.lastPointer.x,
-                            clientY: this.dragState.lastPointer.y,
-                        });
-                        this.updateDragPreviewPosition({
-                            clientX: this.dragState.lastPointer.x,
-                            clientY: this.dragState.lastPointer.y,
-                        });
-                        this.updateDragPreviewSize();
-                    }
-                }
-                this.updateWeightDisplay(payload?.weight);
+                await response.json().catch(() => ({}));
+                await this.refreshInventory(this.selectedPlayerId);
                 return;
             }
             const payload = await response.json().catch(() => ({}));
@@ -975,17 +998,13 @@
             });
             if (response.ok) {
                 const payload = await response.json().catch(() => ({}));
-                const instances = payload?.instances || [];
-                if (instances.length) {
-                    this.applyInstanceUpdates(instances);
-                }
+                await this.refreshInventory(this.selectedPlayerId);
                 if (options.attachDrag && payload?.new_instance_id) {
                     const newItem = this.getItemById(payload.new_instance_id);
                     if (newItem) {
                         this.attachDragToItem(newItem);
                     }
                 }
-                this.updateWeightDisplay(payload?.weight);
                 return;
             }
             const payload = await response.json().catch(() => ({}));
@@ -994,6 +1013,7 @@
                 return;
             }
             console.debug('[Inventory] Split rejected', payload);
+            await this.refreshInventory(this.selectedPlayerId);
         }
 
         async dropItem(item) {
@@ -1023,16 +1043,10 @@
             });
             if (response.ok) {
                 const payload = await response.json().catch(() => ({}));
-                if (payload?.instance) {
-                    this.applyInstanceUpdates([payload.instance]);
-                }
-                if (payload?.deleted_instance_id) {
-                    this.applyInstanceUpdates([], [payload.deleted_instance_id]);
-                }
                 if (payload?.map_image) {
                     this.openMapOverlay(payload.map_image);
                 }
-                this.updateWeightDisplay(payload?.weight);
+                await this.refreshInventory(this.selectedPlayerId);
                 return;
             }
             const payload = await response.json().catch(() => ({}));
@@ -1040,6 +1054,7 @@
                 await this.handleConflict('use', item, payload);
                 return;
             }
+            await this.refreshInventory(this.selectedPlayerId);
         }
 
         async updateDurability(item) {
@@ -1054,11 +1069,8 @@
                 body: JSON.stringify({ item_id: item.id, value, version: item.version }),
             });
             if (response.ok) {
-                const payload = await response.json().catch(() => ({}));
-                if (payload?.instance) {
-                    this.applyInstanceUpdates([payload.instance]);
-                }
-                this.updateWeightDisplay(payload?.weight);
+                await response.json().catch(() => ({}));
+                await this.refreshInventory(this.selectedPlayerId);
                 return;
             }
             const payload = await response.json().catch(() => ({}));
@@ -1066,6 +1078,7 @@
                 await this.handleConflict('durability', item, payload);
                 return;
             }
+            await this.refreshInventory(this.selectedPlayerId);
         }
 
         openTransferModal(item) {
@@ -1260,9 +1273,29 @@
             this.statsInputs.forEach((input) => {
                 input.disabled = !this.canEditStats();
             });
+            if (this.characterClassSelect) {
+                this.characterClassSelect.disabled = !this.canEditAttributes();
+            }
+            this.attributeRows.forEach((row) => {
+                row.classList.toggle('is-readonly', !this.canEditAttributes());
+                const input = row.querySelector('[data-attribute-input]');
+                const toggle = row.querySelector('[data-attribute-prof-toggle]');
+                if (input) input.disabled = !this.canEditAttributes();
+                if (toggle) toggle.disabled = !this.canEditAttributes();
+            });
+            if (this.attributeFormulaInput) {
+                this.attributeFormulaInput.disabled = !this.canEditAttributes();
+            }
+            if (this.attributeFormulaSave) {
+                this.attributeFormulaSave.disabled = !this.canEditAttributes();
+            }
         }
 
         canEditStats() {
+            return this.permissions.is_master && this.masterMode === 'control';
+        }
+
+        canEditAttributes() {
             return this.permissions.is_master && this.masterMode === 'control';
         }
 
@@ -1322,9 +1355,154 @@
             });
         }
 
+        updateClassUI(userPayload) {
+            if (!userPayload) return;
+            const className = userPayload.character_class || '???';
+            if (this.characterClassText) {
+                this.characterClassText.textContent = className;
+                this.characterClassText.classList.toggle('is-hidden', this.permissions.is_master);
+            }
+            if (this.characterClassSelect) {
+                this.characterClassSelect.value = className;
+                this.characterClassSelect.classList.toggle('is-hidden', !this.permissions.is_master);
+            }
+        }
+
+        formatModifier(value) {
+            const numeric = Number(value || 0);
+            return numeric >= 0 ? `+${numeric}` : `${numeric}`;
+        }
+
+        updateAttributesUI() {
+            if (!this.attributes) return;
+            const stats = this.attributes.stats || {};
+            const modifiers = this.attributes.modifiers || {};
+            const proficient = this.attributes.proficient || {};
+            this.attributeRows.forEach((row) => {
+                const statKey = row.dataset.attributeKey;
+                if (!statKey) return;
+                const value = stats[statKey] ?? 0;
+                const modifier = modifiers[statKey] ?? 0;
+                const isProficient = Boolean(proficient[statKey]);
+                const input = row.querySelector('[data-attribute-input]');
+                const readonly = row.querySelector('[data-attribute-readonly]');
+                const modifierNode = row.querySelector('[data-attribute-modifier]');
+                const toggle = row.querySelector('[data-attribute-prof-toggle]');
+                if (input) input.value = `${value}`;
+                if (readonly) readonly.textContent = `${value}`;
+                if (modifierNode) modifierNode.textContent = this.formatModifier(modifier);
+                row.classList.toggle('is-proficient', isProficient);
+                if (toggle) {
+                    toggle.classList.toggle('is-active', isProficient);
+                }
+            });
+            if (this.attributeFormulaInput && this.permissions.is_master) {
+                this.attributeFormulaInput.value = this.attributes.formula || '';
+            }
+            if (this.attributeFormulaWrap) {
+                this.attributeFormulaWrap.classList.toggle('is-hidden', !this.permissions.is_master);
+            }
+            this.refreshMasterModeState();
+        }
+
         updateWeightDisplay(weight) {
             if (!this.weightDisplay || !weight) return;
             this.weightDisplay.textContent = `${weight.current} / ${weight.capacity}`;
+        }
+
+        async updateCharacterClass() {
+            if (!this.characterClassSelect) return;
+            const className = this.characterClassSelect.value;
+            const response = await fetch('/api/master/set_class', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lobby_id: this.lobbyId,
+                    user_id: this.selectedPlayerId,
+                    class_name: className,
+                }),
+            });
+            if (response.ok) {
+                await this.refreshInventory(this.selectedPlayerId);
+                return;
+            }
+            await response.json().catch(() => ({}));
+            await this.refreshInventory(this.selectedPlayerId);
+        }
+
+        async submitAttributeUpdate() {
+            const payload = {
+                lobby_id: this.lobbyId,
+                user_id: this.selectedPlayerId,
+            };
+            this.attributeRows.forEach((row) => {
+                const statKey = row.dataset.attributeKey;
+                const input = row.querySelector('[data-attribute-input]');
+                if (!statKey || !input) return;
+                const value = Number.parseInt(input.value || '0', 10);
+                if (Number.isNaN(value)) return;
+                payload[statKey] = value;
+            });
+            const response = await fetch('/api/master/attributes/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (response.ok) {
+                const data = await response.json().catch(() => ({}));
+                if (data?.attributes) {
+                    this.attributes = data.attributes;
+                    this.updateAttributesUI();
+                } else {
+                    await this.refreshInventory(this.selectedPlayerId);
+                }
+                return;
+            }
+            await response.json().catch(() => ({}));
+            await this.refreshInventory(this.selectedPlayerId);
+        }
+
+        async updateAttributeFormula() {
+            if (!this.attributeFormulaInput) return;
+            const formula = this.attributeFormulaInput.value.trim();
+            if (!formula) return;
+            const response = await fetch('/api/master/attributes/formula', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lobby_id: this.lobbyId, formula }),
+            });
+            if (response.ok) {
+                await this.refreshInventory(this.selectedPlayerId);
+                return;
+            }
+            await response.json().catch(() => ({}));
+            await this.refreshInventory(this.selectedPlayerId);
+        }
+
+        async toggleAttributeProficiency(statKey) {
+            const current = this.attributes?.proficient?.[statKey];
+            const response = await fetch('/api/master/attributes/proficiency', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lobby_id: this.lobbyId,
+                    user_id: this.selectedPlayerId,
+                    stat: statKey,
+                    enabled: !current,
+                }),
+            });
+            if (response.ok) {
+                const data = await response.json().catch(() => ({}));
+                if (data?.attributes) {
+                    this.attributes = data.attributes;
+                    this.updateAttributesUI();
+                } else {
+                    await this.refreshInventory(this.selectedPlayerId);
+                }
+                return;
+            }
+            await response.json().catch(() => ({}));
+            await this.refreshInventory(this.selectedPlayerId);
         }
 
         updateStatsPreviewFromInputs() {
@@ -1452,6 +1630,7 @@
                     return;
                 }
                 await response.json().catch(() => ({}));
+                await controller.refreshInventory(controller.selectedPlayerId);
             });
         });
 
@@ -1503,6 +1682,7 @@
                     return;
                 }
                 await response.json().catch(() => ({}));
+                await controller.refreshInventory(controller.selectedPlayerId);
             });
         });
 

@@ -6,6 +6,8 @@ import logging
 import os
 import random
 import secrets
+import ast
+import math
 from typing import Optional
 
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
@@ -34,6 +36,17 @@ BACKPACK_GRID_HEIGHT = 6
 HANDS_GRID_WIDTH = 5
 HANDS_GRID_HEIGHT = 3
 DEFAULT_MAX_STACK = 20
+DEFAULT_ATTRIBUTE_FORMULA = '(stat - 10) // 2'
+ATTRIBUTE_STATS = ('str', 'dex', 'con', 'int', 'wis', 'cha')
+ATTRIBUTE_PROFICIENCY_BONUS = 2
+CHARACTER_CLASSES = {
+    'control',
+    'creation',
+    'mutation',
+    'summoning',
+    'psychic',
+    '???',
+}
 EQUIPMENT_GRIDS = {
     'equip_head': (3, 2),
     'equip_shirt': (3, 2),
@@ -118,6 +131,7 @@ class User(db.Model):
     password = db.Column(db.String(128), nullable=False)
     userImage = db.Column(db.String(255), nullable=True)
     description = db.Column(db.Text, nullable=True)
+    character_class = db.Column(db.String(20), nullable=False, default='???')
     is_admin = db.Column(db.Boolean, default=False)
     is_online = db.Column(db.Boolean, default=False)
     last_seen = db.Column(db.DateTime, default=datetime.utcnow)
@@ -226,6 +240,32 @@ class CharacterStats(db.Model):
     hungry = db.Column(db.Integer, nullable=True)
 
 
+class CharacterAttributes(db.Model):
+    __tablename__ = 'character_attributes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False, unique=True)
+    strength = db.Column(db.Integer, nullable=False, default=4)
+    dexterity = db.Column(db.Integer, nullable=False, default=4)
+    constitution = db.Column(db.Integer, nullable=False, default=4)
+    intelligence = db.Column(db.Integer, nullable=False, default=4)
+    wisdom = db.Column(db.Integer, nullable=False, default=4)
+    charisma = db.Column(db.Integer, nullable=False, default=4)
+    strength_prof = db.Column(db.Boolean, nullable=False, default=False)
+    dexterity_prof = db.Column(db.Boolean, nullable=False, default=False)
+    constitution_prof = db.Column(db.Boolean, nullable=False, default=False)
+    intelligence_prof = db.Column(db.Boolean, nullable=False, default=False)
+    wisdom_prof = db.Column(db.Boolean, nullable=False, default=False)
+    charisma_prof = db.Column(db.Boolean, nullable=False, default=False)
+
+
+class AttributeFormula(db.Model):
+    __tablename__ = 'attribute_formula'
+
+    id = db.Column(db.Integer, primary_key=True)
+    formula = db.Column(db.String(120), nullable=False, default=DEFAULT_ATTRIBUTE_FORMULA)
+
+
 class ChatMessage(db.Model):
     __tablename__ = 'chat_message'
 
@@ -266,6 +306,11 @@ def _ensure_user_columns():
         if 'last_seen' not in columns:
             db.session.execute(text('ALTER TABLE userid ADD COLUMN last_seen DATETIME'))
             db.session.commit()
+        if 'character_class' not in columns:
+            db.session.execute(text("ALTER TABLE userid ADD COLUMN character_class VARCHAR(20) DEFAULT '???'"))
+            db.session.commit()
+        db.session.execute(text("UPDATE userid SET character_class = '???' WHERE character_class IS NULL"))
+        db.session.commit()
 
 
 def _ensure_item_type_columns():
@@ -345,12 +390,22 @@ def _ensure_character_stats_columns():
             db.session.commit()
 
 
+def ensure_attribute_formula() -> AttributeFormula:
+    formula = AttributeFormula.query.first()
+    if not formula:
+        formula = AttributeFormula(formula=DEFAULT_ATTRIBUTE_FORMULA)
+        db.session.add(formula)
+        db.session.commit()
+    return formula
+
+
 def initialize_database():
     db.create_all()
     _ensure_user_columns()
     _ensure_item_type_columns()
     _ensure_item_definition_columns()
     _ensure_character_stats_columns()
+    ensure_attribute_formula()
 
 
 def reset_database():
@@ -360,6 +415,7 @@ def reset_database():
     _ensure_item_type_columns()
     _ensure_item_definition_columns()
     _ensure_character_stats_columns()
+    ensure_attribute_formula()
 
 
 def reset_database_if_needed():
@@ -568,6 +624,10 @@ def create_chat_message(lobby_id: int, user_id: int, message: str, *, is_system:
     return chat_message
 
 
+def item_display_name(instance: ItemInstance) -> str:
+    return instance.custom_name or instance.definition.name
+
+
 def stackable_type(definition: ItemDefinition) -> bool:
     if has_durability(definition):
         return False
@@ -608,8 +668,8 @@ def initial_str_current(definition: ItemDefinition) -> int:
 
 
 def compute_inventory_weight(instances: list[ItemInstance]) -> float:
-    current_weight = 0.0
     weight_logged = False
+    weights = []
     for instance in instances:
         definition = instance.definition
         effective_amount = max(instance.amount or 0, 0)
@@ -617,8 +677,8 @@ def compute_inventory_weight(instances: list[ItemInstance]) -> float:
             log_weight_breakdown(instances, 'missing_weight')
             weight_logged = True
         item_weight = (definition.weight or 0) * effective_amount
-        current_weight += item_weight
-    return current_weight
+        weights.append(item_weight)
+    return sum(weights)
 
 
 def build_weight_payload(user_id: int, *, log_context: str = 'inventory') -> dict:
@@ -682,6 +742,129 @@ def ensure_character_stats(user_id: int) -> CharacterStats:
     stats.hungry = min(max(stats.hungry or 0, 0), 100)
     db.session.commit()
     return stats
+
+
+ATTRIBUTE_COLUMN_MAP = {
+    'str': 'strength',
+    'dex': 'dexterity',
+    'con': 'constitution',
+    'int': 'intelligence',
+    'wis': 'wisdom',
+    'cha': 'charisma',
+}
+
+
+def ensure_character_attributes(user_id: int) -> CharacterAttributes:
+    attributes = CharacterAttributes.query.filter_by(user_id=user_id).first()
+    if not attributes:
+        attributes = CharacterAttributes(user_id=user_id)
+        db.session.add(attributes)
+    for key, column in ATTRIBUTE_COLUMN_MAP.items():
+        if getattr(attributes, column) is None:
+            setattr(attributes, column, 4)
+        prof_column = f'{column}_prof'
+        if getattr(attributes, prof_column) is None:
+            setattr(attributes, prof_column, False)
+    db.session.commit()
+    return attributes
+
+
+class FormulaError(ValueError):
+    pass
+
+
+def _safe_eval_expression(expression: str, *, stat_value: int) -> float:
+    try:
+        tree = ast.parse(expression, mode='eval')
+    except SyntaxError as exc:
+        raise FormulaError('invalid_syntax') from exc
+
+    def eval_node(node):
+        if isinstance(node, ast.Expression):
+            return eval_node(node.body)
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, (int, float)):
+                return node.value
+            raise FormulaError('invalid_constant')
+        if isinstance(node, ast.Name):
+            if node.id == 'stat':
+                return stat_value
+            raise FormulaError('invalid_name')
+        if isinstance(node, ast.BinOp):
+            left = eval_node(node.left)
+            right = eval_node(node.right)
+            if isinstance(node.op, ast.Add):
+                return left + right
+            if isinstance(node.op, ast.Sub):
+                return left - right
+            if isinstance(node.op, ast.Mult):
+                return left * right
+            if isinstance(node.op, ast.Div):
+                return left / right
+            if isinstance(node.op, ast.FloorDiv):
+                return left // right
+            if isinstance(node.op, ast.Mod):
+                return left % right
+            raise FormulaError('invalid_operator')
+        if isinstance(node, ast.UnaryOp):
+            operand = eval_node(node.operand)
+            if isinstance(node.op, ast.UAdd):
+                return +operand
+            if isinstance(node.op, ast.USub):
+                return -operand
+            raise FormulaError('invalid_unary')
+        if isinstance(node, ast.Call):
+            if not isinstance(node.func, ast.Name):
+                raise FormulaError('invalid_call')
+            func_name = node.func.id
+            if func_name not in {'min', 'max'}:
+                raise FormulaError('invalid_call')
+            args = [eval_node(arg) for arg in node.args]
+            if not args:
+                raise FormulaError('invalid_call')
+            return min(args) if func_name == 'min' else max(args)
+        raise FormulaError('invalid_expression')
+
+    return eval_node(tree)
+
+
+def compute_attribute_modifier(stat_value: int, formula: str) -> int:
+    value = _safe_eval_expression(formula, stat_value=stat_value)
+    if isinstance(value, float):
+        return math.floor(value)
+    return int(value)
+
+
+def build_attributes_payload(user_id: int, viewer: Optional[User], lobby_id: Optional[int]) -> dict:
+    attributes = ensure_character_attributes(user_id)
+    formula_record = ensure_attribute_formula()
+    formula = formula_record.formula or DEFAULT_ATTRIBUTE_FORMULA
+    modifiers = {}
+    proficient = {}
+    for key, column in ATTRIBUTE_COLUMN_MAP.items():
+        base_value = getattr(attributes, column) or 0
+        prof_flag = bool(getattr(attributes, f'{column}_prof'))
+        effective_value = base_value + (ATTRIBUTE_PROFICIENCY_BONUS if prof_flag else 0)
+        try:
+            modifier = compute_attribute_modifier(effective_value, formula)
+        except FormulaError:
+            modifier = compute_attribute_modifier(effective_value, DEFAULT_ATTRIBUTE_FORMULA)
+        modifiers[key] = modifier
+        proficient[key] = prof_flag
+    return {
+        'stats': {
+            'str': attributes.strength,
+            'dex': attributes.dexterity,
+            'con': attributes.constitution,
+            'int': attributes.intelligence,
+            'wis': attributes.wisdom,
+            'cha': attributes.charisma,
+        },
+        'modifiers': modifiers,
+        'proficient': proficient,
+        'formula': formula if viewer and is_master(viewer, lobby_id) else None,
+        'proficiency_bonus': ATTRIBUTE_PROFICIENCY_BONUS,
+    }
 
 
 def cleanup_starter_kit() -> None:
@@ -854,6 +1037,7 @@ def build_inventory_payload(
             'permissions': {'can_edit': False, 'is_master': False},
         }
     membership = get_membership(user, lobby_id)
+    viewer = viewer or user
     instances = ItemInstance.query.filter_by(owner_id=user.id).all()
     containers = [
         {
@@ -933,7 +1117,6 @@ def build_inventory_payload(
     for instance in instances:
         items_payload.append(build_instance_payload(instance, viewer, lobby_id))
     current_weight = compute_inventory_weight(instances)
-    viewer = viewer or user
     permissions = {
         'can_edit': can_edit_inventory(viewer, user.id, lobby_id),
         'is_master': is_master(viewer, lobby_id),
@@ -949,7 +1132,11 @@ def build_inventory_payload(
         capacity,
     )
     return {
-        'user': {'id': user.id, 'name': user.nickname},
+        'user': {
+            'id': user.id,
+            'name': user.nickname,
+            'character_class': user.character_class or '???',
+        },
         'containers': containers,
         'items': items_payload,
         'weight': {'current': round(current_weight, 2), 'capacity': capacity},
@@ -963,6 +1150,7 @@ def build_inventory_payload(
             'armor_class': stats.armor_class,
             'hungry': stats.hungry,
         },
+        'attributes': build_attributes_payload(user.id, viewer, lobby_id),
     }
 
 
@@ -1675,19 +1863,29 @@ def merge_inventory_items():
         return jsonify({'ok': False, 'error': 'not_stackable'}), 400
     max_amount = normalized_max_amount(source.definition)
     total_amount = source.amount + target.amount
-    if total_amount > max_amount:
-        return jsonify({'ok': False, 'error': 'exceeds_max'}), 400
 
     if source.amount > target.amount:
         target.custom_name = source.custom_name
-    target.amount = normalize_stack_amount(target.definition, total_amount)
-    target.version += 1
-    db.session.delete(source)
+
+    updated_instances = []
+    deleted_instance_id = None
+    if total_amount <= max_amount:
+        target.amount = normalize_stack_amount(target.definition, total_amount)
+        target.version += 1
+        updated_instances.append(target)
+        deleted_instance_id = source.id
+        db.session.delete(source)
+    else:
+        target.amount = max_amount
+        target.version += 1
+        source.amount = total_amount - max_amount
+        source.version += 1
+        updated_instances.extend([target, source])
     db.session.commit()
     return jsonify({
         'ok': True,
-        'instance': build_instance_payload(target, user, lobby_id),
-        'deleted_instance_id': source.id,
+        'instances': [build_instance_payload(instance, user, lobby_id) for instance in updated_instances],
+        'deleted_instance_id': deleted_instance_id,
         'weight': build_weight_payload(target.owner_id, log_context='merge'),
     })
 
@@ -1719,7 +1917,7 @@ def use_inventory_item():
 
     if item_type == 'food':
         if lobby_id:
-            create_chat_message(lobby_id, user.id, f'{user.nickname} used {instance.definition.name}', is_system=True)
+            create_chat_message(lobby_id, user.id, f'{user.nickname} used {item_display_name(instance)}', is_system=True)
         db.session.delete(instance)
         db.session.commit()
         return jsonify({
@@ -1739,7 +1937,7 @@ def use_inventory_item():
             create_chat_message(
                 lobby_id,
                 user.id,
-                f'{user.nickname} used {instance.definition.name} and spent {roll} durability',
+                f'{user.nickname} used {item_display_name(instance)} and lost {roll} durability',
                 is_system=True,
             )
         db.session.commit()
@@ -1750,7 +1948,7 @@ def use_inventory_item():
         })
 
     if lobby_id:
-        create_chat_message(lobby_id, user.id, f'{user.nickname} used {instance.definition.name}', is_system=True)
+        create_chat_message(lobby_id, user.id, f'{user.nickname} used {item_display_name(instance)}', is_system=True)
     return jsonify({
         'ok': True,
         'map_image': instance.definition.image_path,
@@ -1872,6 +2070,104 @@ def update_character_stats():
     })
 
 
+@app.route('/api/master/set_class', methods=['POST'])
+def set_character_class():
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    lobby_id = parse_int(data.get('lobby_id'), 0) or current_lobby_id_for(user)
+    if not is_master(user, lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    target_user_id = parse_int(data.get('user_id'), 0)
+    class_name = (data.get('class_name') or '').strip()
+    if not target_user_id or class_name not in CHARACTER_CLASSES:
+        return jsonify({'error': 'invalid_payload'}), 400
+    target_membership = LobbyMember.query.filter_by(
+        lobby_id=lobby_id,
+        user_id=target_user_id,
+    ).first()
+    if not target_membership:
+        return jsonify({'error': 'not_in_lobby'}), 403
+    target_user = User.query.get(target_user_id)
+    if not target_user:
+        return jsonify({'error': 'not_found'}), 404
+    target_user.character_class = class_name
+    db.session.commit()
+    return jsonify({'ok': True, 'character_class': target_user.character_class})
+
+
+@app.route('/api/master/attributes/update', methods=['POST'])
+def update_character_attributes():
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    lobby_id = parse_int(data.get('lobby_id'), 0) or current_lobby_id_for(user)
+    if not is_master(user, lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    target_user_id = parse_int(data.get('user_id'), 0)
+    if not target_user_id:
+        return jsonify({'error': 'invalid_user'}), 400
+    target_membership = LobbyMember.query.filter_by(
+        lobby_id=lobby_id,
+        user_id=target_user_id,
+    ).first()
+    if not target_membership:
+        return jsonify({'error': 'not_in_lobby'}), 403
+    attributes = ensure_character_attributes(target_user_id)
+    for stat_key, column in ATTRIBUTE_COLUMN_MAP.items():
+        if stat_key in data:
+            value = parse_int(data.get(stat_key), getattr(attributes, column), minimum=0)
+            setattr(attributes, column, value)
+    db.session.commit()
+    viewer = user
+    return jsonify({'ok': True, 'attributes': build_attributes_payload(target_user_id, viewer, lobby_id)})
+
+
+@app.route('/api/master/attributes/formula', methods=['POST'])
+def update_attribute_formula():
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    lobby_id = parse_int(data.get('lobby_id'), 0) or current_lobby_id_for(user)
+    if not is_master(user, lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    formula = (data.get('formula') or '').strip()
+    if not formula:
+        return jsonify({'error': 'invalid_formula'}), 400
+    if len(formula) > 120:
+        return jsonify({'error': 'invalid_formula'}), 400
+    try:
+        compute_attribute_modifier(10, formula)
+    except FormulaError:
+        return jsonify({'error': 'invalid_formula'}), 400
+    record = ensure_attribute_formula()
+    record.formula = formula
+    db.session.commit()
+    return jsonify({'ok': True, 'formula': record.formula})
+
+
+@app.route('/api/master/attributes/proficiency', methods=['POST'])
+def update_attribute_proficiency():
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    lobby_id = parse_int(data.get('lobby_id'), 0) or current_lobby_id_for(user)
+    if not is_master(user, lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    target_user_id = parse_int(data.get('user_id'), 0)
+    stat_key = (data.get('stat') or '').strip()
+    enabled = bool(data.get('enabled'))
+    if not target_user_id or stat_key not in ATTRIBUTE_COLUMN_MAP:
+        return jsonify({'error': 'invalid_payload'}), 400
+    target_membership = LobbyMember.query.filter_by(
+        lobby_id=lobby_id,
+        user_id=target_user_id,
+    ).first()
+    if not target_membership:
+        return jsonify({'error': 'not_in_lobby'}), 403
+    attributes = ensure_character_attributes(target_user_id)
+    column = ATTRIBUTE_COLUMN_MAP[stat_key]
+    setattr(attributes, f'{column}_prof', enabled)
+    db.session.commit()
+    return jsonify({'ok': True, 'attributes': build_attributes_payload(target_user_id, user, lobby_id)})
+
+
 @app.route('/api/inventory/drop', methods=['POST'])
 def drop_inventory_item():
     user = require_user()
@@ -1889,7 +2185,16 @@ def drop_inventory_item():
         return jsonify({'error': 'missing_version'}), 400
     if not _assert_version(instance, version):
         return jsonify({'error': 'conflict'}), 409
+    item_name = item_display_name(instance)
+    amount = instance.amount
     if is_master(user, lobby_id):
+        if lobby_id:
+            create_chat_message(
+                lobby_id,
+                user.id,
+                f'{user.nickname} dropped {item_name} x{amount}',
+                is_system=True,
+            )
         db.session.delete(instance)
         db.session.commit()
         return jsonify({'ok': True})
@@ -1912,6 +2217,13 @@ def drop_inventory_item():
     instance.pos_x, instance.pos_y, rotation_value = auto_pos
     instance.rotated = rotation_value
     instance.version += 1
+    if lobby_id:
+        create_chat_message(
+            lobby_id,
+            user.id,
+            f'{user.nickname} dropped {item_name} x{amount}',
+            is_system=True,
+        )
     db.session.commit()
     return jsonify({'ok': True})
 
@@ -1983,6 +2295,7 @@ def transfer_inventory_item():
         log_debug('Transfer failed: no space for recipient %s', recipient_id)
         return jsonify({'error': 'no_space'}), 400
 
+    item_name = item_display_name(instance)
     if amount == instance.amount:
         instance.owner_id = recipient_id
         instance.container_i = 'inv_main'
@@ -2004,6 +2317,13 @@ def transfer_inventory_item():
         )
         db.session.add(new_instance)
     instance.version += 1
+    if lobby_id:
+        create_chat_message(
+            lobby_id,
+            user.id,
+            f'{user.nickname} transferred {item_name} x{amount} to {recipient.nickname}',
+            is_system=True,
+        )
     db.session.commit()
     return jsonify({'status': 'ok'})
 
