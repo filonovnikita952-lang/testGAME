@@ -11,6 +11,7 @@ import math
 import shutil
 import difflib
 import sys
+import time
 from typing import Optional
 from uuid import uuid4
 
@@ -3316,15 +3317,38 @@ def issue_item_by_id():
                 debug('GiveID placement no_space container=%s rotation=%s', container_id, rotation)
         return None
 
+    def log_return(error: str) -> None:
+        print(
+            f"[GIVEID RETURN] request_id={request_id} error={error}",
+            file=sys.stderr,
+            flush=True,
+        )
+
     try:
+        auth_error = None
         try:
             user = require_user()
-        except AuthError:
+        except AuthError as exc:
+            auth_error = exc
+            user = type('AnonymousUser', (), {'id': 'unauthorized'})()
+        print(
+            f"[GIVEID HIT] ts={time.time()} user_id={user.id} raw_json={request.get_data(as_text=True)[:500]}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+        if auth_error:
+            log_return('unauthorized')
             logger.warning('GiveID unauthorized request')
             return jsonify({'ok': False, 'request_id': request_id, 'error': 'unauthorized'}), 401
 
         data = request.get_json(silent=True) or {}
         lobby_id = parse_int(data.get('lobby_id'), 0)
+        template_id = parse_int(data.get('template_id'), 0)
+        target_user_id = parse_int(data.get('target_user_id') or data.get('to_user_id'), 0)
+        if not lobby_id or not template_id or not target_user_id:
+            log_return('missing_fields')
+            return jsonify({'ok': False, 'request_id': request_id, 'error': 'missing_fields'}), 400
         is_master_user = is_master(user, lobby_id)
         debug(
             'GiveID permission check user_id=%s lobby_id=%s is_master=%s',
@@ -3333,10 +3357,9 @@ def issue_item_by_id():
             is_master_user,
         )
         if not is_master_user:
+            log_return('forbidden')
             logger.warning('GiveID forbidden user_id=%s lobby_id=%s', user.id, lobby_id)
             return jsonify({'ok': False, 'request_id': request_id, 'error': 'forbidden'}), 403
-        template_id = parse_int(data.get('template_id'), 0)
-        target_user_id = parse_int(data.get('target_user_id') or data.get('to_user_id'), 0)
         amount = parse_int(data.get('amount'), 1, minimum=1)
         durability_current = data.get('durability_current')
         durability_current_value = parse_int(durability_current, 0) if durability_current is not None else None
@@ -3359,12 +3382,14 @@ def issue_item_by_id():
         definition = ItemDefinition.query.get(template_id)
         debug('GiveID template lookup template_id=%s found=%s', template_id, bool(definition))
         if not definition:
+            log_return('not_found')
             logger.warning('GiveID failed: template %s not found', template_id)
             return jsonify({'ok': False, 'request_id': request_id, 'error': 'not_found'}), 404
         if durability_current_value is not None:
             if has_durability(definition):
                 max_str = max(definition.max_str or 1, 1)
                 if durability_current_value < 0 or durability_current_value > max_str:
+                    log_return('invalid_durability')
                     logger.warning(
                         'GiveID failed: durability %s out of range for template %s',
                         durability_current_value,
@@ -3376,6 +3401,7 @@ def issue_item_by_id():
         target_user = User.query.get(target_user_id)
         debug('GiveID target lookup target_user_id=%s found=%s', target_user_id, bool(target_user))
         if not target_user:
+            log_return('invalid_recipient')
             logger.warning('GiveID failed: target user %s not found', target_user_id)
             return jsonify({'ok': False, 'request_id': request_id, 'error': 'invalid_recipient'}), 400
         target_membership = LobbyMember.query.filter_by(
@@ -3389,6 +3415,7 @@ def issue_item_by_id():
             bool(target_membership),
         )
         if not target_membership:
+            log_return('invalid_recipient')
             logger.warning('GiveID failed: target user %s not in lobby %s', target_user_id, lobby_id)
             return jsonify({'ok': False, 'request_id': request_id, 'error': 'invalid_recipient'}), 400
         stackable = stackable_type(definition)
@@ -3461,9 +3488,11 @@ def issue_item_by_id():
             debug('GiveID commit success created_count=%s', len(created_instances))
         except ValueError:
             db.session.rollback()
+            log_return('no_space')
             return jsonify({'ok': False, 'request_id': request_id, 'error': 'no_space'}), 400
         except SQLAlchemyError:
             db.session.rollback()
+            log_return('db_error')
             logger.exception('GiveID database error')
             return jsonify({'ok': False, 'request_id': request_id, 'error': 'db_error'}), 500
         issued_id = created_instances[0].id if created_instances else None
@@ -3485,6 +3514,7 @@ def issue_item_by_id():
         })
     except Exception:
         db.session.rollback()
+        log_return('exception')
         logger.exception('GiveID unexpected error')
         return jsonify({'ok': False, 'request_id': request_id, 'error': 'server_error'}), 500
 
