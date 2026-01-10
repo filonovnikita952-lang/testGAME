@@ -16,8 +16,23 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.utils import secure_filename
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_DB_PATH = os.path.join(BASE_DIR, 'databases', 'databaseDRA.db')
+
+
+def _normalize_database_uri(db_uri: Optional[str]) -> str:
+    if not db_uri:
+        return f"sqlite:///{DEFAULT_DB_PATH}"
+    if db_uri.startswith('sqlite:///'):
+        sqlite_path = db_uri[len('sqlite:///'):]
+        if sqlite_path and not os.path.isabs(sqlite_path):
+            sqlite_path = os.path.join(BASE_DIR, sqlite_path)
+        return f"sqlite:///{sqlite_path}"
+    return db_uri
+
+
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///dra.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = _normalize_database_uri(os.environ.get('DATABASE_URL'))
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'supersecretkey')
 
@@ -287,13 +302,6 @@ class ChatMessage(db.Model):
     user = db.relationship('User')
 
 
-def _should_reset_database(db_uri: str) -> bool:
-    flag = os.environ.get(RESET_DB_ENV)
-    if flag is None:
-        return os.path.basename(db_uri) == 'dra.db'
-    return flag.strip().lower() in {'1', 'true', 'yes'}
-
-
 def _sqlite_db_path(db_uri: str) -> Optional[str]:
     if not db_uri.startswith('sqlite:///'):
         return None
@@ -437,29 +445,23 @@ def initialize_database():
     ensure_attribute_formula()
 
 
-def reset_database():
-    db.drop_all()
-    db.create_all()
-    _ensure_user_columns()
-    _ensure_item_type_columns()
-    _ensure_item_definition_columns()
-    _ensure_character_stats_columns()
-    ensure_attribute_formula()
-
-
-def reset_database_if_needed():
+def initialize_database_if_ready() -> None:
     db_uri = app.config['SQLALCHEMY_DATABASE_URI']
-    if not _should_reset_database(db_uri):
-        initialize_database()
-        return
     sqlite_path = _sqlite_db_path(db_uri)
-    if sqlite_path and os.path.exists(sqlite_path):
-        os.remove(sqlite_path)
-    reset_database()
+    if sqlite_path:
+        abs_path = os.path.abspath(sqlite_path)
+        exists = os.path.exists(abs_path)
+        print(f"[DB] SQLite path: {abs_path} (exists={exists})")
+        if not exists:
+            print('[DB] SQLite file missing; skipping automatic initialization.')
+            return
+    else:
+        print(f"[DB] Database URI: {db_uri} (non-sqlite)")
+    initialize_database()
 
 
 with app.app_context():
-    reset_database_if_needed()
+    initialize_database_if_ready()
 
 
 @dataclass
@@ -1858,9 +1860,9 @@ def split_inventory_item():
     user = require_user()
     data = request.get_json(silent=True) or {}
     item_id = parse_int(data.get('item_id'), 0)
+    version = parse_int(data.get('version'), 0)
     amount = parse_int(data.get('amount'), 0)
     split_half = str(data.get('split_half') or '').lower() in {'1', 'true', 'yes'}
-    version = parse_int(data.get('version'), 0)
     inventory_debug = os.environ.get(INVENTORY_DEBUG_ENV, '').strip() in {'1', 'true', 'yes'}
     if inventory_debug:
         inventory_logger.debug(
@@ -1880,7 +1882,6 @@ def split_inventory_item():
     instance = ItemInstance.query.get(item_id)
     if not instance:
         return jsonify({'ok': False, 'error': 'not_found'}), 404
-    current_amount = instance.amount
     lobby_id = current_lobby_id_for(user)
     if not can_edit_inventory(user, instance.owner_id, lobby_id):
         log_split_reject('forbidden', owner_id=instance.owner_id, lobby_id=lobby_id)
@@ -1891,19 +1892,11 @@ def split_inventory_item():
     if not _assert_version(instance, version):
         log_split_reject('conflict', version=version, current_version=instance.version)
         return jsonify({'ok': False, 'error': 'conflict'}), 409
-    if (
-        instance.container_i not in {'inv_main', 'hands'}
-        and not instance.container_i.startswith('bag:')
-    ):
-        log_split_reject('invalid_container', container_id=instance.container_i)
-        return jsonify({'ok': False, 'error': 'invalid_container'}), 400
     if not stackable_type(instance.definition) or has_durability(instance.definition):
         log_split_reject('not_stackable', template_id=instance.template_id)
         return jsonify({'ok': False, 'error': 'not_stackable'}), 400
-    if split_half:
-        # Split amount uses floor: 5 -> 2 (new) + 3 (original).
-        amount = instance.amount // 2
-    split_amount = amount
+    current_amount = instance.amount
+    split_amount = current_amount // 2 if split_half else amount
     if inventory_debug:
         inventory_logger.debug(
             'Split computed item_id=%s version=%s current_amount=%s split_amount=%s container_id=%s',
@@ -1913,12 +1906,12 @@ def split_inventory_item():
             split_amount,
             instance.container_i,
         )
-    if amount <= 0 or amount >= instance.amount:
-        log_split_reject('invalid_amount', amount=amount, current_amount=instance.amount)
+    if split_amount <= 0 or split_amount >= current_amount:
+        log_split_reject('invalid_amount', amount=split_amount, current_amount=current_amount)
         return jsonify({'ok': False, 'error': 'invalid_amount'}), 400
     max_amount = normalized_max_amount(instance.definition)
-    if amount > max_amount or (instance.amount - amount) > max_amount:
-        log_split_reject('max_stack_exceeded', max_amount=max_amount, amount=amount)
+    if split_amount > max_amount or (current_amount - split_amount) > max_amount:
+        log_split_reject('max_stack_exceeded', max_amount=max_amount, amount=split_amount)
         return jsonify({'ok': False, 'error': 'max_stack_exceeded'}), 400
     temp_instance = PlacementPreview(
         owner_id=instance.owner_id,
@@ -1931,7 +1924,7 @@ def split_inventory_item():
 
     before_amount = instance.amount
     with db.session.begin():
-        instance.amount = instance.amount - amount
+        instance.amount = current_amount - split_amount
         instance.version += 1
         new_instance = ItemInstance(
             owner_id=instance.owner_id,
@@ -1941,22 +1934,22 @@ def split_inventory_item():
             pos_y=target_pos[1],
             rotated=normalize_rotation_value(instance.rotated),
             str_current=instance.str_current,
-            amount=amount,
+            amount=split_amount,
             custom_name=instance.custom_name,
             custom_description=instance.custom_description,
+            version=1,
         )
         db.session.add(new_instance)
         db.session.flush()
-    if inventory_debug:
-        inventory_logger.debug(
-            'Split applied item_id=%s before_amount=%s split_amount=%s after_amount=%s new_instance_id=%s container_id=%s',
-            instance.id,
-            before_amount,
-            amount,
-            instance.amount,
-            new_instance.id,
-            instance.container_i,
-        )
+    inventory_logger.info(
+        'Split applied item_id=%s before_amount=%s split_amount=%s after_amount=%s new_instance_id=%s container_id=%s',
+        instance.id,
+        before_amount,
+        split_amount,
+        instance.amount,
+        new_instance.id,
+        instance.container_i,
+    )
     return jsonify({
         'ok': True,
         'instances': [
