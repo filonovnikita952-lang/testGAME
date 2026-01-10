@@ -678,7 +678,7 @@
         }
 
         logConflict(action, item, payload = {}) {
-            console.warn('[Inventory] Conflict detected', {
+            console.debug('[Inventory] Conflict detected', {
                 action,
                 instance_id: item?.instance_id ?? item?.id ?? null,
                 local_version: item?.version ?? null,
@@ -1028,7 +1028,6 @@
             } else {
                 payload.amount = amount;
             }
-            console.warn('[Split] payload', payload);
             try {
                 const response = await fetch('/api/inventory/split', {
                     method: 'POST',
@@ -1036,9 +1035,15 @@
                     body: JSON.stringify(payload),
                 });
                 const json = await response.json().catch(() => ({}));
-                console.warn('[Split] response', response.status, json);
                 if (response.ok) {
-                    await this.refreshInventory(this.selectedPlayerId);
+                    if (Array.isArray(json.instances)) {
+                        this.applyInstanceUpdates(json.instances);
+                        if (json.weight) {
+                            this.updateWeightDisplay(json.weight);
+                        }
+                    } else {
+                        await this.refreshInventory(this.selectedPlayerId);
+                    }
                     if (options.attachDrag && json?.new_instance_id) {
                         const newItem = this.getItemById(json.new_instance_id);
                         if (newItem) {
@@ -1051,7 +1056,12 @@
                     await this.handleConflict('split', item, json);
                     return;
                 }
-                await this.refreshInventory(this.selectedPlayerId);
+                if (['invalid_amount', 'no_space', 'not_stackable'].includes(json?.error)) {
+                    console.warn('[Inventory] Split rejected', {
+                        error: json?.error,
+                        item_id: item.id,
+                    });
+                }
             } finally {
                 this.pendingSplits.delete(item.id);
                 if (options.triggerButton) {

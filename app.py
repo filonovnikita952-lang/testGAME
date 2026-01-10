@@ -1869,27 +1869,36 @@ def split_inventory_item():
             data,
         )
 
+    def log_split_reject(reason: str, **context) -> None:
+        inventory_logger.warning(
+            'Split rejected reason=%s item_id=%s context=%s',
+            reason,
+            item_id,
+            context,
+        )
+
     instance = ItemInstance.query.get(item_id)
     if not instance:
         return jsonify({'ok': False, 'error': 'not_found'}), 404
     current_amount = instance.amount
     lobby_id = current_lobby_id_for(user)
     if not can_edit_inventory(user, instance.owner_id, lobby_id):
+        log_split_reject('forbidden', owner_id=instance.owner_id, lobby_id=lobby_id)
         return jsonify({'ok': False, 'error': 'forbidden'}), 403
     if not _require_version(version):
+        log_split_reject('missing_version', version=version)
         return jsonify({'ok': False, 'error': 'missing_version'}), 400
     if not _assert_version(instance, version):
+        log_split_reject('conflict', version=version, current_version=instance.version)
         return jsonify({'ok': False, 'error': 'conflict'}), 409
     if (
         instance.container_i not in {'inv_main', 'hands'}
         and not instance.container_i.startswith('bag:')
     ):
-        if inventory_logger.handlers:
-            inventory_logger.error('Split rejected for item %s: invalid container %s', instance.id, instance.container_i)
+        log_split_reject('invalid_container', container_id=instance.container_i)
         return jsonify({'ok': False, 'error': 'invalid_container'}), 400
     if not stackable_type(instance.definition) or has_durability(instance.definition):
-        if inventory_logger.handlers:
-            inventory_logger.error('Split rejected for item %s: non-stackable or durable', instance.id)
+        log_split_reject('not_stackable', template_id=instance.template_id)
         return jsonify({'ok': False, 'error': 'not_stackable'}), 400
     if split_half:
         # Split amount uses floor: 5 -> 2 (new) + 3 (original).
@@ -1905,17 +1914,11 @@ def split_inventory_item():
             instance.container_i,
         )
     if amount <= 0 or amount >= instance.amount:
-        if inventory_logger.handlers:
-            inventory_logger.error('Split rejected for item %s: invalid amount %s', instance.id, amount)
+        log_split_reject('invalid_amount', amount=amount, current_amount=instance.amount)
         return jsonify({'ok': False, 'error': 'invalid_amount'}), 400
     max_amount = normalized_max_amount(instance.definition)
     if amount > max_amount or (instance.amount - amount) > max_amount:
-        if inventory_logger.handlers:
-            inventory_logger.error(
-                'Split rejected for item %s: exceeds max stack %s',
-                instance.id,
-                max_amount,
-            )
+        log_split_reject('max_stack_exceeded', max_amount=max_amount, amount=amount)
         return jsonify({'ok': False, 'error': 'max_stack_exceeded'}), 400
     temp_instance = PlacementPreview(
         owner_id=instance.owner_id,
@@ -1923,8 +1926,7 @@ def split_inventory_item():
     )
     target_pos = find_first_fit(temp_instance, instance.container_i, normalize_rotation_value(instance.rotated))
     if not target_pos:
-        if inventory_logger.handlers:
-            inventory_logger.error('Split failed for item %s: no space', instance.id)
+        log_split_reject('no_space', container_id=instance.container_i)
         return jsonify({'ok': False, 'error': 'no_space'}), 400
 
     before_amount = instance.amount
