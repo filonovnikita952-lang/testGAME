@@ -703,9 +703,15 @@ def initial_str_current(definition: ItemDefinition) -> int:
     return 0
 
 
-def compute_inventory_weight(instances: list[ItemInstance]) -> float:
+def compute_inventory_weight(
+    instances: list[ItemInstance],
+    *,
+    user_id: Optional[int] = None,
+    log_context: str = 'inventory',
+) -> float:
     weight_logged = False
     weights = []
+    inventory_debug = os.environ.get(INVENTORY_DEBUG_ENV, '').strip() in {'1', 'true', 'yes'}
     for instance in instances:
         definition = instance.definition
         effective_amount = max(instance.amount or 0, 0)
@@ -714,12 +720,29 @@ def compute_inventory_weight(instances: list[ItemInstance]) -> float:
             weight_logged = True
         item_weight = (definition.weight or 0) * effective_amount
         weights.append(item_weight)
-    return sum(weights)
+        if inventory_debug:
+            inventory_logger.debug(
+                'Inventory weight item id=%s template=%s weight=%s amount=%s contribution=%.2f',
+                instance.id,
+                definition.id,
+                definition.weight,
+                effective_amount,
+                item_weight,
+            )
+    total_weight = sum(weights)
+    if inventory_debug:
+        inventory_logger.debug(
+            'Inventory weight total (%s) user=%s current=%.2f',
+            log_context,
+            user_id,
+            total_weight,
+        )
+    return total_weight
 
 
 def build_weight_payload(user_id: int, *, log_context: str = 'inventory') -> dict:
     instances = ItemInstance.query.filter_by(owner_id=user_id).all()
-    current_weight = compute_inventory_weight(instances)
+    current_weight = compute_inventory_weight(instances, user_id=user_id, log_context=log_context)
     stats = ensure_character_stats(user_id)
     strength_modifier = (stats.strength - 10) // 2
     capacity = max(5, 5 + 5 * strength_modifier)
@@ -1188,22 +1211,8 @@ def build_inventory_payload(
     items_payload = []
     for instance in instances:
         items_payload.append(build_instance_payload(instance, viewer, lobby_id))
-    current_weight = 0.0
+    current_weight = compute_inventory_weight(instances, user_id=user.id, log_context='payload')
     inventory_debug = os.environ.get(INVENTORY_DEBUG_ENV, '').strip() in {'1', 'true', 'yes'}
-    for instance in instances:
-        definition = instance.definition
-        amount = max(instance.amount or 0, 0)
-        contribution = (definition.weight or 0) * amount
-        current_weight += contribution
-        if inventory_debug:
-            inventory_logger.debug(
-                'Inventory weight item id=%s template=%s weight=%s amount=%s contribution=%.2f',
-                instance.id,
-                definition.id,
-                definition.weight,
-                amount,
-                contribution,
-            )
     permissions = {
         'can_edit': can_edit_inventory(viewer, user.id, lobby_id),
         'is_master': is_master(viewer, lobby_id),
@@ -1881,7 +1890,6 @@ def split_inventory_item():
         if inventory_logger.handlers:
             inventory_logger.error('Split rejected for item %s: non-stackable or durable', instance.id)
         return jsonify({'ok': False, 'error': 'not_stackable'}), 400
-    max_amount = normalized_max_amount(instance.definition)
     if split_half:
         # Split amount uses floor: 5 -> 2 (new) + 3 (original).
         amount = instance.amount // 2
@@ -1889,11 +1897,6 @@ def split_inventory_item():
         if inventory_logger.handlers:
             inventory_logger.error('Split rejected for item %s: invalid amount %s', instance.id, amount)
         return jsonify({'ok': False, 'error': 'invalid_amount'}), 400
-    if amount > max_amount or instance.amount - amount > max_amount:
-        if inventory_logger.handlers:
-            inventory_logger.error('Split rejected for item %s: exceeds max stack', instance.id)
-        return jsonify({'ok': False, 'error': 'invalid_amount'}), 400
-
     temp_instance = PlacementPreview(
         owner_id=instance.owner_id,
         definition=instance.definition,
@@ -1904,8 +1907,9 @@ def split_inventory_item():
             inventory_logger.error('Split failed for item %s: no space', instance.id)
         return jsonify({'ok': False, 'error': 'no_space'}), 400
 
+    before_amount = instance.amount
     with db.session.begin():
-        instance.amount = normalize_stack_amount(instance.definition, instance.amount - amount)
+        instance.amount = instance.amount - amount
         instance.version += 1
         new_instance = ItemInstance(
             owner_id=instance.owner_id,
@@ -1922,9 +1926,13 @@ def split_inventory_item():
         db.session.add(new_instance)
     if inventory_debug:
         inventory_logger.debug(
-            'Split created instance_ids=%s amounts=%s',
-            [instance.id, new_instance.id],
-            [instance.amount, new_instance.amount],
+            'Split applied item_id=%s before_amount=%s split_amount=%s after_amount=%s new_instance_id=%s container_id=%s',
+            instance.id,
+            before_amount,
+            amount,
+            instance.amount,
+            new_instance.id,
+            instance.container_i,
         )
     return jsonify({
         'ok': True,
