@@ -386,141 +386,253 @@
                                                     </div>
                                                     <section class="inventory-section inventory-section--master">
                                                         <div class="master-panel">
-                                                            <h3>Шаблон предмета</h3>
-                                                            <form class="form" data-master-create>
-                                                                <label for="item_name_{{ membership.lobby.id }}">Назва</label>
-                                                                <input type="text" id="item_name_{{ membership.lobby.id }}" placeholder="Наприклад: Зілля">
-                                                                <label for="item_description_{{ membership.lobby.id }}">Опис</label>
-                                                                <textarea id="item_description_{{ membership.lobby.id }}" rows="3" placeholder="Короткий опис"></textarea>
-                                                                <label for="item_type_{{ membership.lobby.id }}">Тип</label>
-                                                                <select id="item_type_{{ membership.lobby.id }}">
-                                                                    <option value="weapon">Weapon</option>
-                                                                    <option value="armor">Armor</option>
-                                                                    <option value="shield">Shield</option>
-                                                                    <option value="backpack">Backpack</option>
-                                                                    <option value="belt">Belt</option>
-                                                                    <option value="head">Head</option>
-                                                                    <option value="shirt">Shirt</option>
-                                                                    <option value="pants">Pants</option>
-                                                                    <option value="boots">Boots</option>
-                                                                    <option value="amulet">Amulet</option>
-                                                                    <option value="ammo">Ammo</option>
-                                                                    <option value="food">Food</option>
-                                                                    <option value="map">Map</option>
-                                                                    <option value="other">Other</option>
-                                                                </select>
-                                                                <label for="item_quality_{{ membership.lobby.id }}">Редкість</label>
-                                                                <select id="item_quality_{{ membership.lobby.id }}">
-                                                                    <option value="common">Common</option>
-                                                                    <option value="uncommon">Uncommon</option>
-                                                                    <option value="epic">Epic</option>
-                                                                    <option value="legendary">Legendary</option>
-                                                                    <option value="mythical">Mythical</option>
-                                                                </select>
-                                                                <div class="form inline">
-                                                                    <div>
-                                                                        <label for="item_w_{{ membership.lobby.id }}">W</label>
-                                                                        <input type="number" id="item_w_{{ membership.lobby.id }}" min="1" max="7" value="1">
-                                                                    </div>
-                                                                    <div>
-                                                                        <label for="item_h_{{ membership.lobby.id }}">H</label>
-                                                                        <input type="number" id="item_h_{{ membership.lobby.id }}" min="1" max="9" value="1">
-                                                                    </div>
-                                                                    <div>
-                                                                        <label for="item_weight_{{ membership.lobby.id }}">Вага</label>
-                                                                        <input type="number" id="item_weight_{{ membership.lobby.id }}" min="0" step="0.1" value="0">
-                                                                    </div>
+                                                            <div class="admin-tabs" data-admin-tabs>
+                                                                <button type="button" class="button ghost is-active" data-admin-tab="create">Create</button>
+                                                                <button type="button" class="button ghost" data-admin-tab="give">GiveID</button>
+                                                                <button type="button" class="button ghost" data-admin-tab="setting">Setting</button>
+                                                            </div>
+                                                            <div class="admin-tab-panels">
+                                                                <div class="admin-tab-panel is-active" data-admin-panel="create">
+                                                                    <h3>Шаблон предмета</h3>
+                                                                    <form class="form" data-master-create>
+                                                                        <label for="item_name_{{ membership.lobby.id }}">Назва</label>
+                                                                        <input type="text" id="item_name_{{ membership.lobby.id }}" placeholder="Наприклад: Зілля">
+                                                                        <label for="item_description_{{ membership.lobby.id }}">Опис</label>
+                                                                        <textarea id="item_description_{{ membership.lobby.id }}" rows="3" placeholder="Короткий опис"></textarea>
+                                                                        <label for="item_type_{{ membership.lobby.id }}">Тип</label>
+                                                                        <select id="item_type_{{ membership.lobby.id }}">
+                                                                            <option value="weapon">Weapon</option>
+                                                                            <option value="armor">Armor</option>
+                                                                            <option value="shield">Shield</option>
+                                                                            <option value="backpack">Backpack</option>
+                                                                            <option value="belt">Belt</option>
+                                                                            <option value="head">Head</option>
+                                                                            <option value="shirt">Shirt</option>
+                                                                            <option value="pants">Pants</option>
+                                                                            <option value="boots">Boots</option>
+                                                                            <option value="amulet">Amulet</option>
+                                                                            <option value="ammo">Ammo</option>
+                                                                            <option value="food">Food</option>
+                                                                            <option value="map">Map</option>
+                                                                            <option value="other">Other</option>
+                                                                        </select>
+                                                                        <label for="item_quality_{{ membership.lobby.id }}">Редкість</label>
+                                                                        <select id="item_quality_{{ membership.lobby.id }}">
+                                                                            <option value="common">Common</option>
+                                                                            <option value="uncommon">Uncommon</option>
+                                                                            <option value="epic">Epic</option>
+                                                                            <option value="legendary">Legendary</option>
+                                                                            <option value="mythical">Mythical</option>
+                                                                        </select>
+                                                                        <div class="form inline">
+                                                                            <div>
+                                                                                <label for="item_w_{{ membership.lobby.id }}">W</label>
+                                                                                <input type="number" id="item_w_{{ membership.lobby.id }}" min="1" max="7" value="1">
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="item_h_{{ membership.lobby.id }}">H</label>
+                                                                                <input type="number" id="item_h_{{ membership.lobby.id }}" min="1" max="9" value="1">
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="item_weight_{{ membership.lobby.id }}">Вага</label>
+                                                                                <input type="number" id="item_weight_{{ membership.lobby.id }}" min="0" step="0.1" value="0">
+                                                                            </div>
+                                                                        </div>
+                                                                        <div class="form inline">
+                                                                            <div>
+                                                                                <label for="item_durability_{{ membership.lobby.id }}">Max durability</label>
+                                                                                <input type="number" id="item_durability_{{ membership.lobby.id }}" min="1" value="10">
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="item_durability_current_{{ membership.lobby.id }}">Durability</label>
+                                                                                <input type="number" id="item_durability_current_{{ membership.lobby.id }}" min="0" value="">
+                                                                                <input type="hidden" id="item_random_durability_{{ membership.lobby.id }}" value="0">
+                                                                                <button type="button" class="button ghost" data-random-durability>Random</button>
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="item_max_amount_{{ membership.lobby.id }}">Stack max</label>
+                                                                                <input type="number" id="item_max_amount_{{ membership.lobby.id }}" min="1" value="1">
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="item_issue_amount_{{ membership.lobby.id }}">Кількість</label>
+                                                                                <input type="number" id="item_issue_amount_{{ membership.lobby.id }}" min="1" value="1">
+                                                                            </div>
+                                                                        </div>
+                                                                        <div class="form inline admin-form-section" data-cloth-fields>
+                                                                            <div class="checkbox-row">
+                                                                                <label for="item_is_cloth_{{ membership.lobby.id }}">Cloth item</label>
+                                                                                <input type="checkbox" id="item_is_cloth_{{ membership.lobby.id }}">
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="item_bag_w_{{ membership.lobby.id }}">Bag W</label>
+                                                                                <input type="number" id="item_bag_w_{{ membership.lobby.id }}" min="0" value="0">
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="item_bag_h_{{ membership.lobby.id }}">Bag H</label>
+                                                                                <input type="number" id="item_bag_h_{{ membership.lobby.id }}" min="0" value="0">
+                                                                            </div>
+                                                                        </div>
+                                                                        <div class="form inline admin-form-section" data-belt-fields>
+                                                                            <div>
+                                                                                <label for="item_fast_w_{{ membership.lobby.id }}">Fast W</label>
+                                                                                <input type="number" id="item_fast_w_{{ membership.lobby.id }}" min="0" value="0">
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="item_fast_h_{{ membership.lobby.id }}">Fast H</label>
+                                                                                <input type="number" id="item_fast_h_{{ membership.lobby.id }}" min="0" value="0">
+                                                                            </div>
+                                                                        </div>
+                                                                        <label for="item_image_{{ membership.lobby.id }}">Фото предмета</label>
+                                                                        <input type="file" id="item_image_{{ membership.lobby.id }}" accept="image/*">
+                                                                        <label for="item_target_{{ membership.lobby.id }}">Передати (опційно)</label>
+                                                                        <select id="item_target_{{ membership.lobby.id }}">
+                                                                            <option value="">Не видавати</option>
+                                                                            {% for member in membership.lobby.members %}
+                                                                                {% if member.user %}
+                                                                                    <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
+                                                                                {% endif %}
+                                                                            {% endfor %}
+                                                                        </select>
+                                                                        <div class="checkbox-row">
+                                                                            <label for="item_issue_self_{{ membership.lobby.id }}">Issue to me now</label>
+                                                                            <input type="checkbox" id="item_issue_self_{{ membership.lobby.id }}" data-issue-self>
+                                                                        </div>
+                                                                        <button type="button" class="button" data-create-submit>Створити шаблон</button>
+                                                                    </form>
                                                                 </div>
-                                                                <div class="form inline">
-                                                                    <div>
-                                                                        <label for="item_durability_{{ membership.lobby.id }}">Max durability</label>
-                                                                        <input type="number" id="item_durability_{{ membership.lobby.id }}" min="1" value="10">
-                                                                    </div>
-                                                                    <div>
-                                                                        <label for="item_durability_current_{{ membership.lobby.id }}">Durability</label>
-                                                                        <input type="number" id="item_durability_current_{{ membership.lobby.id }}" min="0" value="">
-                                                                        <input type="hidden" id="item_random_durability_{{ membership.lobby.id }}" value="0">
+                                                                <div class="admin-tab-panel" data-admin-panel="give">
+                                                                    <form class="form" data-master-issue>
+                                                                        <h4>Видати за ID</h4>
+                                                                        <label for="issue_template_search_{{ membership.lobby.id }}">Пошук шаблону</label>
+                                                                        <div class="issue-search">
+                                                                            <input type="text" id="issue_template_search_{{ membership.lobby.id }}" placeholder="Пошук за назвою" data-template-search>
+                                                                            <div class="issue-search__results" data-template-results></div>
+                                                                        </div>
+                                                                        <label for="issue_template_{{ membership.lobby.id }}">Template ID</label>
+                                                                        <input type="number" id="issue_template_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону" data-template-id>
+                                                                        <label for="issue_target_{{ membership.lobby.id }}">Отримувач</label>
+                                                                        <select id="issue_target_{{ membership.lobby.id }}">
+                                                                            {% for member in membership.lobby.members %}
+                                                                                {% if member.user %}
+                                                                                    <option value="{{ member.user.id }}" {% if member.user.id == user.id %}selected{% endif %}>{{ member.user.nickname }}</option>
+                                                                                {% endif %}
+                                                                            {% endfor %}
+                                                                        </select>
+                                                                        <label for="issue_amount_{{ membership.lobby.id }}">Кількість</label>
+                                                                        <input type="number" id="issue_amount_{{ membership.lobby.id }}" min="1" value="1">
+                                                                        <label for="issue_durability_current_{{ membership.lobby.id }}">Durability</label>
+                                                                        <input type="number" id="issue_durability_current_{{ membership.lobby.id }}" min="0" value="">
+                                                                        <input type="hidden" id="issue_random_durability_{{ membership.lobby.id }}" value="0">
                                                                         <button type="button" class="button ghost" data-random-durability>Random</button>
-                                                                    </div>
-                                                                    <div>
-                                                                        <label for="item_max_amount_{{ membership.lobby.id }}">Stack max</label>
-                                                                        <input type="number" id="item_max_amount_{{ membership.lobby.id }}" min="1" value="1">
-                                                                    </div>
-                                                                    <div>
-                                                                        <label for="item_issue_amount_{{ membership.lobby.id }}">Кількість</label>
-                                                                        <input type="number" id="item_issue_amount_{{ membership.lobby.id }}" min="1" value="1">
-                                                                    </div>
+                                                                        <button type="button" class="button ghost" data-issue-submit>Видати</button>
+                                                                    </form>
                                                                 </div>
-                                                                <div class="form inline">
-                                                                    <div class="checkbox-row">
-                                                                        <label for="item_is_cloth_{{ membership.lobby.id }}">Cloth item</label>
-                                                                        <input type="checkbox" id="item_is_cloth_{{ membership.lobby.id }}">
-                                                                    </div>
-                                                                    <div>
-                                                                        <label for="item_bag_w_{{ membership.lobby.id }}">Bag W</label>
-                                                                        <input type="number" id="item_bag_w_{{ membership.lobby.id }}" min="0" value="0">
-                                                                    </div>
-                                                                    <div>
-                                                                        <label for="item_bag_h_{{ membership.lobby.id }}">Bag H</label>
-                                                                        <input type="number" id="item_bag_h_{{ membership.lobby.id }}" min="0" value="0">
-                                                                    </div>
+                                                                <div class="admin-tab-panel" data-admin-panel="setting">
+                                                                    <form class="form" data-master-settings>
+                                                                        <h4>Template Settings</h4>
+                                                                        <label for="setting_template_id_search_{{ membership.lobby.id }}">Пошук за ID</label>
+                                                                        <div class="form inline">
+                                                                            <input type="number" id="setting_template_id_search_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону" data-template-search-id>
+                                                                            <button type="button" class="button ghost" data-template-load>Завантажити</button>
+                                                                        </div>
+                                                                        <label for="setting_template_search_{{ membership.lobby.id }}">Пошук за назвою</label>
+                                                                        <div class="issue-search">
+                                                                            <input type="text" id="setting_template_search_{{ membership.lobby.id }}" placeholder="Пошук за назвою" data-template-search>
+                                                                            <div class="issue-search__results" data-template-results></div>
+                                                                        </div>
+                                                                        <input type="hidden" data-template-original-id>
+                                                                        <label for="setting_template_id_{{ membership.lobby.id }}">Template ID</label>
+                                                                        <input type="number" id="setting_template_id_{{ membership.lobby.id }}" min="1" placeholder="ID" data-template-id>
+                                                                        <label for="setting_template_name_{{ membership.lobby.id }}">Назва</label>
+                                                                        <input type="text" id="setting_template_name_{{ membership.lobby.id }}" placeholder="Назва" data-template-name>
+                                                                        <label for="setting_template_description_{{ membership.lobby.id }}">Опис</label>
+                                                                        <textarea id="setting_template_description_{{ membership.lobby.id }}" rows="3" placeholder="Короткий опис" data-template-description></textarea>
+                                                                        <label for="setting_template_type_{{ membership.lobby.id }}">Тип</label>
+                                                                        <select id="setting_template_type_{{ membership.lobby.id }}" data-template-type>
+                                                                            <option value="weapon">Weapon</option>
+                                                                            <option value="armor">Armor</option>
+                                                                            <option value="shield">Shield</option>
+                                                                            <option value="backpack">Backpack</option>
+                                                                            <option value="belt">Belt</option>
+                                                                            <option value="head">Head</option>
+                                                                            <option value="shirt">Shirt</option>
+                                                                            <option value="pants">Pants</option>
+                                                                            <option value="boots">Boots</option>
+                                                                            <option value="amulet">Amulet</option>
+                                                                            <option value="ammo">Ammo</option>
+                                                                            <option value="food">Food</option>
+                                                                            <option value="map">Map</option>
+                                                                            <option value="other">Other</option>
+                                                                        </select>
+                                                                        <label for="setting_template_quality_{{ membership.lobby.id }}">Редкість</label>
+                                                                        <select id="setting_template_quality_{{ membership.lobby.id }}" data-template-quality>
+                                                                            <option value="common">Common</option>
+                                                                            <option value="uncommon">Uncommon</option>
+                                                                            <option value="epic">Epic</option>
+                                                                            <option value="legendary">Legendary</option>
+                                                                            <option value="mythical">Mythical</option>
+                                                                        </select>
+                                                                        <div class="form inline">
+                                                                            <div>
+                                                                                <label for="setting_template_w_{{ membership.lobby.id }}">W</label>
+                                                                                <input type="number" id="setting_template_w_{{ membership.lobby.id }}" min="1" max="7" value="1" data-template-width>
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="setting_template_h_{{ membership.lobby.id }}">H</label>
+                                                                                <input type="number" id="setting_template_h_{{ membership.lobby.id }}" min="1" max="9" value="1" data-template-height>
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="setting_template_weight_{{ membership.lobby.id }}">Вага</label>
+                                                                                <input type="number" id="setting_template_weight_{{ membership.lobby.id }}" min="0" step="0.1" value="0" data-template-weight>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div class="form inline">
+                                                                            <div>
+                                                                                <label for="setting_template_durability_{{ membership.lobby.id }}">Max durability</label>
+                                                                                <input type="number" id="setting_template_durability_{{ membership.lobby.id }}" min="1" value="10" data-template-max-durability>
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="setting_template_max_amount_{{ membership.lobby.id }}">Stack max</label>
+                                                                                <input type="number" id="setting_template_max_amount_{{ membership.lobby.id }}" min="1" value="1" data-template-max-amount>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div class="form inline admin-form-section" data-cloth-fields>
+                                                                            <div class="checkbox-row">
+                                                                                <label for="setting_template_is_cloth_{{ membership.lobby.id }}">Cloth item</label>
+                                                                                <input type="checkbox" id="setting_template_is_cloth_{{ membership.lobby.id }}" data-template-is-cloth>
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="setting_template_bag_w_{{ membership.lobby.id }}">Bag W</label>
+                                                                                <input type="number" id="setting_template_bag_w_{{ membership.lobby.id }}" min="0" value="0" data-template-bag-width>
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="setting_template_bag_h_{{ membership.lobby.id }}">Bag H</label>
+                                                                                <input type="number" id="setting_template_bag_h_{{ membership.lobby.id }}" min="0" value="0" data-template-bag-height>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div class="form inline admin-form-section" data-belt-fields>
+                                                                            <div>
+                                                                                <label for="setting_template_fast_w_{{ membership.lobby.id }}">Fast W</label>
+                                                                                <input type="number" id="setting_template_fast_w_{{ membership.lobby.id }}" min="0" value="0" data-template-fast-w>
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="setting_template_fast_h_{{ membership.lobby.id }}">Fast H</label>
+                                                                                <input type="number" id="setting_template_fast_h_{{ membership.lobby.id }}" min="0" value="0" data-template-fast-h>
+                                                                            </div>
+                                                                        </div>
+                                                                        <button type="button" class="button" data-template-save>Зберегти</button>
+                                                                        <p class="muted" data-template-status></p>
+                                                                    </form>
+                                                                    <form class="form" data-master-image-update>
+                                                                        <h4>Оновити фото</h4>
+                                                                        <label for="image_template_{{ membership.lobby.id }}">Template ID</label>
+                                                                        <input type="number" id="image_template_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону">
+                                                                        <label for="item_image_update_{{ membership.lobby.id }}">Фото предмета</label>
+                                                                        <input type="file" id="item_image_update_{{ membership.lobby.id }}" accept="image/*">
+                                                                        <button type="button" class="button ghost">Оновити</button>
+                                                                    </form>
                                                                 </div>
-                                                                <div class="form inline">
-                                                                    <div>
-                                                                        <label for="item_fast_w_{{ membership.lobby.id }}">Fast W</label>
-                                                                        <input type="number" id="item_fast_w_{{ membership.lobby.id }}" min="0" value="0">
-                                                                    </div>
-                                                                    <div>
-                                                                        <label for="item_fast_h_{{ membership.lobby.id }}">Fast H</label>
-                                                                        <input type="number" id="item_fast_h_{{ membership.lobby.id }}" min="0" value="0">
-                                                                    </div>
-                                                                </div>
-                                                                <label for="item_image_{{ membership.lobby.id }}">Фото предмета</label>
-                                                                <input type="file" id="item_image_{{ membership.lobby.id }}" accept="image/*">
-                                                                <label for="item_target_{{ membership.lobby.id }}">Передати (опційно)</label>
-                                                                <select id="item_target_{{ membership.lobby.id }}">
-                                                                    <option value="">Не видавати</option>
-                                                                    {% for member in membership.lobby.members %}
-                                                                        {% if member.user %}
-                                                                            <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
-                                                                        {% endif %}
-                                                                    {% endfor %}
-                                                                </select>
-                                                                <button type="button" class="button">Створити шаблон</button>
-                                                            </form>
-                                                            <form class="form" data-master-issue>
-                                                                <h4>Видати за ID</h4>
-                                                                <label for="issue_template_search_{{ membership.lobby.id }}">Пошук шаблону</label>
-                                                                <div class="issue-search">
-                                                                    <input type="text" id="issue_template_search_{{ membership.lobby.id }}" placeholder="Пошук за назвою" data-template-search>
-                                                                    <div class="issue-search__results" data-template-results></div>
-                                                                </div>
-                                                                <label for="issue_template_{{ membership.lobby.id }}">Template ID</label>
-                                                                <input type="number" id="issue_template_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону" data-template-id>
-                                                                <label for="issue_target_{{ membership.lobby.id }}">Отримувач</label>
-                                                                <select id="issue_target_{{ membership.lobby.id }}">
-                                                                    {% for member in membership.lobby.members %}
-                                                                        {% if member.user %}
-                                                                            <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
-                                                                        {% endif %}
-                                                                    {% endfor %}
-                                                                </select>
-                                                                <label for="issue_amount_{{ membership.lobby.id }}">Кількість</label>
-                                                                <input type="number" id="issue_amount_{{ membership.lobby.id }}" min="1" value="1">
-                                                                <label for="issue_durability_current_{{ membership.lobby.id }}">Durability</label>
-                                                                <input type="number" id="issue_durability_current_{{ membership.lobby.id }}" min="0" value="">
-                                                                <input type="hidden" id="issue_random_durability_{{ membership.lobby.id }}" value="0">
-                                                                <button type="button" class="button ghost" data-random-durability>Random</button>
-                                                                <button type="button" class="button ghost">Видати</button>
-                                                            </form>
-                                                            <form class="form" data-master-image-update>
-                                                                <h4>Оновити фото</h4>
-                                                                <label for="image_template_{{ membership.lobby.id }}">Template ID</label>
-                                                                <input type="number" id="image_template_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону">
-                                                                <label for="item_image_update_{{ membership.lobby.id }}">Фото предмета</label>
-                                                                <input type="file" id="item_image_update_{{ membership.lobby.id }}" accept="image/*">
-                                                                <button type="button" class="button ghost">Оновити</button>
-                                                            </form>
+                                                            </div>
                                                         </div>
                                                     </section>
                                                 </div>

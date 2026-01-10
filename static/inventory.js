@@ -6,6 +6,18 @@
     const lobbyPlayers = window.LOBBY_TRANSFER_PLAYERS || {};
     const fallbackInventory = window.INVENTORY_DATA || null;
     const DEBUG_INVENTORY = String(window.DEBUG_INVENTORY || '') === '1';
+    const ADMIN_TAB_STORAGE_KEY = 'dra-admin-tab';
+
+    const parseNumber = (value, fallback = 0) => {
+        const parsed = Number.parseInt(value, 10);
+        return Number.isNaN(parsed) ? fallback : parsed;
+    };
+
+    const randomInt = (maxValue) => {
+        const max = Number.parseInt(maxValue, 10);
+        if (Number.isNaN(max) || max < 0) return null;
+        return Math.floor(Math.random() * (max + 1));
+    };
 
     const containerTypeMap = {
         equip_head: ['head'],
@@ -1881,18 +1893,97 @@
 
     inventoryRoots.forEach((root) => {
         const controller = new LobbyInventory(root);
+        const lobbyId = root.dataset.lobbyId;
+
+        const setAdminTab = (tabId) => {
+            const tabButtons = root.querySelectorAll('[data-admin-tab]');
+            const tabPanels = root.querySelectorAll('[data-admin-panel]');
+            tabButtons.forEach((button) => {
+                button.classList.toggle('is-active', button.dataset.adminTab === tabId);
+            });
+            tabPanels.forEach((panel) => {
+                panel.classList.toggle('is-active', panel.dataset.adminPanel === tabId);
+            });
+            if (lobbyId) {
+                window.localStorage.setItem(`${ADMIN_TAB_STORAGE_KEY}:${lobbyId}`, tabId);
+            }
+        };
+
+        const initializeAdminTabs = () => {
+            const tabButtons = root.querySelectorAll('[data-admin-tab]');
+            if (!tabButtons.length) return;
+            const saved = lobbyId ? window.localStorage.getItem(`${ADMIN_TAB_STORAGE_KEY}:${lobbyId}`) : null;
+            const initialTab = saved || tabButtons[0].dataset.adminTab || 'create';
+            setAdminTab(initialTab);
+            tabButtons.forEach((button) => {
+                button.addEventListener('click', () => {
+                    const tabId = button.dataset.adminTab;
+                    if (tabId) setAdminTab(tabId);
+                });
+            });
+        };
+
+        const updateClothBeltVisibility = (form) => {
+            const typeSelect = form.querySelector('select[id^="item_type_"], select[data-template-type]');
+            const clothToggle = form.querySelector('input[id^="item_is_cloth_"], input[data-template-is-cloth]');
+            const clothFields = form.querySelector('[data-cloth-fields]');
+            const beltFields = form.querySelector('[data-belt-fields]');
+            const typeValue = typeSelect?.value || 'other';
+            const isCloth = clothToggle?.checked || typeValue === 'cloth' || typeValue === 'belt';
+            const isBelt = typeValue === 'belt';
+            clothFields?.classList.toggle('is-hidden', !isCloth);
+            beltFields?.classList.toggle('is-hidden', !isBelt);
+        };
+
+        const wireRandomDurability = (options) => {
+            const {
+                randomButton,
+                maxInput,
+                durabilityInput,
+            } = options;
+            const refresh = () => {
+                const maxValue = maxInput ? maxInput.value : '';
+                const hasMax = maxValue !== '' && !Number.isNaN(Number.parseInt(maxValue, 10));
+                if (randomButton) {
+                    randomButton.disabled = !hasMax;
+                }
+                if (durabilityInput) {
+                    durabilityInput.max = hasMax ? `${parseNumber(maxValue, 0)}` : '';
+                }
+            };
+            refresh();
+            maxInput?.addEventListener('input', refresh);
+            randomButton?.addEventListener('click', () => {
+                if (randomButton?.disabled) return;
+                const value = randomInt(maxInput?.value);
+                if (value === null || !durabilityInput) return;
+                durabilityInput.value = `${value}`;
+            });
+            return refresh;
+        };
+
+        initializeAdminTabs();
         root.querySelectorAll('[data-master-create]').forEach((form) => {
-            const lobbyId = root.dataset.lobbyId;
-            const issueButton = form.querySelector('button:not([data-random-durability])');
+            const issueButton = form.querySelector('[data-create-submit]');
             const randomButton = form.querySelector('[data-random-durability]');
             const durabilityInput = form.querySelector('input[id^="item_durability_current_"]');
             const randomInput = form.querySelector('input[id^="item_random_durability_"]');
-            randomButton?.addEventListener('click', () => {
-                if (randomInput) randomInput.value = '1';
-                if (durabilityInput) durabilityInput.value = '';
+            const maxDurabilityInput = form.querySelector('input[id^="item_durability_"]');
+            const typeSelect = form.querySelector('select[id^="item_type_"]');
+            const clothToggle = form.querySelector('input[id^="item_is_cloth_"]');
+            const issueSelfToggle = form.querySelector('[data-issue-self]');
+            const refreshRandom = wireRandomDurability({
+                randomButton,
+                maxInput: maxDurabilityInput,
+                durabilityInput,
             });
-            durabilityInput?.addEventListener('input', () => {
-                if (randomInput) randomInput.value = '0';
+            if (randomInput) randomInput.value = '0';
+            updateClothBeltVisibility(form);
+            typeSelect?.addEventListener('change', () => {
+                updateClothBeltVisibility(form);
+            });
+            clothToggle?.addEventListener('change', () => {
+                updateClothBeltVisibility(form);
             });
             issueButton?.addEventListener('click', async () => {
                 const name = form.querySelector('input[id^="item_name_"]')?.value?.trim();
@@ -1912,7 +2003,8 @@
                 const bagHeight = Number.parseInt(form.querySelector('input[id^="item_bag_h_"]')?.value || '0', 10);
                 const fastWidth = Number.parseInt(form.querySelector('input[id^="item_fast_w_"]')?.value || '0', 10);
                 const fastHeight = Number.parseInt(form.querySelector('input[id^="item_fast_h_"]')?.value || '0', 10);
-                const target = form.querySelector('select[id^="item_target_"]')?.value;
+                const targetSelect = form.querySelector('select[id^="item_target_"]');
+                const target = targetSelect?.value;
                 const imageInput = form.querySelector('input[type="file"]');
 
                 if (!name) {
@@ -1938,7 +2030,8 @@
                 payload.append('bag_height', Number.isNaN(bagHeight) ? 0 : bagHeight);
                 payload.append('fast_w', Number.isNaN(fastWidth) ? 0 : fastWidth);
                 payload.append('fast_h', Number.isNaN(fastHeight) ? 0 : fastHeight);
-                payload.append('issue_to', target || '');
+                const issueTo = issueSelfToggle?.checked ? root.dataset.currentUserId : (target || '');
+                payload.append('issue_to', issueTo || '');
                 if (imageInput?.files?.length) {
                     payload.append('image', imageInput.files[0]);
                 }
@@ -1950,6 +2043,10 @@
                 if (response.ok) {
                     await controller.refreshInventory(controller.selectedPlayerId);
                     form.reset();
+                    refreshRandom();
+                    updateClothBeltVisibility(form);
+                    if (randomInput) randomInput.value = '0';
+                    if (targetSelect) targetSelect.value = '';
                     return;
                 }
                 await response.json().catch(() => ({}));
@@ -1958,28 +2055,31 @@
         });
 
         root.querySelectorAll('[data-master-issue]').forEach((form) => {
-            const lobbyId = root.dataset.lobbyId;
-            const button = form.querySelector('button:not([data-random-durability])');
+            const button = form.querySelector('[data-issue-submit]');
             const randomButton = form.querySelector('[data-random-durability]');
             const durabilityInput = form.querySelector('input[id^="issue_durability_current_"]');
             const randomInput = form.querySelector('input[id^="issue_random_durability_"]');
             const templateInput = form.querySelector('[data-template-id]');
             const searchInput = form.querySelector('[data-template-search]');
             const resultsBox = form.querySelector('[data-template-results]');
+            const maxDurabilityInput = document.createElement('input');
+            maxDurabilityInput.type = 'hidden';
+            maxDurabilityInput.value = '';
+            form.appendChild(maxDurabilityInput);
             let searchTimer = null;
+            updateClothBeltVisibility(form);
             if (form.dataset.issueByIdBound) return;
             form.dataset.issueByIdBound = 'true';
             const logIssueDebug = (message, payload) => {
                 if (!DEBUG_INVENTORY) return;
                 console.debug('[IssueById]', message, payload);
             };
-            randomButton?.addEventListener('click', () => {
-                if (randomInput) randomInput.value = '1';
-                if (durabilityInput) durabilityInput.value = '';
+            const refreshRandom = wireRandomDurability({
+                randomButton,
+                maxInput: maxDurabilityInput,
+                durabilityInput,
             });
-            durabilityInput?.addEventListener('input', () => {
-                if (randomInput) randomInput.value = '0';
-            });
+            if (randomInput) randomInput.value = '0';
             const clearResults = () => {
                 if (!resultsBox) return;
                 resultsBox.innerHTML = '';
@@ -2008,6 +2108,8 @@
                     buttonEl.addEventListener('click', () => {
                         if (templateInput) templateInput.value = `${result.id}`;
                         if (searchInput) searchInput.value = result.name;
+                        maxDurabilityInput.value = result.max_str ?? '';
+                        refreshRandom();
                         clearResults();
                     });
                     resultsBox.appendChild(buttonEl);
@@ -2041,6 +2143,19 @@
                 searchTimer = window.setTimeout(() => {
                     runSearch(query);
                 }, 200);
+            });
+            templateInput?.addEventListener('change', async () => {
+                const templateId = parseNumber(templateInput.value, 0);
+                if (!templateId) return;
+                const response = await fetch(
+                    `/api/master/item_template/${templateId}?lobby_id=${encodeURIComponent(lobbyId || '')}`,
+                );
+                if (!response.ok) return;
+                const payload = await response.json().catch(() => ({}));
+                const template = payload.template;
+                if (!template) return;
+                maxDurabilityInput.value = template.max_durability ?? '';
+                refreshRandom();
             });
             document.addEventListener('click', (event) => {
                 if (!resultsBox || !searchInput) return;
@@ -2088,6 +2203,7 @@
                         random_durability: randomDurability,
                     }),
                 });
+                logIssueDebug('issue response', { ok: response.ok, status: response.status });
                 if (response.ok) {
                     await controller.refreshInventory(controller.selectedPlayerId);
                     return;
@@ -2100,8 +2216,205 @@
             form.addEventListener('submit', submitIssue);
         });
 
+        root.querySelectorAll('[data-master-settings]').forEach((form) => {
+            if (form.dataset.settingsBound) return;
+            form.dataset.settingsBound = 'true';
+            const searchInput = form.querySelector('[data-template-search]');
+            const resultsBox = form.querySelector('[data-template-results]');
+            const searchIdInput = form.querySelector('[data-template-search-id]');
+            const loadButton = form.querySelector('[data-template-load]');
+            const originalIdInput = form.querySelector('[data-template-original-id]');
+            const templateIdInput = form.querySelector('[data-template-id]');
+            const nameInput = form.querySelector('[data-template-name]');
+            const descriptionInput = form.querySelector('[data-template-description]');
+            const typeSelect = form.querySelector('[data-template-type]');
+            const qualitySelect = form.querySelector('[data-template-quality]');
+            const widthInput = form.querySelector('[data-template-width]');
+            const heightInput = form.querySelector('[data-template-height]');
+            const weightInput = form.querySelector('[data-template-weight]');
+            const maxDurabilityInput = form.querySelector('[data-template-max-durability]');
+            const maxAmountInput = form.querySelector('[data-template-max-amount]');
+            const clothToggle = form.querySelector('[data-template-is-cloth]');
+            const bagWidthInput = form.querySelector('[data-template-bag-width]');
+            const bagHeightInput = form.querySelector('[data-template-bag-height]');
+            const fastWInput = form.querySelector('[data-template-fast-w]');
+            const fastHInput = form.querySelector('[data-template-fast-h]');
+            const saveButton = form.querySelector('[data-template-save]');
+            const statusLine = form.querySelector('[data-template-status]');
+            let searchTimer = null;
+
+            const clearResults = () => {
+                if (!resultsBox) return;
+                resultsBox.innerHTML = '';
+                resultsBox.classList.remove('is-open');
+            };
+            const applyTemplate = (template) => {
+                if (!template) return;
+                if (originalIdInput) originalIdInput.value = `${template.id}`;
+                if (templateIdInput) templateIdInput.value = `${template.id}`;
+                if (nameInput) nameInput.value = template.name || '';
+                if (descriptionInput) descriptionInput.value = template.description || '';
+                if (typeSelect) typeSelect.value = template.type || 'other';
+                if (qualitySelect) qualitySelect.value = template.quality || 'common';
+                if (widthInput) widthInput.value = `${template.width || 1}`;
+                if (heightInput) heightInput.value = `${template.height || 1}`;
+                if (weightInput) weightInput.value = `${template.weight || 0}`;
+                if (maxDurabilityInput) maxDurabilityInput.value = template.max_durability ?? '';
+                if (maxAmountInput) maxAmountInput.value = `${template.max_amount || 1}`;
+                if (clothToggle) clothToggle.checked = Boolean(template.is_cloth);
+                if (bagWidthInput) bagWidthInput.value = `${template.bag_width || 0}`;
+                if (bagHeightInput) bagHeightInput.value = `${template.bag_height || 0}`;
+                if (fastWInput) fastWInput.value = `${template.fast_w || 0}`;
+                if (fastHInput) fastHInput.value = `${template.fast_h || 0}`;
+                updateClothBeltVisibility(form);
+                if (statusLine) statusLine.textContent = '';
+            };
+            const loadTemplate = async (templateId) => {
+                if (!templateId) return;
+                const response = await fetch(
+                    `/api/master/item_template/${templateId}?lobby_id=${encodeURIComponent(lobbyId || '')}`,
+                );
+                if (!response.ok) {
+                    if (statusLine) statusLine.textContent = 'Не вдалося знайти шаблон.';
+                    return;
+                }
+                const payload = await response.json().catch(() => ({}));
+                applyTemplate(payload.template);
+            };
+
+            const renderResults = (results) => {
+                if (!resultsBox) return;
+                resultsBox.innerHTML = '';
+                if (!results.length) {
+                    resultsBox.innerHTML = '<div class="issue-search__meta">Нічого не знайдено.</div>';
+                    resultsBox.classList.add('is-open');
+                    return;
+                }
+                results.forEach((result) => {
+                    const buttonEl = document.createElement('button');
+                    buttonEl.type = 'button';
+                    buttonEl.className = 'issue-search__result';
+                    buttonEl.innerHTML = `
+                        <strong>${result.name}</strong>
+                        <div class="issue-search__meta">
+                            <span>${result.type || 'other'}</span>
+                            <span>${result.quality}</span>
+                            <span>#${result.id}</span>
+                        </div>
+                    `;
+                    buttonEl.addEventListener('click', () => {
+                        if (searchInput) searchInput.value = result.name;
+                        clearResults();
+                        loadTemplate(result.id);
+                    });
+                    resultsBox.appendChild(buttonEl);
+                });
+                resultsBox.classList.add('is-open');
+            };
+
+            const runSearch = async (query) => {
+                if (!query) {
+                    clearResults();
+                    return;
+                }
+                const response = await fetch(
+                    `/api/master/item_template/search?lobby_id=${encodeURIComponent(lobbyId || '')}&q=${encodeURIComponent(query)}`,
+                );
+                if (!response.ok) {
+                    clearResults();
+                    return;
+                }
+                const payload = await response.json().catch(() => ({}));
+                const results = Array.isArray(payload.results) ? payload.results : [];
+                if (searchInput && searchInput.value.trim() !== query) {
+                    return;
+                }
+                renderResults(results);
+            };
+
+            searchInput?.addEventListener('input', () => {
+                const query = searchInput.value.trim();
+                if (searchTimer) {
+                    window.clearTimeout(searchTimer);
+                }
+                searchTimer = window.setTimeout(() => {
+                    runSearch(query);
+                }, 200);
+            });
+            loadButton?.addEventListener('click', () => {
+                const templateId = parseNumber(searchIdInput?.value || '', 0);
+                loadTemplate(templateId);
+            });
+            searchIdInput?.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                const templateId = parseNumber(searchIdInput?.value || '', 0);
+                loadTemplate(templateId);
+            });
+            document.addEventListener('click', (event) => {
+                if (!resultsBox || !searchInput) return;
+                if (!form.contains(event.target)) {
+                    clearResults();
+                }
+            });
+            typeSelect?.addEventListener('change', () => {
+                updateClothBeltVisibility(form);
+            });
+            clothToggle?.addEventListener('change', () => {
+                updateClothBeltVisibility(form);
+            });
+
+            saveButton?.addEventListener('click', async () => {
+                const templateId = parseNumber(originalIdInput?.value || '', 0);
+                const newId = parseNumber(templateIdInput?.value || '', 0);
+                if (!templateId || !newId) {
+                    if (statusLine) statusLine.textContent = 'Вкажіть ID шаблону.';
+                    return;
+                }
+                const payload = {
+                    lobby_id: lobbyId,
+                    template_id: templateId,
+                    new_id: newId,
+                    name: nameInput?.value?.trim() || '',
+                    description: descriptionInput?.value?.trim() || '',
+                    type: typeSelect?.value || 'other',
+                    quality: qualitySelect?.value || 'common',
+                    width: parseNumber(widthInput?.value || '1', 1),
+                    height: parseNumber(heightInput?.value || '1', 1),
+                    weight: parseFloat(weightInput?.value || '0') || 0,
+                    max_durability: parseNumber(maxDurabilityInput?.value || '1', 1),
+                    max_amount: parseNumber(maxAmountInput?.value || '1', 1),
+                    is_cloth: clothToggle?.checked ? '1' : '0',
+                    bag_width: parseNumber(bagWidthInput?.value || '0', 0),
+                    bag_height: parseNumber(bagHeightInput?.value || '0', 0),
+                    fast_w: parseNumber(fastWInput?.value || '0', 0),
+                    fast_h: parseNumber(fastHInput?.value || '0', 0),
+                };
+                const response = await fetch('/api/master/item_template/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const responsePayload = await response.json().catch(() => ({}));
+                if (response.ok) {
+                    if (statusLine) {
+                        statusLine.textContent = responsePayload.warning
+                            ? 'Шаблон збережено. Частину предметів не вдалося розмістити.'
+                            : 'Шаблон збережено.';
+                    }
+                    if (originalIdInput) originalIdInput.value = `${responsePayload.template_id || newId}`;
+                    await controller.refreshInventory(controller.selectedPlayerId);
+                    return;
+                }
+                if (statusLine) {
+                    statusLine.textContent = responsePayload.error === 'duplicate_id'
+                        ? 'ID вже існує. Оберіть інший.'
+                        : 'Не вдалося зберегти шаблон.';
+                }
+            });
+        });
+
         root.querySelectorAll('[data-master-image-update]').forEach((form) => {
-            const lobbyId = root.dataset.lobbyId;
             const button = form.querySelector('button');
             button?.addEventListener('click', async () => {
                 const templateId = Number.parseInt(

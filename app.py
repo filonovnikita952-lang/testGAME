@@ -9,6 +9,7 @@ import secrets
 import ast
 import math
 import shutil
+import difflib
 from typing import Optional
 
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
@@ -791,7 +792,7 @@ def normalize_stack_amount(definition: ItemDefinition, amount: int) -> int:
 def split_stack_amounts(definition: ItemDefinition, amount: int) -> list[int]:
     total = max(amount, 1)
     if not stackable_type(definition):
-        return [1]
+        return [1 for _ in range(total)]
     max_amount = normalized_max_amount(definition)
     stacks = []
     remaining = total
@@ -2022,6 +2023,138 @@ def auto_place_item(
     return None
 
 
+def preferred_container_ids(owner_id: int) -> list[str]:
+    containers: list[str] = []
+    seen: set[str] = set()
+    instances = ItemInstance.query.filter_by(owner_id=owner_id).all()
+    bag_instances = []
+    fast_instances = []
+    for instance in instances:
+        definition = instance.definition
+        if (
+            instance.container_i in EQUIPMENT_GRIDS
+            and definition.is_cloth
+            and (definition.bag_width or 0) > 0
+            and (definition.bag_height or 0) > 0
+        ):
+            bag_instances.append(instance)
+        if (
+            instance.container_i == 'equip_belt'
+            and definition.item_type
+            and definition.item_type.name == 'belt'
+            and (definition.fast_w or 0) > 0
+            and (definition.fast_h or 0) > 0
+        ):
+            fast_instances.append(instance)
+
+    for bag_instance in bag_instances:
+        container_id = f'bag:{bag_instance.id}'
+        if container_id not in seen:
+            containers.append(container_id)
+            seen.add(container_id)
+
+    for container_id in ('inv_main', 'hands'):
+        if container_id not in seen:
+            containers.append(container_id)
+            seen.add(container_id)
+
+    for container_id in list(EQUIPMENT_GRIDS.keys()) + list(SPECIAL_GRIDS.keys()):
+        if container_id not in seen:
+            containers.append(container_id)
+            seen.add(container_id)
+
+    for fast_instance in fast_instances:
+        container_id = f'fast:{fast_instance.id}'
+        if container_id not in seen:
+            containers.append(container_id)
+            seen.add(container_id)
+    return containers
+
+
+def find_preferred_placement(
+    instance: ItemInstance,
+    owner_id: int,
+    *,
+    prefer_container: Optional[str] = None,
+) -> Optional[tuple[str, int, int, int]]:
+    candidate_containers: list[str] = []
+    seen: set[str] = set()
+    if prefer_container:
+        candidate_containers.append(prefer_container)
+        seen.add(prefer_container)
+    for container_id in preferred_container_ids(owner_id):
+        if container_id in seen:
+            continue
+        candidate_containers.append(container_id)
+        seen.add(container_id)
+
+    for container_id in candidate_containers:
+        if not container_size(container_id):
+            continue
+        allowed, _reason = is_container_allowed(instance, container_id, owner_id)
+        if not allowed:
+            continue
+        target_pos = auto_place_item(instance, container_id)
+        if target_pos:
+            return container_id, target_pos[0], target_pos[1], target_pos[2]
+    return None
+
+
+def repack_instances_for_definition(definition: ItemDefinition) -> list[int]:
+    instances = (
+        ItemInstance.query
+        .filter_by(template_id=definition.id)
+        .order_by(ItemInstance.owner_id.asc(), ItemInstance.id.asc())
+        .all()
+    )
+    if not instances:
+        return []
+    invalid_instances: list[ItemInstance] = []
+    for instance in instances:
+        container_id = instance.container_i or 'inv_main'
+        rotation = normalize_rotation_value(instance.rotated)
+        if not container_size(container_id):
+            invalid_instances.append(instance)
+            continue
+        allowed, _reason = is_container_allowed(instance, container_id, instance.owner_id)
+        if not allowed:
+            invalid_instances.append(instance)
+            continue
+        if instance.pos_x is None or instance.pos_y is None:
+            invalid_instances.append(instance)
+            continue
+        valid, _reason = can_place_item(instance, container_id, instance.pos_x, instance.pos_y, rotation)
+        if not valid:
+            invalid_instances.append(instance)
+            continue
+
+    for instance in invalid_instances:
+        instance.pos_x = None
+        instance.pos_y = None
+    db.session.flush()
+
+    unplaced_ids: list[int] = []
+    for instance in invalid_instances:
+        placement = find_preferred_placement(
+            instance,
+            instance.owner_id,
+            prefer_container=instance.container_i,
+        )
+        if placement:
+            container_id, pos_x, pos_y, rotation = placement
+            instance.container_i = container_id
+            instance.pos_x = pos_x
+            instance.pos_y = pos_y
+            instance.rotated = rotation
+        else:
+            instance.container_i = 'inv_main'
+            instance.pos_x = None
+            instance.pos_y = None
+            unplaced_ids.append(instance.id)
+        instance.version += 1
+    return unplaced_ids
+
+
 def log_weight_breakdown(instances: list[ItemInstance], reason: str) -> None:
     if not inventory_logger.handlers:
         return
@@ -2048,10 +2181,10 @@ def resolve_durability_value(
         return None
     max_str = max(definition.max_str or 1, 1)
     if randomize:
-        return random.randint(1, max_str)
+        return random.randint(0, max_str)
     if requested_value is None:
         return max_str
-    return min(max(requested_value, 1), max_str)
+    return min(max(requested_value, 0), max_str)
 
 
 @app.route('/api/inventory/move', methods=['POST'])
@@ -2883,7 +3016,6 @@ def create_item_template():
     db.session.flush()
 
     issued_instance_id = None
-    container_id = 'inv_main'
     if issue_to:
         recipient_membership = LobbyMember.query.filter_by(
             lobby_id=lobby_id,
@@ -2893,10 +3025,6 @@ def create_item_template():
             log_debug('Item template issue failed: target user %s not in lobby %s', issue_to, lobby_id)
             db.session.rollback()
             return jsonify({'error': 'invalid_recipient'}), 400
-        if not container_size(container_id):
-            log_debug('Item template issue failed: invalid container %s', container_id)
-            db.session.rollback()
-            return jsonify({'error': 'invalid_container'}), 400
         stack_amounts = split_stack_amounts(definition, issue_amount)
         created_instances = []
         for stack_amount in stack_amounts:
@@ -2904,8 +3032,8 @@ def create_item_template():
                 owner_id=issue_to,
                 definition=definition,
             )
-            target_pos = auto_place_item(temp_instance, container_id)
-            if not target_pos:
+            placement = find_preferred_placement(temp_instance, issue_to)
+            if not placement:
                 log_debug('Item template issue failed: no space for user %s', issue_to)
                 db.session.rollback()
                 return jsonify({'error': 'no_space'}), 400
@@ -2914,13 +3042,14 @@ def create_item_template():
                 durability_current_value,
                 randomize=random_durability,
             )
+            container_id, pos_x, pos_y, rotation = placement
             new_instance = ItemInstance(
                 owner_id=issue_to,
                 template_id=definition.id,
                 container_i=container_id,
-                pos_x=target_pos[0],
-                pos_y=target_pos[1],
-                rotated=target_pos[2],
+                pos_x=pos_x,
+                pos_y=pos_y,
+                rotated=rotation,
                 str_current=resolved_durability,
                 amount=stack_amount,
             )
@@ -2949,12 +3078,20 @@ def search_item_templates():
     query = (request.args.get('q') or '').strip()
     if not query:
         return jsonify({'ok': True, 'results': []})
-    results = (
-        ItemDefinition.query
-        .filter(ItemDefinition.name.ilike(f'%{query}%'))
-        .order_by(ItemDefinition.name.asc())
-        .all()
-    )
+    query_lower = query.lower()
+    definitions = ItemDefinition.query.all()
+    scored = []
+    for definition in definitions:
+        name = definition.name or ''
+        name_lower = name.lower()
+        if query_lower not in name_lower:
+            continue
+        score = difflib.SequenceMatcher(None, query_lower, name_lower).ratio()
+        if name_lower.startswith(query_lower):
+            score += 0.3
+        scored.append((score, name_lower, definition))
+    scored.sort(key=lambda entry: (-entry[0], entry[1]))
+    results = [definition for _score, _name, definition in scored[:5]]
     payload = []
     for definition in results:
         payload.append({
@@ -2962,8 +3099,145 @@ def search_item_templates():
             'name': definition.name,
             'type': definition.item_type.name if definition.item_type else '',
             'quality': definition.quality,
+            'max_str': definition.max_str,
         })
     return jsonify({'ok': True, 'results': payload})
+
+
+@app.route('/api/master/item_template/<int:template_id>')
+def get_item_template(template_id: int):
+    user = require_user()
+    lobby_id = parse_int(request.args.get('lobby_id'), 0)
+    if not is_master(user, lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    definition = ItemDefinition.query.get(template_id)
+    if not definition:
+        return jsonify({'error': 'not_found'}), 404
+    return jsonify({
+        'ok': True,
+        'template': {
+            'id': definition.id,
+            'name': definition.name,
+            'description': definition.description,
+            'type': definition.item_type.name if definition.item_type else '',
+            'quality': definition.quality,
+            'width': definition.w,
+            'height': definition.h,
+            'weight': definition.weight,
+            'max_durability': definition.max_str,
+            'max_amount': normalized_max_amount(definition),
+            'is_cloth': bool(definition.is_cloth),
+            'bag_width': definition.bag_width,
+            'bag_height': definition.bag_height,
+            'fast_w': definition.fast_w,
+            'fast_h': definition.fast_h,
+        },
+    })
+
+
+@app.route('/api/master/item_template/update', methods=['POST'])
+def update_item_template():
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    lobby_id = parse_int(data.get('lobby_id'), 0)
+    if not is_master(user, lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    template_id = parse_int(data.get('template_id'), 0)
+    if not template_id:
+        return jsonify({'error': 'invalid_template'}), 400
+    definition = ItemDefinition.query.get(template_id)
+    if not definition:
+        return jsonify({'error': 'not_found'}), 404
+    new_id = parse_int(data.get('new_id'), template_id)
+    name = (data.get('name') or '').strip()
+    description = (data.get('description') or '').strip() or 'Опис не додано.'
+    type_name = (data.get('type') or '').strip().lower() or 'other'
+    quality = (data.get('quality') or 'common').strip().lower()
+    width = parse_int(data.get('width'), definition.w or 1, minimum=1)
+    height = parse_int(data.get('height'), definition.h or 1, minimum=1)
+    weight = float(data.get('weight') or 0)
+    max_durability = parse_int(data.get('max_durability'), definition.max_str or 1, minimum=1)
+    max_amount = parse_int(data.get('max_amount'), normalized_max_amount(definition), minimum=1)
+    is_cloth = str(data.get('is_cloth') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
+    bag_width = parse_int(data.get('bag_width'), 0, minimum=0)
+    bag_height = parse_int(data.get('bag_height'), 0, minimum=0)
+    fast_w = parse_int(data.get('fast_w'), 0, minimum=0)
+    fast_h = parse_int(data.get('fast_h'), 0, minimum=0)
+
+    if not name:
+        return jsonify({'error': 'missing_name'}), 400
+    if quality not in QUALITY_LEVELS:
+        quality = 'common'
+    if type_name == 'cloth':
+        is_cloth = True
+    if type_name == 'belt':
+        is_cloth = True
+
+    if new_id != template_id and ItemDefinition.query.get(new_id):
+        return jsonify({'error': 'duplicate_id'}), 400
+
+    item_type = get_or_create_item_type(type_name)
+    if max_amount > 1:
+        item_type.stackable = True
+    if item_type.stackable and item_type.has_durability:
+        item_type.has_durability = False
+    if item_type.stackable:
+        if max_amount < 1:
+            log_debug('Item template update failed: invalid max amount %s for type %s', max_amount, type_name)
+            return jsonify({'error': 'invalid_max_amount'}), 400
+        item_type.max_amount = max(item_type.max_amount or 1, max_amount)
+        max_str = None
+        max_amount = max_amount
+    else:
+        if type_name in DURABLE_ITEM_TYPES:
+            item_type.has_durability = True
+        if item_type.has_durability:
+            max_str = max(max_durability, 1)
+        else:
+            max_str = None
+        max_amount = 1
+
+    definition.name = name
+    definition.description = description
+    definition.w = width
+    definition.h = height
+    definition.weight = weight
+    definition.max_str = max_str
+    definition.max_stack = max_amount
+    definition.quality = quality
+    definition.is_cloth = is_cloth
+    definition.bag_width = bag_width if is_cloth and bag_width > 0 else None
+    definition.bag_height = bag_height if is_cloth and bag_height > 0 else None
+    definition.fast_w = fast_w if type_name == 'belt' and fast_w > 0 else None
+    definition.fast_h = fast_h if type_name == 'belt' and fast_h > 0 else None
+    definition.item_type = item_type
+
+    old_id = template_id
+    if new_id != template_id:
+        definition.id = new_id
+        ItemInstance.query.filter_by(template_id=old_id).update(
+            {'template_id': new_id},
+            synchronize_session=False,
+        )
+
+    unplaced_ids = repack_instances_for_definition(definition)
+    try:
+        db.session.commit()
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        if inventory_logger.handlers:
+            inventory_logger.error('Item template update failed: %s', exc)
+        return jsonify({'error': 'db_error'}), 500
+
+    payload = {
+        'ok': True,
+        'status': 'ok',
+        'template_id': definition.id,
+        'unplaced': unplaced_ids,
+    }
+    if unplaced_ids:
+        payload['warning'] = 'unplaced_items'
+    return jsonify(payload)
 
 
 @app.route('/api/master/issue_by_id', methods=['POST'])
@@ -2974,7 +3248,7 @@ def issue_item_by_id():
     if not is_master(user, lobby_id):
         return jsonify({'error': 'forbidden'}), 403
     template_id = parse_int(data.get('template_id'), 0)
-    target_user_id = parse_int(data.get('target_user_id'), 0)
+    target_user_id = parse_int(data.get('target_user_id') or data.get('to_user_id'), 0)
     amount = parse_int(data.get('amount'), 1, minimum=1)
     inventory_debug = os.environ.get(INVENTORY_DEBUG_ENV, '').strip() in {'1', 'true', 'yes'}
     if inventory_debug:
@@ -3028,13 +3302,6 @@ def issue_item_by_id():
         stackable,
         max_amount,
     )
-    if not stackable and amount > 1:
-        log_debug('Issue by ID failed: non-stackable amount %s for template %s', amount, definition.id)
-        return jsonify({'error': 'non_stackable_amount'}), 400
-    container_id = 'inv_main'
-    if not container_size(container_id):
-        log_debug('Issue by ID failed: invalid container %s', container_id)
-        return jsonify({'error': 'invalid_container'}), 400
     stack_amounts = split_stack_amounts(definition, amount)
     log_debug('Issue by ID stack splits: %s', stack_amounts)
     created_instances = []
@@ -3045,8 +3312,8 @@ def issue_item_by_id():
                     owner_id=target_user_id,
                     definition=definition,
                 )
-                target_pos = auto_place_item(temp_instance, container_id)
-                if not target_pos:
+                placement = find_preferred_placement(temp_instance, target_user_id)
+                if not placement:
                     log_debug(
                         'Issue by ID failed: no space for user %s template=%s stack=%s/%s amount=%s cloth=%s type=%s',
                         target_user_id,
@@ -3063,13 +3330,14 @@ def issue_item_by_id():
                     durability_current_value,
                     randomize=random_durability,
                 )
+                container_id, pos_x, pos_y, rotation = placement
                 new_instance = ItemInstance(
                     owner_id=target_user_id,
                     template_id=definition.id,
                     container_i=container_id,
-                    pos_x=target_pos[0],
-                    pos_y=target_pos[1],
-                    rotated=target_pos[2],
+                    pos_x=pos_x,
+                    pos_y=pos_y,
+                    rotated=rotation,
                     str_current=resolved_durability,
                     amount=stack_amount,
                 )
@@ -3098,7 +3366,15 @@ def issue_item_by_id():
             target_user_id,
             [instance.amount for instance in created_instances],
         )
-    return jsonify({'status': 'ok', 'instance_id': issued_id})
+    return jsonify({
+        'ok': True,
+        'status': 'ok',
+        'instance_id': issued_id,
+        'created': [
+            {'id': instance.id, 'amount': instance.amount, 'container_id': instance.container_i}
+            for instance in created_instances
+        ],
+    })
 
 
 @app.route('/api/master/item_template/<int:template_id>/image', methods=['POST'])

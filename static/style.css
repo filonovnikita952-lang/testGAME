@@ -253,6 +253,13 @@ a {
     color: var(--text);
 }
 
+.button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
 .button.danger {
     background: var(--danger);
     color: #1c1c1c;
@@ -486,6 +493,25 @@ a {
     display: grid;
     gap: 16px;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.admin-tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.admin-tab-panel {
+    display: none;
+}
+
+.admin-tab-panel.is-active {
+    display: block;
+}
+
+.admin-form-section.is-hidden {
+    display: none;
 }
 
 .issue-search {
