@@ -190,6 +190,8 @@
             this.isRunning = false;
             this.currentCheckId = null;
             this.state = 'idle';
+            this.lastCheckSignature = null;
+            this.isBound = false;
             this.successes = 0;
             this.failures = 0;
             this.speed = 0;
@@ -213,10 +215,12 @@
         }
 
         bind() {
+            if (this.isBound) return;
+            this.isBound = true;
             this.acceptButton?.addEventListener('click', () => this.accept());
             this.closeButton?.addEventListener('click', () => this.failAndClose(false));
             this.activePanel?.addEventListener('click', (event) => {
-                if (this.state !== 'active') return;
+                if (this.state !== 'running') return;
                 if (event.target?.closest('button, input, textarea, select, a')) return;
                 this.handleAttempt();
             });
@@ -225,11 +229,14 @@
         }
 
         startPolling() {
+            if (this.pollTimer) return;
             this.pollTimer = window.setInterval(() => this.refresh(), this.pollInterval);
+            this.debugLog('polling started', { interval: this.pollInterval });
         }
 
         async refresh() {
             if (!this.lobbyId) return;
+            this.debugLog('poll', { lobbyId: this.lobbyId });
             try {
                 const response = await fetch(`/api/lobby/${this.lobbyId}/skill-check/status`);
                 if (!response.ok) return;
@@ -242,14 +249,24 @@
         }
 
         handleStatus(check) {
+            const signature = check ? `${check.id}:${check.status}:${check.target_user_id}` : 'none';
+            if (signature === this.lastCheckSignature) {
+                return;
+            }
+            this.lastCheckSignature = signature;
+            this.debugLog('status update', { signature, state: this.state });
             if (!check || check.target_user_id !== window.CURRENT_USER_ID) {
                 if (this.state !== 'idle') {
-                    this.closeOverlay();
+                    this.closeOverlay('no-check');
                 }
                 return;
             }
             if (check.status === 'pending') {
-                if (this.state !== 'pending' || this.currentCheckId !== check.id) {
+                if (this.state === 'running') {
+                    this.debugLog('ignoring pending while running', { checkId: check.id });
+                    return;
+                }
+                if (this.state !== 'pending_accept' || this.currentCheckId !== check.id) {
                     this.showPending(check);
                 }
                 return;
@@ -260,25 +277,27 @@
                     this.handleReloadFailure();
                     return;
                 }
-                if (this.state !== 'active' || this.currentCheckId !== check.id) {
+                if (this.state !== 'running' || this.currentCheckId !== check.id) {
                     this.startGame(check);
                 }
                 return;
             }
             if (this.state !== 'idle') {
-                this.closeOverlay();
+                this.closeOverlay('status-complete');
             }
         }
 
         openOverlay() {
+            if (this.overlay?.classList.contains('is-open')) return;
             this.overlay?.classList.add('is-open');
             this.overlay?.setAttribute('aria-hidden', 'false');
             document.body.classList.add('skill-check-lock');
             this.debugLog('overlay open', { state: this.state });
         }
 
-        closeOverlay() {
+        closeOverlay(reason = 'close') {
             this.stopGameLoop();
+            this.debugLog('overlay close', { state: this.state, reason });
             this.overlay?.classList.remove('is-open');
             this.overlay?.setAttribute('aria-hidden', 'true');
             document.body.classList.remove('skill-check-lock');
@@ -286,6 +305,7 @@
             this.currentCheckId = null;
             this.resultSent = false;
             this.currentDifficulty = null;
+            this.lastCheckSignature = null;
         }
 
         updateDifficultyLabels(value) {
@@ -295,7 +315,7 @@
         }
 
         showPending(check) {
-            this.state = 'pending';
+            this.setState('pending_accept', 'pending');
             this.currentCheckId = check.id;
             this.currentDifficulty = check.difficulty;
             this.openOverlay();
@@ -308,6 +328,7 @@
 
         async accept() {
             if (!this.lobbyId) return;
+            this.debugLog('accept click', { state: this.state, checkId: this.currentCheckId });
             try {
                 const response = await fetch(`/api/lobby/${this.lobbyId}/skill-check/accept`, {
                     method: 'POST',
@@ -325,7 +346,7 @@
         }
 
         startGame(check) {
-            this.state = 'active';
+            this.setState('running', 'start');
             this.currentCheckId = check.id;
             this.currentDifficulty = check.difficulty;
             this.openOverlay();
@@ -438,7 +459,7 @@
             if (event.code === 'Space') {
                 event.preventDefault();
                 if (event.repeat) return;
-                if (this.state !== 'active') return;
+                if (this.state !== 'running') return;
                 this.handleAttempt();
             }
         }
@@ -474,7 +495,7 @@
             this.resultSent = true;
             this.stopGameLoop();
             await this.sendResult(success);
-            this.closeOverlay();
+            this.closeOverlay(success ? 'success' : 'failure');
         }
 
         async handleReloadFailure() {
@@ -482,7 +503,7 @@
             this.resultSent = true;
             this.debugLog('reload failure', { state: this.state });
             await this.sendResult(false);
-            this.closeOverlay();
+            this.closeOverlay('reload-failure');
         }
 
         async sendResult(success) {
@@ -510,11 +531,11 @@
             if (this.resultSent) return;
             this.resultSent = true;
             await this.sendResult(success);
-            this.closeOverlay();
+            this.closeOverlay(success ? 'success' : 'failure');
         }
 
         handleUnload() {
-            if (this.state !== 'active') return;
+            if (this.state !== 'running') return;
             const payload = JSON.stringify({
                 success: false,
                 successes: this.successes,
@@ -543,12 +564,18 @@
             const remaining = remainingOverride ?? this.getRemainingSeconds();
             this.debugLog('state', {
                 context,
-                accepted: this.state === 'active',
+                accepted: this.state === 'running',
                 running: this.isRunning,
                 successes: this.successes,
                 failures: this.failures,
                 timeLeft: remaining,
             });
+        }
+
+        setState(nextState, context) {
+            if (this.state === nextState) return;
+            this.state = nextState;
+            this.debugLog('state change', { context, state: this.state });
         }
 
         debugLog(message, payload = {}) {
