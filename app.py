@@ -1039,6 +1039,42 @@ def build_inventory_payload(
     membership = get_membership(user, lobby_id)
     viewer = viewer or user
     instances = ItemInstance.query.filter_by(owner_id=user.id).all()
+    dirty_instances = False
+    for instance in instances:
+        container_id = instance.container_i or 'inv_main'
+        pos_x = instance.pos_x
+        pos_y = instance.pos_y
+        rotation = normalize_rotation_value(instance.rotated)
+        target_container = container_id if container_size(container_id) else 'inv_main'
+        needs_reposition = False
+        if pos_x is None or pos_y is None:
+            needs_reposition = True
+        elif pos_x < 1 or pos_y < 1:
+            needs_reposition = True
+        elif not container_size(container_id):
+            needs_reposition = True
+        else:
+            valid, _reason = can_place_item(instance, container_id, pos_x, pos_y, rotation)
+            if not valid:
+                needs_reposition = True
+        if needs_reposition:
+            auto_pos = auto_place_item(instance, target_container, prefer_rotation=rotation)
+            if not auto_pos and target_container != 'inv_main':
+                auto_pos = auto_place_item(instance, 'inv_main', prefer_rotation=rotation)
+                target_container = 'inv_main'
+            if auto_pos:
+                instance.container_i = target_container
+                instance.pos_x, instance.pos_y, instance.rotated = auto_pos
+                instance.version += 1
+                dirty_instances = True
+            elif inventory_logger.handlers:
+                inventory_logger.error(
+                    'No space to auto-place item %s in %s',
+                    instance.id,
+                    target_container,
+                )
+    if dirty_instances:
+        db.session.commit()
     containers = [
         {
             'id': 'inv_main',
@@ -1116,7 +1152,10 @@ def build_inventory_payload(
     items_payload = []
     for instance in instances:
         items_payload.append(build_instance_payload(instance, viewer, lobby_id))
-    current_weight = compute_inventory_weight(instances)
+    current_weight = 0.0
+    for instance in instances:
+        definition = instance.definition
+        current_weight += (definition.weight or 0) * max(instance.amount or 0, 0)
     permissions = {
         'can_edit': can_edit_inventory(viewer, user.id, lobby_id),
         'is_master': is_master(viewer, lobby_id),
@@ -1124,13 +1163,13 @@ def build_inventory_payload(
     stats = ensure_character_stats(user.id)
     strength_modifier = (stats.strength - 10) // 2
     capacity = max(5, 5 + 5 * strength_modifier)
-    log_debug(
-        'Inventory payload weight user=%s instances=%s current=%.2f capacity=%s',
-        user.id,
-        len(instances),
-        current_weight,
-        capacity,
-    )
+    if os.environ.get(INVENTORY_DEBUG_ENV, '').strip() in {'1', 'true', 'yes'}:
+        inventory_logger.debug(
+            'Inventory payload user=%s instances=%s current=%.2f',
+            user.id,
+            len(instances),
+            current_weight,
+        )
     return {
         'user': {
             'id': user.id,

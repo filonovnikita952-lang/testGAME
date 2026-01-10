@@ -1356,6 +1356,7 @@ textarea {
 
 .lobby-tabs input[id^='lobby-tab-summary']:checked ~ .lobby-tabs__labels label[for^='lobby-tab-summary'],
 .lobby-tabs input[id^='lobby-tab-health']:checked ~ .lobby-tabs__labels label[for^='lobby-tab-health'],
+.lobby-tabs input[id^='lobby-tab-attributes']:checked ~ .lobby-tabs__labels label[for^='lobby-tab-attributes'],
 .lobby-tabs input[id^='lobby-tab-admin']:checked ~ .lobby-tabs__labels label[for^='lobby-tab-admin'] {
     background: rgba(245, 184, 107, 0.2);
     color: var(--text);
@@ -1364,6 +1365,7 @@ textarea {
 
 .lobby-tabs input[id^='lobby-tab-summary']:checked ~ .lobby-tabs__panels .lobby-tab__panel--summary,
 .lobby-tabs input[id^='lobby-tab-health']:checked ~ .lobby-tabs__panels .lobby-tab__panel--health,
+.lobby-tabs input[id^='lobby-tab-attributes']:checked ~ .lobby-tabs__panels .lobby-tab__panel--attributes,
 .lobby-tabs input[id^='lobby-tab-admin']:checked ~ .lobby-tabs__panels .lobby-tab__panel--admin {
     display: flex;
 }

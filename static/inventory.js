@@ -91,6 +91,7 @@
             this.attributeFormulaInput = this.root.querySelector('[data-attribute-formula-input]');
             this.attributeFormulaSave = this.root.querySelector('[data-attribute-formula-save]');
             this.attributeFormulaWrap = this.root.querySelector('[data-attribute-formula]');
+            this.attributesTabInput = this.root.querySelector('input[id^="lobby-tab-attributes"]');
             this.rosterList = this.lobbyId
                 ? document.querySelector(`.lobby-roster__list[data-lobby-id="${this.lobbyId}"]`)
                 : null;
@@ -201,6 +202,13 @@
                 this.attributeFormulaSave.addEventListener('click', () => {
                     if (!this.canEditAttributes()) return;
                     this.updateAttributeFormula();
+                });
+            }
+
+            if (this.attributesTabInput) {
+                this.attributesTabInput.addEventListener('change', () => {
+                    if (!this.attributesTabInput.checked) return;
+                    this.refreshInventory(this.selectedPlayerId);
                 });
             }
 
