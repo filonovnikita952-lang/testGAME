@@ -1890,14 +1890,15 @@ def split_inventory_item():
     version = parse_int(data.get('version'), 0)
     amount = parse_int(data.get('amount'), 0)
     split_half = str(data.get('split_half') or '').lower() in {'1', 'true', 'yes'}
-    inventory_logger.info(
-        'Split request user=%s item_id=%s version=%s split_half=%s amount=%s',
-        user.id,
-        item_id,
-        version,
-        split_half,
-        amount,
-    )
+    if inventory_logger.handlers:
+        inventory_logger.info(
+            'Split request user=%s item_id=%s version=%s split_half=%s amount=%s',
+            user.id,
+            item_id,
+            version,
+            split_half,
+            amount,
+        )
 
     instance = ItemInstance.query.get(item_id)
     if not instance:
@@ -1921,65 +1922,76 @@ def split_inventory_item():
     target_pos = None
     new_instance = None
     try:
-        with db.session.begin():
-            db.session.refresh(instance)
-            if instance.version != version:
-                raise SplitError('conflict', 409)
-            current_amount = instance.amount
-            split_amount = current_amount // 2 if split_half else amount
-            if split_amount <= 0 or split_amount >= current_amount:
-                raise SplitError('invalid_amount')
-            max_amount = normalized_max_amount(instance.definition)
-            if split_amount > max_amount or (current_amount - split_amount) > max_amount:
-                raise SplitError('max_stack_exceeded')
-            temp_instance = PlacementPreview(
-                owner_id=instance.owner_id,
-                definition=instance.definition,
-                id=0,
+        db.session.refresh(instance)
+        if instance.version != version:
+            raise SplitError('conflict', 409)
+        current_amount = instance.amount
+        split_amount = current_amount // 2 if split_half else amount
+        if inventory_logger.handlers:
+            inventory_logger.info(
+                'Split decision item_id=%s current_amount=%s split_amount=%s',
+                instance.id,
+                current_amount,
+                split_amount,
             )
-            target_pos = find_first_fit(
-                temp_instance,
-                instance.container_i,
-                normalize_rotation_value(instance.rotated),
-            )
-            if not target_pos:
-                raise SplitError('no_space')
+        if split_amount <= 0 or split_amount >= current_amount:
+            raise SplitError('invalid_amount')
+        max_amount = normalized_max_amount(instance.definition)
+        if split_amount > max_amount or (current_amount - split_amount) > max_amount:
+            raise SplitError('max_stack_exceeded')
+        temp_instance = PlacementPreview(
+            owner_id=instance.owner_id,
+            definition=instance.definition,
+            id=0,
+        )
+        target_pos = find_first_fit(
+            temp_instance,
+            instance.container_i,
+            normalize_rotation_value(instance.rotated),
+        )
+        if not target_pos:
+            raise SplitError('no_space')
 
-            instance.amount = current_amount - split_amount
-            instance.version += 1
-            new_instance = ItemInstance(
-                owner_id=instance.owner_id,
-                template_id=instance.template_id,
-                container_i=instance.container_i,
-                pos_x=target_pos[0],
-                pos_y=target_pos[1],
-                rotated=normalize_rotation_value(instance.rotated),
-                str_current=instance.str_current,
-                amount=split_amount,
-                custom_name=instance.custom_name,
-                custom_description=instance.custom_description,
-                version=1,
-            )
-            db.session.add(new_instance)
-            db.session.flush()
+        instance.amount = current_amount - split_amount
+        instance.version += 1
+        new_instance = ItemInstance(
+            owner_id=instance.owner_id,
+            template_id=instance.template_id,
+            container_i=instance.container_i,
+            pos_x=target_pos[0],
+            pos_y=target_pos[1],
+            rotated=normalize_rotation_value(instance.rotated),
+            str_current=instance.str_current,
+            amount=split_amount,
+            custom_name=instance.custom_name,
+            custom_description=instance.custom_description,
+            version=1,
+        )
+        db.session.add(new_instance)
+        db.session.flush()
+        db.session.commit()
     except SplitError as exc:
         db.session.rollback()
+        if inventory_logger.handlers:
+            inventory_logger.info('Split rejected item_id=%s reason=%s', item_id, exc.reason)
         return jsonify({'ok': False, 'error': exc.reason}), exc.status
     except SQLAlchemyError as exc:
         db.session.rollback()
-        inventory_logger.error('Split failed due to database error: %s', exc)
+        if inventory_logger.handlers:
+            inventory_logger.error('Split failed due to database error: %s', exc)
         return jsonify({'ok': False, 'error': 'server_error'}), 500
 
-    inventory_logger.info(
-        'Split applied item_id=%s before_amount=%s split_amount=%s after_amount=%s new_instance_id=%s container_id=%s pos=%s',
-        instance.id,
-        before_amount,
-        split_amount,
-        instance.amount,
-        new_instance.id,
-        instance.container_i,
-        target_pos,
-    )
+    if inventory_logger.handlers:
+        inventory_logger.info(
+            'Split applied item_id=%s before_amount=%s split_amount=%s after_amount=%s new_instance_id=%s container_id=%s pos=%s',
+            instance.id,
+            before_amount,
+            split_amount,
+            instance.amount,
+            new_instance.id,
+            instance.container_i,
+            target_pos,
+        )
     return jsonify({
         'ok': True,
         'instances': [
@@ -1987,7 +1999,6 @@ def split_inventory_item():
             build_instance_payload(new_instance, user, lobby_id),
         ],
         'new_instance_id': new_instance.id,
-        'weight': build_weight_payload(instance.owner_id, log_context='split'),
     })
 
 
