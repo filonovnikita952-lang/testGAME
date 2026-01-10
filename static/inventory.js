@@ -1496,11 +1496,19 @@
                 random_durability: randomInput?.value || '',
             };
             console.debug('GiveID fetch started', payload);
-            const response = await fetch('/api/master/issue_by_id', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
+            console.log('GiveID fetch starting', payload);
+            let response;
+            try {
+                response = await fetch('/api/master/issue_by_id', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                console.log('GiveID fetch completed', { status: response.status });
+            } catch (error) {
+                console.log('GiveID fetch failed', error);
+                throw error;
+            }
             const responsePayload = await response.clone().json().catch(() => null);
             console.debug('GiveID response', {
                 status: response.status,
@@ -2198,18 +2206,26 @@
                 }
                 controller.trackAction(`issue-by-id:${templateId}:${targetId}`);
                 logIssueDebug('issue fetch', { templateId, targetId, amount });
-                const response = await fetch('/api/master/issue_by_id', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        lobby_id: lobbyId,
-                        template_id: templateId,
-                        target_user_id: targetId,
-                        amount,
-                        durability_current: durabilityCurrent,
-                        random_durability: randomDurability,
-                    }),
-                });
+                console.log('GiveID fetch starting', { templateId, targetId, amount });
+                let response;
+                try {
+                    response = await fetch('/api/master/issue_by_id', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            lobby_id: lobbyId,
+                            template_id: templateId,
+                            target_user_id: targetId,
+                            amount,
+                            durability_current: durabilityCurrent,
+                            random_durability: randomDurability,
+                        }),
+                    });
+                    console.log('GiveID fetch completed', { status: response.status });
+                } catch (error) {
+                    console.log('GiveID fetch failed', error);
+                    throw error;
+                }
                 logIssueDebug('issue response', { ok: response.ok, status: response.status });
                 if (response.ok) {
                     await controller.refreshInventory(controller.selectedPlayerId);
