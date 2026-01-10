@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import logging
 import os
@@ -88,6 +88,23 @@ CHARACTER_CLASSES = {
     'psychic',
     '???',
 }
+SKILL_CHECK_TIME_LIMIT = 30
+
+
+@dataclass
+class ActiveSkillCheck:
+    id: str
+    lobby_id: int
+    target_user_id: int
+    difficulty: int
+    status: str = 'pending'
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    started_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    result: Optional[str] = None
+
+
+ACTIVE_SKILL_CHECKS: dict[int, ActiveSkillCheck] = {}
 EQUIPMENT_GRIDS = {
     'equip_head': (3, 2),
     'equip_shirt': (3, 2),
@@ -680,6 +697,48 @@ def create_chat_message(lobby_id: int, user_id: int, message: str, *, is_system:
     )
     db.session.add(chat_message)
     return chat_message
+
+
+def serialize_skill_check(check: ActiveSkillCheck) -> dict:
+    return {
+        'id': check.id,
+        'lobby_id': check.lobby_id,
+        'target_user_id': check.target_user_id,
+        'difficulty': check.difficulty,
+        'status': check.status,
+        'created_at': check.created_at.isoformat(),
+        'started_at': check.started_at.isoformat() if check.started_at else None,
+        'expires_at': check.expires_at.isoformat() if check.expires_at else None,
+        'result': check.result,
+    }
+
+
+def complete_skill_check(check: ActiveSkillCheck, *, success: bool) -> None:
+    if check.status == 'completed':
+        return
+    check.status = 'completed'
+    check.result = 'success' if success else 'failure'
+    target = User.query.get(check.target_user_id)
+    if target:
+        outcome = 'successfully passed' if success else 'failed'
+        create_chat_message(
+            check.lobby_id,
+            target.id,
+            f'{target.nickname} {outcome} the skill check.',
+            is_system=True,
+        )
+        db.session.commit()
+    ACTIVE_SKILL_CHECKS.pop(check.lobby_id, None)
+
+
+def is_lobby_master(user: User, lobby_id: int) -> bool:
+    lobby = Lobby.query.get(lobby_id)
+    if not lobby:
+        return False
+    if lobby.admin_id == user.id:
+        return True
+    membership = LobbyMember.query.filter_by(lobby_id=lobby_id, user_id=user.id).first()
+    return bool(membership and membership.role == 'master')
 
 
 def item_display_name(instance: ItemInstance) -> str:
@@ -1674,6 +1733,92 @@ def lobby_chat_api(lobby_id: int):
         'messages': [serialize_chat_message(message) for message in messages],
         'latest_id': latest_id,
     })
+
+
+@app.route('/api/lobby/<int:lobby_id>/skill-check/start', methods=['POST'])
+def start_skill_check(lobby_id: int):
+    user = require_user()
+    if not is_lobby_master(user, lobby_id):
+        return jsonify({'error': 'forbidden'}), 403
+    lobby = Lobby.query.get(lobby_id)
+    if not lobby:
+        return jsonify({'error': 'not_found'}), 404
+    data = request.get_json(silent=True) or {}
+    target_user_id = parse_int(str(data.get('target_user_id') or ''), 0)
+    difficulty = parse_int(str(data.get('difficulty') or ''), 0)
+    if difficulty < 5 or difficulty > 30:
+        return jsonify({'error': 'invalid_difficulty'}), 400
+    target_member = LobbyMember.query.filter_by(lobby_id=lobby_id, user_id=target_user_id).first()
+    if not target_member:
+        return jsonify({'error': 'invalid_target'}), 400
+    existing = ACTIVE_SKILL_CHECKS.get(lobby_id)
+    if existing and existing.status != 'completed':
+        return jsonify({'error': 'already_active'}), 409
+    check_id = secrets.token_hex(8)
+    check = ActiveSkillCheck(
+        id=check_id,
+        lobby_id=lobby_id,
+        target_user_id=target_user_id,
+        difficulty=difficulty,
+    )
+    ACTIVE_SKILL_CHECKS[lobby_id] = check
+    return jsonify({'status': 'ok', 'check': serialize_skill_check(check)})
+
+
+@app.route('/api/lobby/<int:lobby_id>/skill-check/status')
+def skill_check_status(lobby_id: int):
+    user = require_user()
+    membership = LobbyMember.query.filter_by(lobby_id=lobby_id, user_id=user.id).first()
+    if not membership:
+        return jsonify({'error': 'forbidden'}), 403
+    check = ACTIVE_SKILL_CHECKS.get(lobby_id)
+    if not check:
+        return jsonify({'check': None})
+    if check.status == 'active' and check.expires_at and datetime.utcnow() >= check.expires_at:
+        complete_skill_check(check, success=False)
+        return jsonify({'check': None})
+    return jsonify({'check': serialize_skill_check(check)})
+
+
+@app.route('/api/lobby/<int:lobby_id>/skill-check/accept', methods=['POST'])
+def accept_skill_check(lobby_id: int):
+    user = require_user()
+    membership = LobbyMember.query.filter_by(lobby_id=lobby_id, user_id=user.id).first()
+    if not membership:
+        return jsonify({'error': 'forbidden'}), 403
+    check = ACTIVE_SKILL_CHECKS.get(lobby_id)
+    if not check:
+        return jsonify({'error': 'not_found'}), 404
+    if check.target_user_id != user.id:
+        return jsonify({'error': 'forbidden'}), 403
+    if check.status != 'pending':
+        return jsonify({'error': 'already_started'}), 409
+    check.status = 'active'
+    check.started_at = datetime.utcnow()
+    check.expires_at = check.started_at + timedelta(seconds=SKILL_CHECK_TIME_LIMIT)
+    return jsonify({'status': 'ok', 'check': serialize_skill_check(check)})
+
+
+@app.route('/api/lobby/<int:lobby_id>/skill-check/result', methods=['POST'])
+def skill_check_result(lobby_id: int):
+    user = require_user()
+    membership = LobbyMember.query.filter_by(lobby_id=lobby_id, user_id=user.id).first()
+    if not membership:
+        return jsonify({'error': 'forbidden'}), 403
+    check = ACTIVE_SKILL_CHECKS.get(lobby_id)
+    if not check:
+        return jsonify({'error': 'not_found'}), 404
+    if check.target_user_id != user.id:
+        return jsonify({'error': 'forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    result = (data.get('result') or '').strip().lower()
+    if result not in {'success', 'failure'}:
+        return jsonify({'error': 'invalid_result'}), 400
+    if result == 'success' and check.status != 'active':
+        return jsonify({'error': 'not_active'}), 409
+    if check.status in {'pending', 'active'}:
+        complete_skill_check(check, success=(result == 'success'))
+    return jsonify({'status': 'ok'})
 
 
 def _assert_version(instance: ItemInstance, version: int) -> bool:

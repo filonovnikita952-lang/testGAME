@@ -516,6 +516,21 @@
                                                                 <input type="file" id="item_image_update_{{ membership.lobby.id }}" accept="image/*">
                                                                 <button type="button" class="button ghost">Оновити</button>
                                                             </form>
+                                                            <form class="form" data-skill-check-form data-lobby-id="{{ membership.lobby.id }}">
+                                                                <h4>Активний Skill Check</h4>
+                                                                <label for="skill_check_target_{{ membership.lobby.id }}">Гравець</label>
+                                                                <select id="skill_check_target_{{ membership.lobby.id }}" data-skill-check-target>
+                                                                    {% for member in membership.lobby.members %}
+                                                                        {% if member.user %}
+                                                                            <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
+                                                                        {% endif %}
+                                                                    {% endfor %}
+                                                                </select>
+                                                                <label for="skill_check_difficulty_{{ membership.lobby.id }}">Складність (5–30)</label>
+                                                                <input type="number" id="skill_check_difficulty_{{ membership.lobby.id }}" min="5" max="30" value="10" data-skill-check-difficulty>
+                                                                <button type="submit" class="button">Запустити</button>
+                                                                <p class="muted" data-skill-check-status></p>
+                                                            </form>
                                                         </div>
                                                     </section>
                                                 </div>
@@ -695,6 +710,29 @@
                             <div class="map-overlay__content">
                                 <button class="button ghost map-overlay__close" type="button" data-map-close>Закрити</button>
                                 <img src="" alt="Map" class="map-overlay__image" data-map-image>
+                            </div>
+                        </div>
+                        <div class="skill-check-overlay" data-skill-check-overlay data-lobby-id="{{ membership.lobby.id }}" aria-hidden="true">
+                            <div class="skill-check-modal">
+                                <button class="skill-check-close" type="button" data-skill-check-close aria-label="Закрити">×</button>
+                                <div class="skill-check-timer" data-skill-check-timer>30</div>
+                                <div class="skill-check-panel" data-skill-check-pending>
+                                    <h3>Skill Check</h3>
+                                    <p class="skill-check-subtitle">Складність: <strong data-skill-check-difficulty>—</strong></p>
+                                    <p class="muted">Підтвердіть готовність перед початком.</p>
+                                    <button class="button" type="button" data-skill-check-accept>Прийняти</button>
+                                    <p class="muted">ESC — відміна (провал).</p>
+                                </div>
+                                <div class="skill-check-panel is-hidden" data-skill-check-active>
+                                    <div class="skill-check-wheel" data-skill-check-wheel>
+                                        <div class="skill-check-pointer" data-skill-check-pointer></div>
+                                    </div>
+                                    <div class="skill-check-info">
+                                        <span>Складність: <strong data-skill-check-difficulty>—</strong></span>
+                                        <span class="skill-check-progress" data-skill-check-progress>0/3</span>
+                                    </div>
+                                    <p class="skill-check-hint">Пробіл — удар, ESC — відміна.</p>
+                                </div>
                             </div>
                         </div>
                     </div>
