@@ -100,7 +100,7 @@
                                 <div class="lobby-roster__list" data-lobby-id="{{ membership.lobby.id }}">
                                     {% for member in membership.lobby.members %}
                                         {% if member.user %}
-                                            <details class="roster-card" data-player-id="{{ member.user.id }}">
+                                            <details class="roster-card" data-player-id="{{ member.user.id }}" data-player-name="{{ member.user.nickname }}">
                                                 <summary class="roster-card__summary">
                                                     {% if member.user.userImage %}
                                                         <img src="{{ url_for('static', filename=static_path(member.user.userImage)) }}" alt="avatar" class="avatar avatar--mini {% if is_user_online(member.user) %}avatar--online{% else %}avatar--offline{% endif %}">
@@ -516,21 +516,6 @@
                                                                 <input type="file" id="item_image_update_{{ membership.lobby.id }}" accept="image/*">
                                                                 <button type="button" class="button ghost">Оновити</button>
                                                             </form>
-                                                            <form class="form" data-skill-check-form data-lobby-id="{{ membership.lobby.id }}">
-                                                                <h4>Активний Skill Check</h4>
-                                                                <label for="skill_check_target_{{ membership.lobby.id }}">Гравець</label>
-                                                                <select id="skill_check_target_{{ membership.lobby.id }}" data-skill-check-target>
-                                                                    {% for member in membership.lobby.members %}
-                                                                        {% if member.user %}
-                                                                            <option value="{{ member.user.id }}">{{ member.user.nickname }}</option>
-                                                                        {% endif %}
-                                                                    {% endfor %}
-                                                                </select>
-                                                                <label for="skill_check_difficulty_{{ membership.lobby.id }}">Складність (5–30)</label>
-                                                                <input type="number" id="skill_check_difficulty_{{ membership.lobby.id }}" min="5" max="30" value="10" data-skill-check-difficulty>
-                                                                <button type="submit" class="button">Запустити</button>
-                                                                <p class="muted" data-skill-check-status></p>
-                                                            </form>
                                                         </div>
                                                     </section>
                                                 </div>
@@ -711,6 +696,19 @@
                                 <button class="button ghost map-overlay__close" type="button" data-map-close>Закрити</button>
                                 <img src="" alt="Map" class="map-overlay__image" data-map-image>
                             </div>
+                        </div>
+                        <div class="skill-check-menu" data-skill-check-menu data-lobby-id="{{ membership.lobby.id }}" aria-hidden="true">
+                            <div class="skill-check-menu__header">
+                                <strong>Skill Check</strong>
+                                <span class="muted" data-skill-check-menu-target>—</span>
+                            </div>
+                            <label for="skill_check_menu_difficulty_{{ membership.lobby.id }}">Складність (5–30)</label>
+                            <input type="number" id="skill_check_menu_difficulty_{{ membership.lobby.id }}" min="5" max="30" value="10" data-skill-check-menu-difficulty>
+                            <div class="skill-check-menu__actions">
+                                <button class="button" type="button" data-skill-check-menu-start>Start</button>
+                                <button class="button ghost" type="button" data-skill-check-menu-close>Cancel</button>
+                            </div>
+                            <p class="muted" data-skill-check-menu-status></p>
                         </div>
                         <div class="skill-check-overlay" data-skill-check-overlay data-lobby-id="{{ membership.lobby.id }}" aria-hidden="true">
                             <div class="skill-check-modal">

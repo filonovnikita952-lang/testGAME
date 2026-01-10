@@ -183,10 +183,6 @@
             this.wheel = this.overlay?.querySelector('[data-skill-check-wheel]');
             this.progress = this.overlay?.querySelector('[data-skill-check-progress]');
             this.difficultyLabels = this.overlay?.querySelectorAll('[data-skill-check-difficulty]');
-            this.form = document.querySelector(`[data-skill-check-form][data-lobby-id="${this.lobbyId}"]`);
-            this.statusLabel = this.form?.querySelector('[data-skill-check-status]');
-            this.targetInput = this.form?.querySelector('[data-skill-check-target]');
-            this.difficultyInput = this.form?.querySelector('[data-skill-check-difficulty]');
             this.pollInterval = 2000;
             this.pollTimer = null;
             this.animationFrame = null;
@@ -208,17 +204,12 @@
                 this.refresh();
                 this.startPolling();
             }
+            this.menu = new SkillCheckMenu(this);
         }
 
         bind() {
             this.acceptButton?.addEventListener('click', () => this.accept());
-            this.closeButton?.addEventListener('click', () => this.failAndClose('failure'));
-            if (this.form) {
-                this.form.addEventListener('submit', (event) => {
-                    event.preventDefault();
-                    this.startFromMaster();
-                });
-            }
+            this.closeButton?.addEventListener('click', () => this.failAndClose(false));
             document.addEventListener('keydown', (event) => this.handleKey(event));
             window.addEventListener('beforeunload', () => this.handleUnload());
         }
@@ -418,7 +409,7 @@
             if (!this.overlay?.classList.contains('is-open')) return;
             if (event.code === 'Escape') {
                 event.preventDefault();
-                this.failAndClose('failure');
+                this.failAndClose(false);
                 return;
             }
             if (event.code === 'Space') {
@@ -455,34 +446,42 @@
             if (this.resultSent) return;
             this.resultSent = true;
             this.stopGameLoop();
-            await this.sendResult(success ? 'success' : 'failure');
+            await this.sendResult(success);
             this.closeOverlay();
         }
 
-        async sendResult(result) {
+        async sendResult(success) {
             if (!this.lobbyId) return;
             try {
                 await fetch(`/api/lobby/${this.lobbyId}/skill-check/result`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ result }),
+                    body: JSON.stringify({
+                        success,
+                        successes: this.successes,
+                        failures: this.failures,
+                    }),
                 });
             } catch (error) {
                 console.debug('Skill check result failed', error);
             }
         }
 
-        async failAndClose(result) {
+        async failAndClose(success) {
             if (this.state === 'idle') return;
             if (this.resultSent) return;
             this.resultSent = true;
-            await this.sendResult(result);
+            await this.sendResult(success);
             this.closeOverlay();
         }
 
         handleUnload() {
             if (this.state === 'idle') return;
-            const payload = JSON.stringify({ result: 'failure' });
+            const payload = JSON.stringify({
+                success: false,
+                successes: this.successes,
+                failures: this.failures,
+            });
             const url = `/api/lobby/${this.lobbyId}/skill-check/result`;
             if (navigator.sendBeacon) {
                 navigator.sendBeacon(url, new Blob([payload], { type: 'application/json' }));
@@ -496,15 +495,13 @@
             }
         }
 
-        async startFromMaster() {
-            if (!this.isMaster || !this.lobbyId || !this.form) return;
-            const targetId = this.targetInput?.value;
-            const difficulty = Number(this.difficultyInput?.value || 0);
+        async startSkillCheck(targetId, difficulty, onStatus) {
+            if (!this.isMaster || !this.lobbyId) return;
             if (!targetId || Number.isNaN(difficulty)) {
-                this.updateStatus('Заповніть гравця та складність.');
+                onStatus?.('Заповніть гравця та складність.');
                 return;
             }
-            this.updateStatus('Надсилаємо запит...');
+            onStatus?.('Надсилаємо запит...');
             try {
                 const response = await fetch(`/api/lobby/${this.lobbyId}/skill-check/start`, {
                     method: 'POST',
@@ -513,24 +510,135 @@
                 });
                 if (!response.ok) {
                     if (response.status === 409) {
-                        this.updateStatus('Перевірка вже активна.');
+                        onStatus?.('Перевірка вже активна.');
                     } else if (response.status === 400) {
-                        this.updateStatus('Перевірте складність або гравця.');
+                        onStatus?.('Перевірте складність або гравця.');
                     } else {
-                        this.updateStatus('Не вдалося запустити.');
+                        onStatus?.('Не вдалося запустити.');
                     }
                     return;
                 }
-                this.updateStatus('Очікуємо підтвердження гравця.');
+                onStatus?.('Очікуємо підтвердження гравця.');
             } catch (error) {
                 console.debug('Skill check start failed', error);
-                this.updateStatus('Помилка запуску.');
+                onStatus?.('Помилка запуску.');
+            }
+        }
+    }
+
+    class SkillCheckMenu {
+        constructor(controller) {
+            this.controller = controller;
+            this.lobbyId = controller.lobbyId;
+            this.isMaster = controller.isMaster;
+            this.menu = document.querySelector(`[data-skill-check-menu][data-lobby-id="${this.lobbyId}"]`);
+            this.rosterList = document.querySelector(`.lobby-roster__list[data-lobby-id="${this.lobbyId}"]`);
+            this.targetLabel = this.menu?.querySelector('[data-skill-check-menu-target]');
+            this.difficultyInput = this.menu?.querySelector('[data-skill-check-menu-difficulty]');
+            this.startButton = this.menu?.querySelector('[data-skill-check-menu-start]');
+            this.closeButton = this.menu?.querySelector('[data-skill-check-menu-close]');
+            this.statusLabel = this.menu?.querySelector('[data-skill-check-menu-status]');
+            this.targetUserId = null;
+            if (this.menu && this.rosterList && this.isMaster) {
+                this.bind();
+            }
+        }
+
+        bind() {
+            this.rosterList.addEventListener('contextmenu', (event) => this.handleContextMenu(event));
+            this.startButton?.addEventListener('click', () => this.start());
+            this.closeButton?.addEventListener('click', () => this.close());
+            document.addEventListener('mousedown', (event) => this.handleDocumentClick(event));
+            document.addEventListener('keydown', (event) => this.handleKey(event));
+        }
+
+        handleContextMenu(event) {
+            const card = event.target.closest('.roster-card');
+            if (!card) return;
+            event.preventDefault();
+            const targetId = card.dataset.playerId;
+            const targetName = card.dataset.playerName || card.querySelector('summary span')?.textContent?.trim();
+            this.open(targetId, targetName || '—', event.clientX, event.clientY);
+        }
+
+        open(targetId, targetName, x, y) {
+            if (!this.menu) return;
+            this.targetUserId = targetId;
+            if (this.targetLabel) {
+                this.targetLabel.textContent = targetName;
+            }
+            if (this.difficultyInput && !this.difficultyInput.value) {
+                this.difficultyInput.value = '10';
+            }
+            this.menu.style.left = `${x}px`;
+            this.menu.style.top = `${y}px`;
+            this.menu.classList.add('is-open');
+            this.menu.setAttribute('aria-hidden', 'false');
+            this.updateStatus('');
+            this.repositionWithinViewport();
+        }
+
+        repositionWithinViewport() {
+            if (!this.menu) return;
+            const rect = this.menu.getBoundingClientRect();
+            const padding = 12;
+            let nextLeft = rect.left;
+            let nextTop = rect.top;
+            if (rect.right > window.innerWidth - padding) {
+                nextLeft = Math.max(padding, window.innerWidth - rect.width - padding);
+            }
+            if (rect.bottom > window.innerHeight - padding) {
+                nextTop = Math.max(padding, window.innerHeight - rect.height - padding);
+            }
+            this.menu.style.left = `${nextLeft}px`;
+            this.menu.style.top = `${nextTop}px`;
+        }
+
+        close() {
+            if (!this.menu) return;
+            this.menu.classList.remove('is-open');
+            this.menu.setAttribute('aria-hidden', 'true');
+            this.targetUserId = null;
+            this.updateStatus('');
+        }
+
+        handleDocumentClick(event) {
+            if (!this.menu?.classList.contains('is-open')) return;
+            if (this.menu.contains(event.target)) return;
+            this.close();
+        }
+
+        handleKey(event) {
+            if (!this.menu?.classList.contains('is-open')) return;
+            if (event.code === 'Escape') {
+                event.preventDefault();
+                this.close();
             }
         }
 
         updateStatus(text) {
             if (this.statusLabel) {
                 this.statusLabel.textContent = text;
+            }
+        }
+
+        async start() {
+            if (!this.targetUserId) {
+                this.updateStatus('Оберіть гравця.');
+                return;
+            }
+            const difficultyRaw = Number(this.difficultyInput?.value || 0);
+            if (Number.isNaN(difficultyRaw)) {
+                this.updateStatus('Вкажіть складність.');
+                return;
+            }
+            const difficulty = Math.min(30, Math.max(5, difficultyRaw));
+            if (this.difficultyInput) {
+                this.difficultyInput.value = `${difficulty}`;
+            }
+            await this.controller.startSkillCheck(this.targetUserId, difficulty, (text) => this.updateStatus(text));
+            if (this.statusLabel?.textContent?.includes('Очікуємо')) {
+                this.close();
             }
         }
     }
