@@ -1487,24 +1487,31 @@
             if (DEBUG_INVENTORY) {
                 console.debug('[IssueById]', 'context issue start', { templateId, target, amount });
             }
+            const payload = {
+                lobby_id: this.lobbyId,
+                template_id: templateId,
+                target_user_id: target,
+                amount: Number.isNaN(amount) ? 1 : amount,
+                durability_current: durabilityInput?.value || null,
+                random_durability: randomInput?.value || '',
+            };
+            console.debug('GiveID fetch started', payload);
             const response = await fetch('/api/master/issue_by_id', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    lobby_id: this.lobbyId,
-                    template_id: templateId,
-                    target_user_id: target,
-                    amount: Number.isNaN(amount) ? 1 : amount,
-                    durability_current: durabilityInput?.value || null,
-                    random_durability: randomInput?.value || '',
-                }),
+                body: JSON.stringify(payload),
+            });
+            const responsePayload = await response.clone().json().catch(() => null);
+            console.debug('GiveID response', {
+                status: response.status,
+                request_id: responsePayload?.request_id || null,
             });
             if (response.ok) {
                 await this.refreshInventory(this.selectedPlayerId);
                 return;
             }
-            const payload = await response.json().catch(() => ({}));
-            this.showIssueByIdError(payload);
+            const errorPayload = responsePayload || await response.json().catch(() => ({}));
+            this.showIssueByIdError(errorPayload);
             await this.refreshInventory(this.selectedPlayerId);
         }
 
