@@ -1038,11 +1038,7 @@
                 const json = await response.json().catch(() => ({}));
                 console.warn('[Split] response', response.status, json);
                 if (response.ok) {
-                    if (Array.isArray(json?.instances) && json.instances.length) {
-                        this.applyInstanceUpdates(json.instances);
-                    } else {
-                        await this.refreshInventory(this.selectedPlayerId);
-                    }
+                    await this.refreshInventory(this.selectedPlayerId);
                     if (options.attachDrag && json?.new_instance_id) {
                         const newItem = this.getItemById(json.new_instance_id);
                         if (newItem) {
