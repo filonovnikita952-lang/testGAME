@@ -1028,6 +1028,9 @@
             } else {
                 payload.amount = amount;
             }
+            if (DEBUG_INVENTORY) {
+                console.debug('[Inventory] Split request', payload);
+            }
             try {
                 const response = await fetch('/api/inventory/split', {
                     method: 'POST',
@@ -1035,6 +1038,13 @@
                     body: JSON.stringify(payload),
                 });
                 const json = await response.json().catch(() => ({}));
+                if (DEBUG_INVENTORY) {
+                    console.debug('[Inventory] Split response', {
+                        ok: response.ok,
+                        status: response.status,
+                        payload: json,
+                    });
+                }
                 if (response.ok) {
                     if (Array.isArray(json.instances)) {
                         this.applyInstanceUpdates(json.instances);
