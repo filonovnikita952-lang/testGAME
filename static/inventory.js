@@ -1028,26 +1028,31 @@
             } else {
                 payload.amount = amount;
             }
+            console.warn('[Split] payload', payload);
             try {
                 const response = await fetch('/api/inventory/split', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
                 });
+                const json = await response.json().catch(() => ({}));
+                console.warn('[Split] response', response.status, json);
                 if (response.ok) {
-                    const payload = await response.json().catch(() => ({}));
-                    await this.refreshInventory(this.selectedPlayerId);
-                    if (options.attachDrag && payload?.new_instance_id) {
-                        const newItem = this.getItemById(payload.new_instance_id);
+                    if (Array.isArray(json?.instances) && json.instances.length) {
+                        this.applyInstanceUpdates(json.instances);
+                    } else {
+                        await this.refreshInventory(this.selectedPlayerId);
+                    }
+                    if (options.attachDrag && json?.new_instance_id) {
+                        const newItem = this.getItemById(json.new_instance_id);
                         if (newItem) {
                             this.attachDragToItem(newItem);
                         }
                     }
                     return;
                 }
-                const payload = await response.json().catch(() => ({}));
                 if (response.status === 409) {
-                    await this.handleConflict('split', item, payload);
+                    await this.handleConflict('split', item, json);
                     return;
                 }
                 await this.refreshInventory(this.selectedPlayerId);
