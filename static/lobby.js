@@ -169,6 +169,35 @@
         }
     });
 
+    const setupSuitToolbars = () => {
+        document.querySelectorAll('[data-suit-toolbar]').forEach((toolbar) => {
+            const suitButtons = Array.from(toolbar.querySelectorAll('[data-suit-button]'));
+            const resetButton = toolbar.querySelector('[data-suit-reset]');
+
+            const setButtonState = (button, isEnabled) => {
+                button.disabled = !isEnabled;
+                button.classList.toggle('suit-disabled', !isEnabled);
+                button.setAttribute('aria-pressed', isEnabled ? 'true' : 'false');
+                button.setAttribute('aria-disabled', isEnabled ? 'false' : 'true');
+            };
+
+            suitButtons.forEach((button) => {
+                button.addEventListener('click', () => {
+                    if (button.disabled) return;
+                    setButtonState(button, false);
+                });
+            });
+
+            resetButton?.addEventListener('click', () => {
+                suitButtons.forEach((button) => setButtonState(button, true));
+            });
+        });
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        setupSuitToolbars();
+    });
+
     class SkillCheckController {
         constructor(root) {
             this.root = root;
