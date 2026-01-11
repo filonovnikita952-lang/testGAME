@@ -8,7 +8,6 @@ import random
 import secrets
 import ast
 import math
-import shutil
 import difflib
 import sys
 import time
@@ -21,50 +20,52 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.utils import secure_filename
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-HOME_DIR = os.path.expanduser('~')
-DEFAULT_DB_DIR = os.path.join(HOME_DIR, 'DRAsite_data')
+DEFAULT_DB_DIR = '/home/Sanya1825/DRAsite_data'
 DEFAULT_DB_PATH = os.path.join(DEFAULT_DB_DIR, 'databaseDRA.db')
-LEGACY_DB_PATHS = (
-    os.path.join(BASE_DIR, 'databases', 'databaseDRA.db'),
-    os.path.join(BASE_DIR, 'databaseDRA.db'),
-    os.path.join(BASE_DIR, 'dra.db'),
-)
 
 
-def _ensure_directory(path: str) -> None:
-    os.makedirs(path, exist_ok=True)
+def _resolve_database_uri() -> str:
+    override_uri = os.environ.get('DATABASE_URI')
+    if override_uri:
+        sqlite_path = _sqlite_db_path(override_uri)
+        if not sqlite_path:
+            raise RuntimeError('DATABASE_URI must be a sqlite:/// URI')
+        if not os.path.isabs(sqlite_path):
+            raise RuntimeError('DATABASE_URI must use an absolute path')
+        resolved_path = os.path.realpath(sqlite_path)
+        allowed_root = os.path.realpath(DEFAULT_DB_DIR)
+        if os.path.commonpath([resolved_path, allowed_root]) != allowed_root:
+            raise RuntimeError('DATABASE_URI must point under /home/Sanya1825/DRAsite_data')
+        return f"sqlite:///{resolved_path}"
+    return f"sqlite:///{DEFAULT_DB_PATH}"
 
 
-def _migrate_legacy_sqlite_db(target_path: str) -> Optional[str]:
-    if os.path.exists(target_path):
-        return None
-    for legacy_path in LEGACY_DB_PATHS:
-        if os.path.exists(legacy_path):
-            _ensure_directory(os.path.dirname(target_path))
-            shutil.copy2(legacy_path, target_path)
-            print(f"[DB] Copied legacy SQLite DB from {legacy_path} to {target_path}")
-            return legacy_path
-    return None
-
-
-def _normalize_database_uri(db_uri: Optional[str]) -> str:
-    if not db_uri:
-        _ensure_directory(DEFAULT_DB_DIR)
-        _migrate_legacy_sqlite_db(DEFAULT_DB_PATH)
-        return f"sqlite:///{DEFAULT_DB_PATH}"
-    if db_uri.startswith('sqlite:///'):
-        sqlite_path = db_uri[len('sqlite:///'):]
-        if sqlite_path and not os.path.isabs(sqlite_path):
-            sqlite_path = os.path.join(BASE_DIR, sqlite_path)
-        return f"sqlite:///{sqlite_path}"
-    return db_uri
+def get_db_path(db_uri: Optional[str] = None) -> str:
+    resolved_uri = db_uri or app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    sqlite_path = _sqlite_db_path(resolved_uri)
+    if not sqlite_path:
+        raise RuntimeError('Database URI must be sqlite:///')
+    return os.path.realpath(sqlite_path)
 
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = _normalize_database_uri(os.environ.get('DATABASE_URL'))
+app.config['SQLALCHEMY_DATABASE_URI'] = _resolve_database_uri()
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'supersecretkey')
+
+resolved_db_path = get_db_path(app.config['SQLALCHEMY_DATABASE_URI'])
+print(
+    f"[DB] SQLALCHEMY_DATABASE_URI={app.config['SQLALCHEMY_DATABASE_URI']} path={resolved_db_path}",
+    file=sys.stderr,
+    flush=True,
+)
+if not os.path.exists(resolved_db_path):
+    print(
+        f"[DB] ERROR: SQLite database file missing at {resolved_db_path}",
+        file=sys.stderr,
+        flush=True,
+    )
+    raise RuntimeError(f"SQLite database missing: {resolved_db_path}")
 
 UPLOAD_SUBDIR = 'uploads'
 RESET_DB_ENV = 'RESET_DB_ON_START'
@@ -537,14 +538,13 @@ def initialize_database_if_ready() -> None:
     sqlite_path = _sqlite_db_path(db_uri)
     if sqlite_path:
         abs_path = os.path.abspath(sqlite_path)
-        _migrate_legacy_sqlite_db(abs_path)
         exists = os.path.exists(abs_path)
-        print(f"[DB] SQLite path: {abs_path} (exists={exists})")
+        print(f"[DB] SQLite path: {abs_path} (exists={exists})", file=sys.stderr, flush=True)
         if not exists:
-            print('[DB] SQLite file missing; skipping automatic initialization.')
-            return
+            print('[DB] ERROR: SQLite file missing; aborting initialization.', file=sys.stderr, flush=True)
+            raise RuntimeError(f"SQLite database missing: {abs_path}")
     else:
-        print(f"[DB] Database URI: {db_uri} (non-sqlite)")
+        print(f"[DB] Database URI: {db_uri} (non-sqlite)", file=sys.stderr, flush=True)
     initialize_database()
 
 
@@ -3304,8 +3304,21 @@ def issue_item_by_id():
     def find_preferred_placement_with_logs(
         instance: ItemInstance,
         owner_id: int,
-    ) -> Optional[tuple[str, int, int, int]]:
-        candidate_containers = preferred_container_ids(owner_id)
+        prefer_container: Optional[str],
+    ) -> tuple[Optional[tuple[str, int, int, int]], list[str]]:
+        candidate_containers: list[str] = []
+        seen: set[str] = set()
+        if prefer_container:
+            candidate_containers.append(prefer_container)
+            seen.add(prefer_container)
+        if 'inv_main' not in seen:
+            candidate_containers.append('inv_main')
+            seen.add('inv_main')
+        for container_id in preferred_container_ids(owner_id):
+            if container_id in seen:
+                continue
+            candidate_containers.append(container_id)
+            seen.add(container_id)
         debug('GiveID placement candidates=%s', candidate_containers)
         rotations = [normalize_rotation_value(None)]
         rotations.append(1 - rotations[0])
@@ -3326,9 +3339,9 @@ def issue_item_by_id():
                         rotation,
                         position,
                     )
-                    return container_id, position[0], position[1], rotation
+                    return (container_id, position[0], position[1], rotation), candidate_containers
                 debug('GiveID placement no_space container=%s rotation=%s', container_id, rotation)
-        return None
+        return None, candidate_containers
 
     def log_return(error: str) -> None:
         print(
@@ -3344,10 +3357,11 @@ def issue_item_by_id():
         except AuthError as exc:
             auth_error = exc
             user = type('AnonymousUser', (), {'id': 'unauthorized'})()
-        print(
-            f"[GIVEID HIT] ts={time.time()} user_id={user.id} raw_json={request.get_data(as_text=True)[:500]}",
-            file=sys.stderr,
-            flush=True,
+        logger.info(
+            'GiveID hit ts=%s user_id=%s raw_json=%s',
+            time.time(),
+            user.id,
+            request.get_data(as_text=True)[:500],
         )
 
         if auth_error:
@@ -3383,6 +3397,7 @@ def issue_item_by_id():
         durability_current = data.get('durability_current')
         durability_current_value = parse_int(durability_current, 0) if durability_current is not None else None
         random_durability = str(data.get('random_durability') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
+        prefer_container = (data.get('container_id') or data.get('container') or '').strip() or None
         debug(
             'GiveID request user_id=%s nickname=%s lobby_id=%s target_user_id=%s',
             user.id,
@@ -3397,6 +3412,15 @@ def issue_item_by_id():
             durability_current_value,
             random_durability,
         )
+        logger.info(
+            'GiveID request master_id=%s lobby_id=%s target_user_id=%s definition_id=%s amount=%s prefer_container=%s',
+            user.id,
+            lobby_id,
+            target_user_id,
+            definition_id,
+            amount,
+            prefer_container,
+        )
 
         definition = ItemDefinition.query.get(definition_id)
         debug('GiveID definition lookup definition_id=%s found=%s', definition_id, bool(definition))
@@ -3407,14 +3431,7 @@ def issue_item_by_id():
         if durability_current_value is not None:
             if has_durability(definition):
                 max_durability = max(definition.max_durability or 1, 1)
-                if durability_current_value < 0 or durability_current_value > max_durability:
-                    log_return('invalid_durability')
-                    logger.warning(
-                        'GiveID failed: durability %s out of range for definition %s',
-                        durability_current_value,
-                        definition.id,
-                    )
-                    return jsonify({'ok': False, 'request_id': request_id, 'error': 'invalid_durability'}), 400
+                durability_current_value = min(max(durability_current_value, 0), max_durability)
             else:
                 durability_current_value = None
         target_user = User.query.get(target_user_id)
@@ -3447,7 +3464,13 @@ def issue_item_by_id():
         )
         stack_amounts = split_stack_amounts(definition, amount)
         debug('GiveID stack splits: %s', stack_amounts)
+        logger.info(
+            'GiveID computed stacks request_id=%s stacks=%s',
+            request_id,
+            stack_amounts,
+        )
         created_instances = []
+        placement_results = []
         try:
             with db.session.begin():
                 for index, stack_amount in enumerate(stack_amounts, start=1):
@@ -3455,7 +3478,17 @@ def issue_item_by_id():
                         owner_id=target_user_id,
                         definition=definition,
                     )
-                    placement = find_preferred_placement_with_logs(temp_instance, target_user_id)
+                    placement, candidates = find_preferred_placement_with_logs(
+                        temp_instance,
+                        target_user_id,
+                        prefer_container,
+                    )
+                    placement_results.append({
+                        'stack_index': index,
+                        'amount': stack_amount,
+                        'candidates': candidates,
+                        'placement': placement,
+                    })
                     if not placement:
                         logger.warning(
                             'GiveID failed: no space for user %s definition=%s stack=%s/%s amount=%s cloth=%s type=%s',
@@ -3508,6 +3541,11 @@ def issue_item_by_id():
         except ValueError:
             db.session.rollback()
             log_return('no_space')
+            logger.warning(
+                'GiveID failed: no_space request_id=%s placements=%s',
+                request_id,
+                placement_results,
+            )
             logger.warning('GiveID failed: no space for definition=%s target_user_id=%s', definition.id, target_user_id)
             return jsonify({'ok': False, 'request_id': request_id, 'error': 'no_space'}), 400
         except SQLAlchemyError:
@@ -3520,6 +3558,11 @@ def issue_item_by_id():
             'GiveID created instance_ids=%s amounts=%s',
             [instance.id for instance in created_instances],
             [instance.amount for instance in created_instances],
+        )
+        logger.info(
+            'GiveID placements request_id=%s results=%s',
+            request_id,
+            placement_results,
         )
         logger.info(
             'GiveID success master_id=%s target_user_id=%s definition_id=%s amount=%s created_instance_ids=%s',
@@ -3535,6 +3578,7 @@ def issue_item_by_id():
             'request_id': request_id,
             'created_count': len(created_instances),
             'instance_id': issued_id,
+            'created_instance_ids': [instance.id for instance in created_instances],
             'created': [
                 {'id': instance.id, 'amount': instance.amount, 'container_id': instance.container_i}
                 for instance in created_instances
@@ -3545,6 +3589,40 @@ def issue_item_by_id():
         log_return('exception')
         logger.exception('GiveID unexpected error')
         return jsonify({'ok': False, 'request_id': request_id, 'error': 'server_error'}), 500
+
+
+@app.route('/api/master/db_info')
+def master_db_info():
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'ok': False, 'error': 'forbidden'}), 403
+    db_path = get_db_path()
+    inspector = inspect(db.engine)
+    tables = set(inspector.get_table_names())
+    instance_columns = set()
+    definition_columns = set()
+    if 'item_instance' in tables:
+        instance_columns = {column['name'] for column in inspector.get_columns('item_instance')}
+    if 'item_definition' in tables:
+        definition_columns = {column['name'] for column in inspector.get_columns('item_definition')}
+    return jsonify({
+        'ok': True,
+        'db_path': db_path,
+        'tables': {
+            'item_instance': 'item_instance' in tables,
+            'item_definition': 'item_definition' in tables,
+        },
+        'columns': {
+            'item_instance': {
+                'definition_id': 'definition_id' in instance_columns,
+                'durability_current': 'durability_current' in instance_columns,
+            },
+            'item_definition': {
+                'max_durability': 'max_durability' in definition_columns,
+                'max_stack': 'max_stack' in definition_columns,
+            },
+        },
+    })
 
 
 @app.route('/api/master/item_template/<int:definition_id>/image', methods=['POST'])

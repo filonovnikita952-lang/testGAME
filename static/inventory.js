@@ -1469,6 +1469,7 @@
             if (!this.permissions.is_master) return;
             const issueForm = this.root.querySelector('[data-master-issue]');
             if (!issueForm) return;
+            if (issueForm.dataset.issuePending === 'true') return;
             const definitionInput = issueForm.querySelector('input[id^="issue_definition_"]');
             const targetInput = issueForm.querySelector('select[id^="issue_target_"]');
             const amountInput = issueForm.querySelector('input[id^="issue_amount_"]');
@@ -1496,18 +1497,20 @@
                 random_durability: randomInput?.value || '',
             };
             console.debug('GiveID fetch started', payload);
-            console.log('GiveID fetch starting', payload);
             let response;
             try {
+                issueForm.dataset.issuePending = 'true';
                 response = await fetch('/api/master/issue_by_id', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
                 });
-                console.log('GiveID fetch completed', { status: response.status });
+                console.debug('GiveID fetch completed', { status: response.status });
             } catch (error) {
-                console.log('GiveID fetch failed', error);
+                console.debug('GiveID fetch failed', error);
                 throw error;
+            } finally {
+                issueForm.dataset.issuePending = 'false';
             }
             const responsePayload = await response.clone().json().catch(() => null);
             console.debug('GiveID response', {
@@ -1515,7 +1518,12 @@
                 request_id: responsePayload?.request_id || null,
             });
             if (response.ok) {
-                await this.refreshInventory(this.selectedPlayerId);
+                const selectedId = this.selectedPlayerId;
+                if (String(selectedId) === String(target)) {
+                    await this.refreshInventory(target);
+                } else {
+                    await this.refreshInventory(selectedId);
+                }
                 return;
             }
             const errorPayload = responsePayload || await response.json().catch(() => ({}));
@@ -2183,6 +2191,7 @@
             });
             const submitIssue = async (event) => {
                 event?.preventDefault();
+                if (form.dataset.issuePending === 'true') return;
                 logIssueDebug('issue click', { lobbyId });
                 const definitionId = Number.parseInt(
                     form.querySelector('input[id^="issue_definition_"]')?.value || '0',
@@ -2207,34 +2216,48 @@
                     logIssueDebug('issue cancelled', { definitionId, targetId });
                     return;
                 }
+                const payload = {
+                    lobby_id: lobbyId,
+                    definition_id: definitionId,
+                    target_user_id: targetId,
+                    amount,
+                    durability_current: durabilityCurrent,
+                    random_durability: randomDurability,
+                };
                 controller.trackAction(`issue-by-id:${definitionId}:${targetId}`);
                 logIssueDebug('issue fetch', { definitionId, targetId, amount });
-                console.log('GiveID fetch starting', { definitionId, targetId, amount });
+                console.debug('GiveID fetch starting', payload);
                 let response;
                 try {
+                    form.dataset.issuePending = 'true';
                     response = await fetch('/api/master/issue_by_id', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            lobby_id: lobbyId,
-                            definition_id: definitionId,
-                            target_user_id: targetId,
-                            amount,
-                            durability_current: durabilityCurrent,
-                            random_durability: randomDurability,
-                        }),
+                        body: JSON.stringify(payload),
                     });
-                    console.log('GiveID fetch completed', { status: response.status });
+                    console.debug('GiveID fetch completed', { status: response.status });
                 } catch (error) {
-                    console.log('GiveID fetch failed', error);
+                    console.debug('GiveID fetch failed', error);
                     throw error;
+                } finally {
+                    form.dataset.issuePending = 'false';
                 }
+                const responsePayload = await response.clone().json().catch(() => null);
+                console.debug('GiveID response', {
+                    status: response.status,
+                    request_id: responsePayload?.request_id || null,
+                });
                 logIssueDebug('issue response', { ok: response.ok, status: response.status });
                 if (response.ok) {
-                    await controller.refreshInventory(controller.selectedPlayerId);
+                    const selectedId = controller.selectedPlayerId;
+                    if (String(selectedId) === String(targetId)) {
+                        await controller.refreshInventory(targetId);
+                    } else {
+                        await controller.refreshInventory(selectedId);
+                    }
                     return;
                 }
-                const payload = await response.json().catch(() => ({}));
+                const payload = responsePayload || await response.json().catch(() => ({}));
                 controller.showIssueByIdError(payload);
                 await controller.refreshInventory(controller.selectedPlayerId);
             };
