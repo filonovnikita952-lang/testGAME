@@ -357,11 +357,18 @@
             if (this.notesRendered) {
                 this.notesRendered.addEventListener('click', (event) => {
                     const target = event.target.closest('.note-roll');
-                    if (!target || !(target instanceof HTMLElement)) return;
-                    if (target.classList.contains('is-disabled')) return;
-                    const rollText = target.dataset.roll || '';
-                    if (!rollText.trim()) return;
-                    this.submitNotesRoll(rollText);
+                    if (target && target instanceof HTMLElement && !target.classList.contains('is-disabled')) {
+                        const rollText = target.dataset.roll || '';
+                        if (!rollText.trim()) return;
+                        this.submitNotesRoll(rollText);
+                        return;
+                    }
+                    const formulaTarget = event.target.closest('.note-formula');
+                    if (!formulaTarget || !(formulaTarget instanceof HTMLElement)) return;
+                    if (formulaTarget.classList.contains('is-disabled')) return;
+                    const formulaText = formulaTarget.dataset.formula || '';
+                    if (!formulaText.trim()) return;
+                    this.submitNotesFormula(formulaText);
                 });
             }
 
@@ -1811,10 +1818,6 @@
                 const notesText = this.notesInput?.value ?? this.notesPayload?.notes_text ?? '';
                 this.renderNotesPreview(notesText);
             }
-            if (this.notesRendered) {
-                const notesText = this.notesInput?.value ?? this.notesPayload?.notes_text ?? '';
-                this.renderNotesPreview(notesText);
-            }
             this.syncNotesVisibility();
         }
 
@@ -1867,7 +1870,18 @@
             if (!text) return tokens;
             let index = 0;
             while (index < text.length) {
-                const start = text.indexOf('(', index);
+                const rollStart = text.indexOf('(', index);
+                const formulaStart = text.indexOf('{', index);
+                let start = rollStart;
+                let tokenType = 'roll';
+                let openChar = '(';
+                let closeChar = ')';
+                if (rollStart === -1 || (formulaStart !== -1 && formulaStart < rollStart)) {
+                    start = formulaStart;
+                    tokenType = 'formula';
+                    openChar = '{';
+                    closeChar = '}';
+                }
                 if (start === -1) {
                     tokens.push({ type: 'text', value: text.slice(index) });
                     break;
@@ -1879,8 +1893,8 @@
                 let end = -1;
                 for (let i = start; i < text.length; i += 1) {
                     const char = text[i];
-                    if (char === '(') depth += 1;
-                    if (char === ')') {
+                    if (char === openChar) depth += 1;
+                    if (char === closeChar) {
                         depth -= 1;
                         if (depth === 0) {
                             end = i;
@@ -1892,8 +1906,8 @@
                     tokens.push({ type: 'text', value: text.slice(start) });
                     break;
                 }
-                const rollText = text.slice(start + 1, end);
-                tokens.push({ type: 'roll', value: rollText });
+                const tokenText = text.slice(start + 1, end);
+                tokens.push({ type: tokenType, value: tokenText });
                 index = end + 1;
             }
             return tokens;
@@ -1911,6 +1925,17 @@
             tokens.forEach((token) => {
                 if (token.type === 'text') {
                     fragment.appendChild(document.createTextNode(token.value));
+                    return;
+                }
+                if (token.type === 'formula') {
+                    const span = document.createElement('span');
+                    span.className = 'note-formula';
+                    if (!this.canRollNotes()) {
+                        span.classList.add('is-disabled');
+                    }
+                    span.dataset.formula = token.value;
+                    span.textContent = `{${token.value}}`;
+                    fragment.appendChild(span);
                     return;
                 }
                 const span = document.createElement('span');
@@ -1943,6 +1968,26 @@
                 }
             } catch (error) {
                 console.debug('[Notes] Roll failed', error);
+            }
+        }
+
+        async submitNotesFormula(formulaText) {
+            if (!this.lobbyId || !this.selectedPlayerId) return;
+            if (!this.canRollNotes()) return;
+            try {
+                const response = await fetch(`/api/lobby/${this.lobbyId}/notes/formula`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: this.selectedPlayerId,
+                        formula_text: formulaText,
+                    }),
+                });
+                if (!response.ok) {
+                    console.debug('[Notes] Formula failed', response.status);
+                }
+            } catch (error) {
+                console.debug('[Notes] Formula failed', error);
             }
         }
 
