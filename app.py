@@ -53,6 +53,7 @@ INVENTORY_DEBUG_ENV = 'DEBUG_INVENTORY'
 SHOP_DEBUG_ENV = 'DEBUG_SHOP'
 DEBUG_GIVEID_ENV = 'DEBUG_GIVEID'
 DEBUG_GIVEID_CHAT_ENV = 'DEBUG_GIVEID_CHAT'
+DEBUG_WEAPON_AMMO_ENV = 'DEBUG_WEAPON_AMMO'
 INVENTORY_LOG_FILE = 'inventory_debug.log'
 ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 ALLOWED_IMAGE_MIME_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
@@ -284,6 +285,7 @@ class ItemDefinition(db.Model):
     bag_height = db.Column(db.Integer, nullable=True)
     fast_w = db.Column(db.Integer, nullable=True)
     fast_h = db.Column(db.Integer, nullable=True)
+    ammo_type = db.Column(db.String(120), nullable=True)
     type_id = db.Column(db.Integer, db.ForeignKey('item_type.id'), nullable=False)
 
     item_type = db.relationship('ItemType', back_populates='definitions')
@@ -481,6 +483,9 @@ def _ensure_item_definition_columns():
             db.session.commit()
         if 'max_stack' not in columns:
             db.session.execute(text('ALTER TABLE item_definition ADD COLUMN max_stack INTEGER'))
+            db.session.commit()
+        if 'ammo_type' not in columns:
+            db.session.execute(text('ALTER TABLE item_definition ADD COLUMN ammo_type TEXT'))
             db.session.commit()
         db.session.execute(text(
             'UPDATE item_definition '
@@ -742,6 +747,7 @@ def serialize_item_definition(definition: ItemDefinition) -> dict:
         'bag_height': definition.bag_height,
         'fast_w': definition.fast_w,
         'fast_h': definition.fast_h,
+        'ammo_type': definition.ammo_type,
     }
 
 
@@ -764,6 +770,36 @@ def giveid_chat_debug_enabled() -> bool:
     if config_value is not None:
         return str(config_value).strip().lower() in {'1', 'true', 'yes', 'on'}
     return os.environ.get(DEBUG_GIVEID_CHAT_ENV, '').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def weapon_ammo_debug_enabled() -> bool:
+    return os.environ.get(DEBUG_WEAPON_AMMO_ENV, '').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def log_weapon_ammo_step(
+    lobby_id: Optional[int],
+    user_id: Optional[int],
+    message: str,
+    *args,
+) -> None:
+    if not weapon_ammo_debug_enabled():
+        return
+    formatted = message % args if args else message
+    log_debug('[WeaponAmmo] %s', formatted)
+    if lobby_id and user_id:
+        chat_session = db.create_scoped_session()
+        try:
+            chat_session.add(ChatMessage(
+                lobby_id=lobby_id,
+                user_id=user_id,
+                message=f'[WeaponAmmo] {formatted}',
+                is_system=True,
+            ))
+            chat_session.commit()
+        except SQLAlchemyError:
+            chat_session.rollback()
+        finally:
+            chat_session.remove()
 
 
 def send_system_chat(lobby_id: Optional[int], message: str, *, user_id: Optional[int] = None) -> None:
@@ -896,6 +932,10 @@ def is_lobby_master(user: User, lobby_id: int) -> bool:
 
 def item_display_name(instance: ItemInstance) -> str:
     return instance.custom_name or instance.definition.name
+
+
+def normalize_ammo_type(value: Optional[str]) -> str:
+    return (value or '').strip().lower()
 
 
 def stackable_type(definition: ItemDefinition) -> bool:
@@ -1391,6 +1431,7 @@ def build_instance_payload(
         'pos_y': instance.pos_y,
         'rotated': normalize_rotation_value(instance.rotated),
         'version': instance.version,
+        'ammo_type': definition.ammo_type,
     }
 
 
@@ -2677,20 +2718,106 @@ def use_inventory_item():
         })
 
     if item_type == 'weapon':
-        if not has_durability(instance.definition):
-            log_debug('Use rejected for item %s: missing durability', instance.id)
-            return jsonify({'ok': False, 'error': 'invalid_item'}), 400
-        roll = random.randint(0, 3)
-        instance.str_current = max((instance.str_current or 0) - roll, 0)
-        instance.version += 1
-        if lobby_id:
-            create_chat_message(
+        class UseError(Exception):
+            def __init__(self, reason: str, status: int = 400):
+                super().__init__(reason)
+                self.reason = reason
+                self.status = status
+
+        try:
+            db.session.refresh(instance)
+            if instance.version != version:
+                raise UseError('conflict', 409)
+            if not has_durability(instance.definition):
+                log_debug('Use rejected for item %s: missing durability', instance.id)
+                raise UseError('broken_weapon')
+            log_weapon_ammo_step(
                 lobby_id,
                 user.id,
-                f'{user.nickname} used {item_display_name(instance)} and lost {roll} durability',
-                is_system=True,
+                'Weapon selected: %s',
+                item_display_name(instance),
             )
-        db.session.commit()
+            current_durability = instance.str_current
+            if current_durability is None or current_durability <= 0:
+                log_weapon_ammo_step(lobby_id, user.id, 'Use blocked: broken weapon.')
+                raise UseError('broken_weapon')
+
+            weapon_ammo = normalize_ammo_type(instance.definition.ammo_type)
+            ammo_label = (instance.definition.ammo_type or '').strip()
+            consumed_ammo = None
+            if weapon_ammo:
+                ammo_instances = (
+                    ItemInstance.query
+                    .join(ItemDefinition, ItemInstance.template_id == ItemDefinition.id)
+                    .join(ItemType, ItemDefinition.type_id == ItemType.id)
+                    .filter(ItemInstance.owner_id == instance.owner_id)
+                    .filter(ItemType.name == 'ammo')
+                    .all()
+                )
+                matching = [
+                    ammo_instance
+                    for ammo_instance in ammo_instances
+                    if normalize_ammo_type(ammo_instance.definition.ammo_type) == weapon_ammo
+                ]
+                matching.sort(key=lambda ammo_instance: (
+                    0 if ammo_instance.container_i.startswith('fast:') else 1,
+                    ammo_instance.amount or 0,
+                    ammo_instance.id,
+                ))
+                log_weapon_ammo_step(
+                    lobby_id,
+                    user.id,
+                    'Ammo search: %s',
+                    'found' if matching else 'none',
+                )
+                if not matching:
+                    log_weapon_ammo_step(lobby_id, user.id, 'Use blocked: no ammo.')
+                    raise UseError('no_ammo')
+                consumed_ammo = matching[0]
+                if consumed_ammo.amount > 1:
+                    consumed_ammo.amount = max(consumed_ammo.amount - 1, 0)
+                    consumed_ammo.version += 1
+                else:
+                    db.session.delete(consumed_ammo)
+                log_weapon_ammo_step(
+                    lobby_id,
+                    user.id,
+                    'Ammo consumed: %s (id=%s)',
+                    consumed_ammo.definition.name,
+                    consumed_ammo.id,
+                )
+
+            roll = random.randint(0, 3)
+            instance.str_current = max((instance.str_current or 0) - roll, 0)
+            instance.version += 1
+            log_weapon_ammo_step(
+                lobby_id,
+                user.id,
+                'Durability reduced: -%s (now %s).',
+                roll,
+                instance.str_current,
+            )
+            if lobby_id:
+                durability_part = f'-{roll} durability'
+                if weapon_ammo:
+                    message = (
+                        f'{user.nickname} used {item_display_name(instance)} '
+                        f'(-1 {ammo_label or instance.definition.ammo_type}, {durability_part})'
+                    )
+                else:
+                    message = f'{user.nickname} used {item_display_name(instance)} ({durability_part})'
+                create_chat_message(lobby_id, user.id, message, is_system=True)
+            log_weapon_ammo_step(lobby_id, user.id, 'Use success.')
+            db.session.commit()
+        except UseError as exc:
+            db.session.rollback()
+            log_weapon_ammo_step(lobby_id, user.id, 'Use failed: %s.', exc.reason)
+            return jsonify({'ok': False, 'error': exc.reason}), exc.status
+        except SQLAlchemyError:
+            db.session.rollback()
+            log_weapon_ammo_step(lobby_id, user.id, 'Use failed: db_error.')
+            return jsonify({'ok': False, 'error': 'db_error'}), 500
+
         return jsonify({
             'ok': True,
             'instance': build_instance_payload(instance, user, lobby_id),
@@ -3099,6 +3226,7 @@ def create_item_template():
     bag_height = parse_int(data.get('bag_height'), 0, minimum=0)
     fast_w = parse_int(data.get('fast_w'), 0, minimum=0)
     fast_h = parse_int(data.get('fast_h'), 0, minimum=0)
+    ammo_type_raw = (data.get('ammo_type') or '').strip()
     issue_to = parse_int(data.get('issue_to'), 0)
     issue_amount = parse_int(data.get('issue_amount'), 1, minimum=1)
     durability_current = data.get('durability_current')
@@ -3113,6 +3241,11 @@ def create_item_template():
         is_cloth = True
     if type_name == 'belt':
         is_cloth = True
+    ammo_type = ammo_type_raw or None
+    if type_name not in {'weapon', 'ammo'}:
+        ammo_type = None
+    if type_name == 'ammo' and not ammo_type:
+        return jsonify({'error': 'missing_ammo_type'}), 400
 
     image_path = None
     if 'image' in request.files:
@@ -3162,6 +3295,7 @@ def create_item_template():
         bag_height=bag_height if is_cloth and bag_height > 0 else None,
         fast_w=fast_w if type_name == 'belt' and fast_w > 0 else None,
         fast_h=fast_h if type_name == 'belt' and fast_h > 0 else None,
+        ammo_type=ammo_type,
         item_type=item_type,
     )
     db.session.add(definition)
@@ -3317,6 +3451,7 @@ def update_item_template():
     bag_height = parse_int(data.get('bag_height'), 0, minimum=0)
     fast_w = parse_int(data.get('fast_w'), 0, minimum=0)
     fast_h = parse_int(data.get('fast_h'), 0, minimum=0)
+    ammo_type_raw = (data.get('ammo_type') or '').strip()
 
     if not name:
         return jsonify({'error': 'missing_name'}), 400
@@ -3326,6 +3461,11 @@ def update_item_template():
         is_cloth = True
     if type_name == 'belt':
         is_cloth = True
+    ammo_type = ammo_type_raw or None
+    if type_name not in {'weapon', 'ammo'}:
+        ammo_type = None
+    if type_name == 'ammo' and not ammo_type:
+        return jsonify({'error': 'missing_ammo_type'}), 400
 
     if new_id != template_id and ItemDefinition.query.get(new_id):
         return jsonify({'error': 'duplicate_id'}), 400
@@ -3364,6 +3504,7 @@ def update_item_template():
     definition.bag_height = bag_height if is_cloth and bag_height > 0 else None
     definition.fast_w = fast_w if type_name == 'belt' and fast_w > 0 else None
     definition.fast_h = fast_h if type_name == 'belt' and fast_h > 0 else None
+    definition.ammo_type = ammo_type
     definition.item_type = item_type
 
     old_id = template_id
