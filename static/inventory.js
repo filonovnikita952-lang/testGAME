@@ -2084,6 +2084,22 @@
             max_durability_input.type = 'hidden';
             max_durability_input.value = '';
             form.appendChild(max_durability_input);
+            const nameInput = form.querySelector('[data-template-name]');
+            const descriptionInput = form.querySelector('[data-template-description]');
+            const imageInput = form.querySelector('[data-template-image]');
+            const imagePreview = form.querySelector('[data-template-image-preview]');
+            const imageEmpty = form.querySelector('[data-template-image-empty]');
+            const typeInput = form.querySelector('[data-template-type]');
+            const qualityInput = form.querySelector('[data-template-quality]');
+            const widthInput = form.querySelector('[data-template-width]');
+            const heightInput = form.querySelector('[data-template-height]');
+            const weightInput = form.querySelector('[data-template-weight]');
+            const maxAmountInput = form.querySelector('[data-template-max-amount]');
+            const clothToggle = form.querySelector('[data-template-is-cloth]');
+            const bagWidthInput = form.querySelector('[data-template-bag-width]');
+            const bagHeightInput = form.querySelector('[data-template-bag-height]');
+            const fastWInput = form.querySelector('[data-template-fast-w]');
+            const fastHInput = form.querySelector('[data-template-fast-h]');
             let searchTimer = null;
             updateClothBeltVisibility(form);
             if (form.dataset.issueByIdBound) return;
@@ -2102,6 +2118,48 @@
                 if (!resultsBox) return;
                 resultsBox.innerHTML = '';
                 resultsBox.classList.remove('is-open');
+            };
+            const applyTemplate = (template) => {
+                if (!template) return;
+                if (nameInput) nameInput.value = template.name || '';
+                if (descriptionInput) descriptionInput.value = template.description || '';
+                if (typeInput) typeInput.value = template.type || 'other';
+                if (qualityInput) qualityInput.value = template.quality || 'common';
+                if (widthInput) widthInput.value = `${template.width || 1}`;
+                if (heightInput) heightInput.value = `${template.height || 1}`;
+                if (weightInput) weightInput.value = `${template.weight || 0}`;
+                if (max_durability_input) max_durability_input.value = template.max_durability ?? '';
+                if (maxAmountInput) maxAmountInput.value = `${template.max_amount || 1}`;
+                if (clothToggle) clothToggle.checked = Boolean(template.is_cloth);
+                if (bagWidthInput) bagWidthInput.value = `${template.bag_width || 0}`;
+                if (bagHeightInput) bagHeightInput.value = `${template.bag_height || 0}`;
+                if (fastWInput) fastWInput.value = `${template.fast_w || 0}`;
+                if (fastHInput) fastHInput.value = `${template.fast_h || 0}`;
+                if (imageInput) imageInput.value = template.image || '';
+                if (imagePreview && imageEmpty) {
+                    if (template.image) {
+                        imagePreview.src = `/static/${template.image}`;
+                        imagePreview.style.display = 'block';
+                        imageEmpty.style.display = 'none';
+                    } else {
+                        imagePreview.removeAttribute('src');
+                        imagePreview.style.display = 'none';
+                        imageEmpty.style.display = 'block';
+                    }
+                }
+                updateClothBeltVisibility(form);
+            };
+            const loadTemplate = async (templateId) => {
+                if (!templateId) return;
+                const response = await fetch(
+                    `/api/master/item_template/${templateId}?lobby_id=${encodeURIComponent(lobbyId || '')}`,
+                );
+                if (!response.ok) return;
+                const payload = await response.json().catch(() => ({}));
+                const template = payload.template;
+                if (!template) return;
+                applyTemplate(template);
+                refreshRandom();
             };
             const renderResults = (results) => {
                 if (!resultsBox) return;
@@ -2126,8 +2184,7 @@
                     buttonEl.addEventListener('click', () => {
                         if (templateInput) templateInput.value = `${result.id}`;
                         if (searchInput) searchInput.value = result.name;
-                        max_durability_input.value = result.max_durability ?? '';
-                        refreshRandom();
+                        loadTemplate(result.id);
                         clearResults();
                     });
                     resultsBox.appendChild(buttonEl);
@@ -2165,15 +2222,7 @@
             templateInput?.addEventListener('change', async () => {
                 const templateId = parseNumber(templateInput.value, 0);
                 if (!templateId) return;
-                const response = await fetch(
-                    `/api/master/item_template/${templateId}?lobby_id=${encodeURIComponent(lobbyId || '')}`,
-                );
-                if (!response.ok) return;
-                const payload = await response.json().catch(() => ({}));
-                const template = payload.template;
-                if (!template) return;
-                max_durability_input.value = template.max_durability ?? '';
-                refreshRandom();
+                await loadTemplate(templateId);
             });
             document.addEventListener('click', (event) => {
                 if (!resultsBox || !searchInput) return;

@@ -737,6 +737,7 @@ def giveid_chat_debug_enabled() -> bool:
 def log_giveid_step(
     lobby_id: Optional[int],
     user_id: Optional[int],
+    request_id: Optional[str],
     message: str,
     *,
     level: str = 'info',
@@ -751,10 +752,11 @@ def log_giveid_step(
         return
     chat_session = db.create_scoped_session()
     try:
+        formatted_message = f'[GiveID][{request_id}] {message}' if request_id else f'[GiveID] {message}'
         chat_session.add(ChatMessage(
             lobby_id=lobby_id,
             user_id=resolved_user_id,
-            message=f'[GiveID:{level.upper()}] {message}',
+            message=formatted_message,
             is_system=True,
         ))
         chat_session.commit()
@@ -3158,16 +3160,34 @@ def search_item_templates():
     if not query:
         return jsonify({'ok': True, 'results': []})
     query_lower = query.lower()
+    query_id = None
+    if query.isdigit():
+        try:
+            query_id = int(query)
+        except ValueError:
+            query_id = None
     definitions = ItemDefinition.query.all()
     scored = []
     for definition in definitions:
         name = definition.name or ''
         name_lower = name.lower()
-        if query_lower not in name_lower:
+        id_text = str(definition.id)
+        matched = False
+        score = 0.0
+        if query_id is not None and definition.id == query_id:
+            matched = True
+            score = 2.0
+        elif query_id is not None and query_lower in id_text:
+            matched = True
+            score = 1.2
+        if query_lower in name_lower:
+            matched = True
+            name_score = difflib.SequenceMatcher(None, query_lower, name_lower).ratio()
+            if name_lower.startswith(query_lower):
+                name_score += 0.3
+            score = max(score, name_score)
+        if not matched:
             continue
-        score = difflib.SequenceMatcher(None, query_lower, name_lower).ratio()
-        if name_lower.startswith(query_lower):
-            score += 0.3
         scored.append((score, name_lower, definition))
     scored.sort(key=lambda entry: (-entry[0], entry[1]))
     results = [definition for _score, _name, definition in scored[:5]]
@@ -3198,6 +3218,7 @@ def get_item_template(template_id: int):
             'id': definition.id,
             'name': definition.name,
             'description': definition.description,
+            'image': definition.image_path,
             'type': definition.item_type.name if definition.item_type else '',
             'quality': definition.quality,
             'width': definition.w,
@@ -3324,7 +3345,7 @@ def _handle_giveid_request(lobby_id: int, data: dict, user: User):
     actor_id = user.id if user else None
 
     def log_step(text: str, *, level: str = 'info', force: bool = False) -> None:
-        log_giveid_step(lobby_id, actor_id, f'{request_id} {text}', level=level, force=force)
+        log_giveid_step(lobby_id, actor_id, request_id, text, level=level, force=force)
 
     def parse_optional_int(raw_value: Optional[object]) -> Optional[int]:
         if raw_value is None or raw_value == '':
@@ -3364,6 +3385,7 @@ def _handle_giveid_request(lobby_id: int, data: dict, user: User):
                 log_step(f'Container {container_id} no_space rotation={rotation}')
         return None
 
+    log_step('Request received.')
     log_step(
         'GiveID start '
         f'actor={actor_id} lobby_id={lobby_id} target_user_id={data.get("target_user_id")} '
@@ -3404,7 +3426,7 @@ def _handle_giveid_request(lobby_id: int, data: dict, user: User):
         log_step('Definition not found.', level='error', force=True)
         return jsonify({'ok': False, 'request_id': request_id, 'error': 'not_found'}), 404
     log_step(
-        f'Definition details name="{definition.name}" max_stack={definition.max_stack} '
+        f'Template resolved id={definition.id} name="{definition.name}" max_stack={definition.max_stack} '
         f'max_durability={definition.max_durability}',
     )
 
@@ -3415,27 +3437,28 @@ def _handle_giveid_request(lobby_id: int, data: dict, user: User):
         log_step('Durability parse failed.', level='error', force=True)
         return jsonify({'ok': False, 'request_id': request_id, 'error': 'invalid_durability'}), 400
 
-    if has_durability(definition):
-        max_durability = max(definition.max_durability or 1, 1)
-        if durability_current_value is not None:
-            if durability_current_value < 0 or durability_current_value > max_durability:
-                log_step('Durability out of range.', level='error', force=True)
-                return jsonify({'ok': False, 'request_id': request_id, 'error': 'invalid_durability'}), 400
-        log_step(
-            f'Durability resolved input={durability_current_value} max={max_durability} random={random_durability}',
-        )
+    if definition.max_durability is None:
+        durability_current_value = None
+        log_step('Durability resolved none (template has no durability).')
     else:
-        if durability_current_value is not None:
-            log_step('Durability ignored (item has no durability).')
-            durability_current_value = None
+        max_durability = max(definition.max_durability or 1, 1)
+        if durability_current_value is None:
+            durability_current_value = max_durability
+        else:
+            durability_current_value = min(max(durability_current_value, 0), max_durability)
+        log_step(
+            f'Durability resolved value={durability_current_value} max={max_durability} '
+            f'random={random_durability}',
+        )
 
     stack_amounts = split_stack_amounts(definition, amount)
-    log_step(f'Stack plan count={len(stack_amounts)} splits={stack_amounts}')
+    log_step(f'Stack plan computed count={len(stack_amounts)} splits={stack_amounts}')
 
     created_instances = []
     try:
         with db.session.begin():
             for index, stack_amount in enumerate(stack_amounts, start=1):
+                log_step(f'Placement attempts stack={index}/{len(stack_amounts)} amount={stack_amount}')
                 temp_instance = PlacementPreview(
                     owner_id=target_user_id,
                     definition=definition,
