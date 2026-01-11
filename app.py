@@ -1402,7 +1402,10 @@ def build_instance_payload(
     current_durability = None
     if durability_enabled:
         max_durability = max(definition.max_durability or 0, 0)
-        current_durability = min(max(instance.str_current or 0, 0), max_durability)
+        if instance.str_current is None:
+            current_durability = max_durability
+        else:
+            current_durability = min(max(instance.str_current, 0), max_durability)
     return {
         'id': instance.id,
         'template_id': definition.id,
