@@ -505,11 +505,87 @@
                                                                         <h4>Видати за ID</h4>
                                                                         <label for="issue_template_search_{{ membership.lobby.id }}">Пошук шаблону</label>
                                                                         <div class="issue-search">
-                                                                            <input type="text" id="issue_template_search_{{ membership.lobby.id }}" placeholder="Пошук за назвою" data-template-search>
+                                                                            <input type="text" id="issue_template_search_{{ membership.lobby.id }}" placeholder="Пошук за ID або назвою" data-template-search>
                                                                             <div class="issue-search__results" data-template-results></div>
                                                                         </div>
                                                                         <label for="issue_template_{{ membership.lobby.id }}">Template ID</label>
                                                                         <input type="number" id="issue_template_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону" data-template-id>
+                                                                        <h4>Дані шаблону</h4>
+                                                                        <label>Назва</label>
+                                                                        <input type="text" data-template-name readonly>
+                                                                        <label>Опис</label>
+                                                                        <textarea rows="3" data-template-description readonly></textarea>
+                                                                        <label>Зображення</label>
+                                                                        <div class="issue-template-image">
+                                                                            <img data-template-image-preview alt="Template preview" style="max-width: 160px; display: none;">
+                                                                            <div data-template-image-empty>Немає зображення</div>
+                                                                            <input type="text" data-template-image readonly>
+                                                                        </div>
+                                                                        <label>Тип</label>
+                                                                        <select data-template-type disabled>
+                                                                            <option value="weapon">Weapon</option>
+                                                                            <option value="armor">Armor</option>
+                                                                            <option value="shield">Shield</option>
+                                                                            <option value="backpack">Backpack</option>
+                                                                            <option value="belt">Belt</option>
+                                                                            <option value="head">Head</option>
+                                                                            <option value="shirt">Shirt</option>
+                                                                            <option value="pants">Pants</option>
+                                                                            <option value="boots">Boots</option>
+                                                                            <option value="amulet">Amulet</option>
+                                                                            <option value="ammo">Ammo</option>
+                                                                            <option value="food">Food</option>
+                                                                            <option value="map">Map</option>
+                                                                            <option value="other">Other</option>
+                                                                        </select>
+                                                                        <label>Якість</label>
+                                                                        <select data-template-quality disabled>
+                                                                            <option value="common">Common</option>
+                                                                            <option value="uncommon">Uncommon</option>
+                                                                            <option value="epic">Epic</option>
+                                                                            <option value="legendary">Legendary</option>
+                                                                            <option value="mythical">Mythical</option>
+                                                                        </select>
+                                                                        <div class="form inline">
+                                                                            <div>
+                                                                                <label>Ширина</label>
+                                                                                <input type="number" data-template-width readonly>
+                                                                            </div>
+                                                                            <div>
+                                                                                <label>Висота</label>
+                                                                                <input type="number" data-template-height readonly>
+                                                                            </div>
+                                                                        </div>
+                                                                        <label>Вага</label>
+                                                                        <input type="number" data-template-weight readonly>
+                                                                        <label>Max durability</label>
+                                                                        <input type="number" data-template-max-durability readonly>
+                                                                        <label>Max stack</label>
+                                                                        <input type="number" data-template-max-amount readonly>
+                                                                        <div class="form inline admin-form-section" data-cloth-fields>
+                                                                            <div class="checkbox-row">
+                                                                                <label>Cloth item</label>
+                                                                                <input type="checkbox" data-template-is-cloth disabled>
+                                                                            </div>
+                                                                            <div>
+                                                                                <label>Bag W</label>
+                                                                                <input type="number" data-template-bag-width readonly>
+                                                                            </div>
+                                                                            <div>
+                                                                                <label>Bag H</label>
+                                                                                <input type="number" data-template-bag-height readonly>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div class="form inline admin-form-section" data-belt-fields>
+                                                                            <div>
+                                                                                <label>Fast W</label>
+                                                                                <input type="number" data-template-fast-w readonly>
+                                                                            </div>
+                                                                            <div>
+                                                                                <label>Fast H</label>
+                                                                                <input type="number" data-template-fast-h readonly>
+                                                                            </div>
+                                                                        </div>
                                                                         <label for="issue_target_{{ membership.lobby.id }}">Отримувач</label>
                                                                         <select id="issue_target_{{ membership.lobby.id }}">
                                                                             {% for member in membership.lobby.members %}
