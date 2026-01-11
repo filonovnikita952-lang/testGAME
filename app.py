@@ -468,24 +468,31 @@ def _ensure_item_definition_columns():
         columns = {column['name'] for column in inspector.get_columns('item_definition')}
         if 'is_cloth' not in columns:
             db.session.execute(text('ALTER TABLE item_definition ADD COLUMN is_cloth BOOLEAN DEFAULT 0'))
+            print('[DB MIGRATION] Added item_definition.is_cloth', file=sys.stderr)
             db.session.commit()
         if 'bag_width' not in columns:
             db.session.execute(text('ALTER TABLE item_definition ADD COLUMN bag_width INTEGER'))
+            print('[DB MIGRATION] Added item_definition.bag_width', file=sys.stderr)
             db.session.commit()
         if 'bag_height' not in columns:
             db.session.execute(text('ALTER TABLE item_definition ADD COLUMN bag_height INTEGER'))
+            print('[DB MIGRATION] Added item_definition.bag_height', file=sys.stderr)
             db.session.commit()
         if 'fast_w' not in columns:
             db.session.execute(text('ALTER TABLE item_definition ADD COLUMN fast_w INTEGER'))
+            print('[DB MIGRATION] Added item_definition.fast_w', file=sys.stderr)
             db.session.commit()
         if 'fast_h' not in columns:
             db.session.execute(text('ALTER TABLE item_definition ADD COLUMN fast_h INTEGER'))
+            print('[DB MIGRATION] Added item_definition.fast_h', file=sys.stderr)
             db.session.commit()
         if 'max_stack' not in columns:
             db.session.execute(text('ALTER TABLE item_definition ADD COLUMN max_stack INTEGER'))
+            print('[DB MIGRATION] Added item_definition.max_stack', file=sys.stderr)
             db.session.commit()
         if 'ammo_type' not in columns:
             db.session.execute(text('ALTER TABLE item_definition ADD COLUMN ammo_type TEXT'))
+            print('[DB MIGRATION] Added item_definition.ammo_type', file=sys.stderr)
             db.session.commit()
         db.session.execute(text(
             'UPDATE item_definition '
@@ -505,6 +512,19 @@ def _ensure_item_definition_columns():
             'WHERE max_stack IS NULL OR max_stack < 1'
         ))
         db.session.commit()
+        if 'max_durability' in columns:
+            result = db.session.execute(text(
+                'UPDATE item_definition '
+                'SET max_durability = 1 '
+                'WHERE (max_durability IS NULL OR max_durability < 1) '
+                'AND type_id IN (SELECT id FROM item_type WHERE name = "weapon")'
+            ))
+            db.session.commit()
+            if result.rowcount:
+                print(
+                    f'[DB MIGRATION] Updated weapon max_durability for {result.rowcount} rows.',
+                    file=sys.stderr,
+                )
 
 
 def _ensure_character_stats_columns():
@@ -688,6 +708,17 @@ def parse_int(value: Optional[str], default: int, minimum: int = 0) -> int:
     except (TypeError, ValueError):
         return default
     return max(parsed, minimum)
+
+
+def parse_optional_int(value: Optional[object]) -> Optional[int]:
+    if value is None or value == '':
+        return None
+    if isinstance(value, bool):
+        raise ValueError('invalid')
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ValueError('invalid')
 
 
 def get_or_create_item_type(
@@ -2740,8 +2771,9 @@ def use_inventory_item():
                 'Weapon selected: %s',
                 item_display_name(instance),
             )
-            current_durability = instance.str_current
-            if current_durability is None or current_durability <= 0:
+            max_durability = max(instance.definition.max_durability or 0, 0)
+            current_durability = instance.str_current if instance.str_current is not None else max_durability
+            if current_durability <= 0:
                 log_weapon_ammo_step(lobby_id, user.id, 'Use blocked: broken weapon.')
                 raise UseError('broken_weapon')
 
@@ -2791,7 +2823,7 @@ def use_inventory_item():
                 )
 
             roll = random.randint(0, 3)
-            instance.str_current = max((instance.str_current or 0) - roll, 0)
+            instance.str_current = max(current_durability - roll, 0)
             instance.version += 1
             log_weapon_ammo_step(
                 lobby_id,
@@ -2815,6 +2847,22 @@ def use_inventory_item():
         except UseError as exc:
             db.session.rollback()
             log_weapon_ammo_step(lobby_id, user.id, 'Use failed: %s.', exc.reason)
+            if lobby_id:
+                if exc.reason == 'no_ammo':
+                    ammo_label = (instance.definition.ammo_type or '').strip()
+                    create_chat_message(
+                        lobby_id,
+                        user.id,
+                        f'{user.nickname} tried to use {item_display_name(instance)} but has no {ammo_label}.',
+                        is_system=True,
+                    )
+                elif exc.reason == 'broken_weapon':
+                    create_chat_message(
+                        lobby_id,
+                        user.id,
+                        f'{user.nickname} tried to use {item_display_name(instance)} but it is broken.',
+                        is_system=True,
+                    )
             return jsonify({'ok': False, 'error': exc.reason}), exc.status
         except SQLAlchemyError:
             db.session.rollback()
@@ -3222,7 +3270,12 @@ def create_item_template():
     width = parse_int(data.get('width'), 1, minimum=1)
     height = parse_int(data.get('height'), 1, minimum=1)
     weight = float(data.get('weight') or 0)
-    max_durability = parse_int(data.get('max_durability'), 1, minimum=1)
+    max_durability_input = data.get('max_durability')
+    try:
+        max_durability_value = parse_optional_int(max_durability_input)
+    except ValueError:
+        return jsonify({'error': 'invalid_max_durability'}), 400
+    max_durability = parse_int(max_durability_input, 1, minimum=0)
     max_amount = parse_int(data.get('max_amount'), 1, minimum=1)
     is_cloth = str(data.get('is_cloth') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
     bag_width = parse_int(data.get('bag_width'), 0, minimum=0)
@@ -3244,6 +3297,9 @@ def create_item_template():
         is_cloth = True
     if type_name == 'belt':
         is_cloth = True
+    if type_name == 'weapon':
+        if max_durability_value is None or max_durability_value < 1:
+            return jsonify({'error': 'invalid_max_durability'}), 400
     ammo_type = ammo_type_raw or None
     if type_name not in {'weapon', 'ammo'}:
         ammo_type = None
@@ -3265,6 +3321,9 @@ def create_item_template():
             return jsonify({'error': 'invalid_image'}), 400
 
     item_type = get_or_create_item_type(type_name)
+    if type_name == 'weapon':
+        item_type.stackable = False
+        max_amount = 1
     if max_amount > 1:
         item_type.stackable = True
     if item_type.stackable and item_type.has_durability:
@@ -3447,7 +3506,16 @@ def update_item_template():
     width = parse_int(data.get('width'), definition.w or 1, minimum=1)
     height = parse_int(data.get('height'), definition.h or 1, minimum=1)
     weight = float(data.get('weight') or 0)
-    max_durability = parse_int(data.get('max_durability'), definition.max_durability or 1, minimum=1)
+    max_durability_input = data.get('max_durability')
+    try:
+        max_durability_value = parse_optional_int(max_durability_input)
+    except ValueError:
+        return jsonify({'error': 'invalid_max_durability'}), 400
+    max_durability = parse_int(
+        max_durability_input,
+        definition.max_durability or 1,
+        minimum=0,
+    )
     max_amount = parse_int(data.get('max_amount'), normalized_max_amount(definition), minimum=1)
     is_cloth = str(data.get('is_cloth') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
     bag_width = parse_int(data.get('bag_width'), 0, minimum=0)
@@ -3464,6 +3532,9 @@ def update_item_template():
         is_cloth = True
     if type_name == 'belt':
         is_cloth = True
+    if type_name == 'weapon':
+        if max_durability_value is None or max_durability_value < 1:
+            return jsonify({'error': 'invalid_max_durability'}), 400
     ammo_type = ammo_type_raw or None
     if type_name not in {'weapon', 'ammo'}:
         ammo_type = None
@@ -3474,6 +3545,9 @@ def update_item_template():
         return jsonify({'error': 'duplicate_id'}), 400
 
     item_type = get_or_create_item_type(type_name)
+    if type_name == 'weapon':
+        item_type.stackable = False
+        max_amount = 1
     if max_amount > 1:
         item_type.stackable = True
     if item_type.stackable and item_type.has_durability:
@@ -3552,16 +3626,6 @@ def _handle_giveid_request(lobby_id: int, data: dict, user: User):
         log_step(f'Step 4: rollback reason={reason}.', level='error', force=True)
         return jsonify({'ok': False, 'request_id': request_id, 'error': error}), status
 
-    def parse_optional_int(raw_value: Optional[object]) -> Optional[int]:
-        if raw_value is None or raw_value == '':
-            return None
-        if isinstance(raw_value, bool):
-            raise ValueError('invalid')
-        try:
-            return int(raw_value)
-        except (TypeError, ValueError):
-            raise ValueError('invalid')
-
     if not is_master(user, lobby_id):
         return abort_with_logs('forbidden', status=403, error='forbidden')
 
@@ -3606,6 +3670,13 @@ def _handle_giveid_request(lobby_id: int, data: dict, user: User):
         log_step('Step 3: placement attempt -> skipped (definition not found).', level='error', force=True)
         log_step('Step 4: rollback reason=not_found.', level='error', force=True)
         return jsonify({'ok': False, 'request_id': request_id, 'error': 'not_found'}), 404
+    if definition.item_type and definition.item_type.name == 'weapon':
+        if definition.max_durability is None or definition.max_durability < 1:
+            log_step('Step 1: definition resolved -> invalid weapon durability.', level='error', force=True)
+            log_step('Step 2: durability resolved -> skipped (invalid definition).', level='error', force=True)
+            log_step('Step 3: placement attempt -> skipped (invalid definition).', level='error', force=True)
+            log_step('Step 4: rollback reason=invalid_definition.', level='error', force=True)
+            return jsonify({'ok': False, 'request_id': request_id, 'error': 'invalid_definition'}), 400
     log_step(
         f'Step 1: definition resolved id={definition.id} name="{definition.name}" '
         f'max_stack={definition.max_stack} max_durability={definition.max_durability}.',
@@ -3626,13 +3697,15 @@ def _handle_giveid_request(lobby_id: int, data: dict, user: User):
     else:
         max_durability = max(definition.max_durability, 0)
         if durability_current_value is None:
-            durability_current_value = max_durability
-        resolved_durability = min(max(durability_current_value, 0), max_durability)
-        log_step(
-            f'Step 2: durability resolved = {resolved_durability} (input={durability_current_value}, '
-            f'max={max_durability}).',
-            force=True,
-        )
+            resolved_durability = None
+            log_step('Step 2: durability resolved = null (no input provided).', force=True)
+        else:
+            resolved_durability = min(max(durability_current_value, 0), max_durability)
+            log_step(
+                f'Step 2: durability resolved = {resolved_durability} (input={durability_current_value}, '
+                f'max={max_durability}).',
+                force=True,
+            )
 
     resolved_amount = normalize_stack_amount(definition, amount)
 
