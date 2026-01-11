@@ -1543,18 +1543,57 @@ def parse_roll_text(roll_text: str, context: dict[str, float]) -> dict[str, obje
 def format_roll_results(rolls: list[int]) -> str:
     if not rolls:
         return '()'
-    min_value = min(rolls)
     max_value = max(rolls)
     parts = []
     for value in rolls:
         classes = ['roll-result']
-        if value == min_value:
-            classes.append('roll-result--min')
-        if value == max_value:
-            classes.append('roll-result--max')
+        if value == 1:
+            classes.append('roll-red')
+        elif value == max_value:
+            classes.append('roll-green')
         class_attr = ' '.join(classes)
         parts.append(f'<span class="{class_attr}">{value}</span>')
     return f"({', '.join(parts)})"
+
+
+def _format_formula_value(value: float) -> str:
+    if not math.isfinite(value):
+        raise RollValidationError('Non-finite formula.')
+    if float(value).is_integer():
+        return str(int(value))
+    return f'{value:g}'
+
+
+def build_formula_message(*, username: str, formula_text: str, value_text: str) -> str:
+    safe_username = html.escape(username)
+    safe_formula = html.escape(formula_text)
+    safe_value = html.escape(value_text)
+    line_one = f'{safe_username} – Формула'
+    line_two = f'{{{safe_formula}}} = {safe_value}'
+    return f'{line_one}<br>{line_two}'
+
+
+def create_formula_chat_message(
+    lobby_id: int,
+    actor: User,
+    formula_text: str,
+    *,
+    target_user_id: Optional[int] = None,
+) -> ChatMessage:
+    context = build_roll_context(target_user_id or actor.id)
+    try:
+        if not formula_text.strip():
+            raise RollValidationError('Empty formula.')
+        value = evaluate_stat_formula(formula_text, context)
+        value_text = _format_formula_value(value)
+    except (RollValidationError, StatFormulaError, TypeError, ValueError):
+        return create_chat_message(lobby_id, actor.id, ROLL_INVALID_MESSAGE, is_system=True)
+    message_html = build_formula_message(
+        username=actor.nickname or 'User',
+        formula_text=formula_text,
+        value_text=value_text,
+    )
+    return create_chat_message(lobby_id, actor.id, message_html, is_system=True)
 
 
 def build_roll_message(
@@ -3847,6 +3886,27 @@ def lobby_notes_roll_api(lobby_id: int):
         lobby_id,
         user,
         roll_text,
+        target_user_id=target_user_id,
+    )
+    db.session.commit()
+    return jsonify({'ok': True, 'message': serialize_chat_message(message)})
+
+
+@app.route('/api/lobby/<int:lobby_id>/notes/formula', methods=['POST'])
+def lobby_notes_formula_api(lobby_id: int):
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    target_user_id = parse_int(data.get('user_id'), 0)
+    formula_text = (data.get('formula_text') or '').strip()
+    if not target_user_id or not formula_text:
+        return jsonify({'ok': False, 'error': 'invalid_payload'}), 400
+    error_response = _require_notes_edit_permission(user, lobby_id, target_user_id)
+    if error_response:
+        return error_response
+    message = create_formula_chat_message(
+        lobby_id,
+        user,
+        formula_text,
         target_user_id=target_user_id,
     )
     db.session.commit()

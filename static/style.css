@@ -1537,7 +1537,8 @@ textarea {
     display: none;
 }
 
-.note-roll {
+.note-roll,
+.note-formula {
     display: inline-block;
     padding: 0 6px;
     border-radius: 6px;
@@ -1547,17 +1548,20 @@ textarea {
     transition: background 0.2s ease, border-color 0.2s ease;
 }
 
-.note-roll:hover {
+.note-roll:hover,
+.note-formula:hover {
     background: rgba(109, 211, 255, 0.25);
     border-color: rgba(109, 211, 255, 0.7);
 }
 
-.note-roll.is-disabled {
+.note-roll.is-disabled,
+.note-formula.is-disabled {
     cursor: not-allowed;
     opacity: 0.55;
 }
 
-.note-roll.is-disabled:hover {
+.note-roll.is-disabled:hover,
+.note-formula.is-disabled:hover {
     background: rgba(109, 211, 255, 0.15);
     border-color: rgba(109, 211, 255, 0.4);
 }
@@ -1578,16 +1582,12 @@ textarea {
     font-weight: 600;
 }
 
-.roll-result--min {
+.roll-red {
     color: #ff8a8a;
 }
 
-.roll-result--max {
+.roll-green {
     color: #6df2a6;
-}
-
-.roll-result--min.roll-result--max {
-    color: #f4d06f;
 }
 
 .formula-row.is-error input {
