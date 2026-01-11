@@ -1656,6 +1656,34 @@ textarea {
     gap: 8px;
 }
 
+.suit-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.suit-toolbar .button {
+    padding: 6px 10px;
+    min-width: 34px;
+    justify-content: center;
+    font-size: 0.95rem;
+}
+
+.suit-button.suit-disabled,
+.suit-button:disabled {
+    opacity: 0.45;
+    filter: grayscale(1);
+    box-shadow: none;
+    transform: none;
+}
+
+.suit-button.suit-disabled:hover,
+.suit-button:disabled:hover {
+    box-shadow: none;
+    transform: none;
+}
+
 .slot-grid {
     display: grid;
     gap: 4px;
