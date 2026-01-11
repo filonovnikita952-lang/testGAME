@@ -1477,19 +1477,19 @@
             if (templateInput && item?.template_id) {
                 templateInput.value = `${item.template_id}`;
             }
-            const templateId = Number.parseInt(templateInput?.value || '0', 10);
+            const definitionId = Number.parseInt(templateInput?.value || '0', 10);
             const target = Number.parseInt(targetInput?.value || '0', 10);
             const amount = Number.parseInt(amountInput?.value || '1', 10);
-            if (!templateId || !target) return;
-            const confirmed = window.confirm(`Видати шаблон #${templateId} для користувача ${target}?`);
+            if (!definitionId || !target) return;
+            const confirmed = window.confirm(`Видати шаблон #${definitionId} для користувача ${target}?`);
             if (!confirmed) return;
-            this.trackAction(`issue-by-id:${templateId}:${target}`);
+            this.trackAction(`issue-by-id:${definitionId}:${target}`);
             if (DEBUG_INVENTORY) {
-                console.debug('[IssueById]', 'context issue start', { templateId, target, amount });
+                console.debug('[IssueById]', 'context issue start', { definitionId, target, amount });
             }
             const payload = {
                 lobby_id: this.lobbyId,
-                template_id: templateId,
+                definition_id: definitionId,
                 target_user_id: target,
                 amount: Number.isNaN(amount) ? 1 : amount,
                 durability_current: durabilityInput?.value || null,
@@ -1499,7 +1499,7 @@
             console.log('GiveID fetch starting', payload);
             let response;
             try {
-                response = await fetch('/api/master/issue_by_id', {
+                response = await fetch(`/api/lobby/${this.lobbyId}/master/give-id`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
@@ -2184,7 +2184,7 @@
             const submitIssue = async (event) => {
                 event?.preventDefault();
                 logIssueDebug('issue click', { lobbyId });
-                const templateId = Number.parseInt(
+                const definitionId = Number.parseInt(
                     form.querySelector('input[id^="issue_template_"]')?.value || '0',
                     10,
                 );
@@ -2198,26 +2198,26 @@
                 );
                 const durabilityCurrent = form.querySelector('input[id^="issue_durability_current_"]')?.value || '';
                 const randomDurability = form.querySelector('input[id^="issue_random_durability_"]')?.value || '';
-                if (!templateId || !targetId) {
-                    logIssueDebug('issue validation failed', { templateId, targetId });
+                if (!definitionId || !targetId) {
+                    logIssueDebug('issue validation failed', { definitionId, targetId });
                     return;
                 }
-                const confirmed = window.confirm(`Видати шаблон #${templateId} для користувача ${targetId}?`);
+                const confirmed = window.confirm(`Видати шаблон #${definitionId} для користувача ${targetId}?`);
                 if (!confirmed) {
-                    logIssueDebug('issue cancelled', { templateId, targetId });
+                    logIssueDebug('issue cancelled', { definitionId, targetId });
                     return;
                 }
-                controller.trackAction(`issue-by-id:${templateId}:${targetId}`);
-                logIssueDebug('issue fetch', { templateId, targetId, amount });
-                console.log('GiveID fetch starting', { templateId, targetId, amount });
+                controller.trackAction(`issue-by-id:${definitionId}:${targetId}`);
+                logIssueDebug('issue fetch', { definitionId, targetId, amount });
+                console.log('GiveID fetch starting', { definitionId, targetId, amount });
                 let response;
                 try {
-                    response = await fetch('/api/master/issue_by_id', {
+                    response = await fetch(`/api/lobby/${lobbyId}/master/give-id`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             lobby_id: lobbyId,
-                            template_id: templateId,
+                            definition_id: definitionId,
                             target_user_id: targetId,
                             amount,
                             durability_current: durabilityCurrent,
