@@ -1520,10 +1520,6 @@ textarea {
     line-height: 1.5;
 }
 
-.notes-panel__input.is-hidden {
-    display: none;
-}
-
 .notes-panel__rendered {
     min-height: 120px;
     width: 100%;
@@ -1591,8 +1587,7 @@ textarea {
 }
 
 .roll-result--min.roll-result--max {
-    color: #ff8a8a;
-    box-shadow: 0 0 0 1px rgba(109, 242, 166, 0.75) inset;
+    color: #f4d06f;
 }
 
 .formula-row.is-error input {

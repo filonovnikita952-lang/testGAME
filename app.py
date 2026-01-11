@@ -1543,11 +1543,12 @@ def parse_roll_text(roll_text: str, context: dict[str, float]) -> dict[str, obje
 def format_roll_results(rolls: list[int]) -> str:
     if not rolls:
         return '()'
+    min_value = min(rolls)
     max_value = max(rolls)
     parts = []
     for value in rolls:
         classes = ['roll-result']
-        if value == 1:
+        if value == min_value:
             classes.append('roll-result--min')
         if value == max_value:
             classes.append('roll-result--max')

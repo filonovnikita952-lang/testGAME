@@ -353,14 +353,6 @@
                     this.setNotesStatus('unsaved');
                     this.renderNotesPreview(this.notesInput.value);
                 });
-                this.notesInput.addEventListener('focus', () => {
-                    if (!this.canEditNotes()) return;
-                    this.setNotesEditing(true);
-                });
-                this.notesInput.addEventListener('blur', () => {
-                    if (!this.canEditNotes()) return;
-                    this.setNotesEditing(false);
-                });
             }
             if (this.notesRendered) {
                 this.notesRendered.addEventListener('click', (event) => {
@@ -370,13 +362,6 @@
                     const rollText = target.dataset.roll || '';
                     if (!rollText.trim()) return;
                     this.submitNotesRoll(rollText);
-                });
-                this.notesRendered.addEventListener('click', (event) => {
-                    const target = event.target;
-                    if (target && target.closest && target.closest('.note-roll')) return;
-                    if (!this.canEditNotes()) return;
-                    this.setNotesEditing(true);
-                    this.notesInput?.focus();
                 });
             }
 
@@ -1812,6 +1797,7 @@
             if (this.notesInput) {
                 const canEditNotes = this.canEditNotes();
                 this.notesInput.disabled = !canEditNotes;
+                this.notesInput.classList.toggle('is-hidden', !canEditNotes);
             }
             if (this.notesSaveButton) {
                 const canEditNotes = this.canEditNotes();
@@ -1820,6 +1806,10 @@
             }
             if (this.notesActions) {
                 this.notesActions.classList.toggle('is-hidden', !this.canEditNotes());
+            }
+            if (this.notesRendered) {
+                const notesText = this.notesInput?.value ?? this.notesPayload?.notes_text ?? '';
+                this.renderNotesPreview(notesText);
             }
             if (this.notesRendered) {
                 const notesText = this.notesInput?.value ?? this.notesPayload?.notes_text ?? '';
@@ -1847,31 +1837,6 @@
 
         canRollNotes() {
             return this.canEditNotes();
-        }
-
-        setNotesEditing(isEditing) {
-            if (!this.canEditNotes()) {
-                this.notesIsEditing = false;
-            } else {
-                this.notesIsEditing = Boolean(isEditing);
-            }
-            if (!this.notesIsEditing) {
-                const notesText = this.notesInput?.value ?? this.notesPayload?.notes_text ?? '';
-                this.renderNotesPreview(notesText);
-            }
-            this.syncNotesVisibility();
-        }
-
-        syncNotesVisibility() {
-            if (this.notesInput) {
-                const showInput = this.canEditNotes() && this.notesIsEditing;
-                this.notesInput.classList.toggle('is-hidden', !showInput);
-            }
-            if (this.notesRendered) {
-                const hasContent = Boolean(this.notesRendered.textContent.trim());
-                const showRendered = !this.notesIsEditing && hasContent;
-                this.notesRendered.classList.toggle('is-hidden', !showRendered);
-            }
         }
 
         setNotesStatus(state, updatedAt = null) {
@@ -1941,7 +1906,6 @@
             const tokens = this.buildNotesTokens(text);
             if (!tokens.length) {
                 this.notesRendered.classList.add('is-hidden');
-                this.syncNotesVisibility();
                 return;
             }
             tokens.forEach((token) => {
@@ -1960,7 +1924,6 @@
             });
             this.notesRendered.appendChild(fragment);
             this.notesRendered.classList.remove('is-hidden');
-            this.syncNotesVisibility();
         }
 
         async submitNotesRoll(rollText) {
@@ -2209,7 +2172,6 @@
                     this.notesInput.value = notesText;
                 }
                 this.renderNotesPreview(notesText);
-                this.setNotesEditing(false);
                 if (this.canEditNotes()) {
                     if (data?.updated_at) {
                         const updatedAt = new Date(data.updated_at).toLocaleString();
