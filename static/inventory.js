@@ -86,12 +86,30 @@
                 hungry: this.root.querySelector('[data-stat-value="hungry"]'),
                 ac: this.root.querySelector('[data-stat-value="ac"]'),
             };
+            this.healthValues = {
+                hp_head: this.root.querySelector('[data-health-value="hp_head"]'),
+                hp_torso: this.root.querySelector('[data-health-value="hp_torso"]'),
+                hp_left_arm: this.root.querySelector('[data-health-value="hp_left_arm"]'),
+                hp_right_arm: this.root.querySelector('[data-health-value="hp_right_arm"]'),
+                hp_left_leg: this.root.querySelector('[data-health-value="hp_left_leg"]'),
+                hp_right_leg: this.root.querySelector('[data-health-value="hp_right_leg"]'),
+                reason: this.root.querySelector('[data-health-value="reason"]'),
+            };
             this.statsFills = {
                 hp: this.root.querySelector('[data-stat-fill="hp"]'),
                 mana: this.root.querySelector('[data-stat-fill="mana"]'),
                 hungry: this.root.querySelector('[data-stat-fill="hungry"]'),
             };
             this.statsInputs = Array.from(this.root.querySelectorAll('[data-stat-input]'));
+            this.formulaSection = this.root.querySelector('[data-formula-section]');
+            this.formulaRows = Array.from(this.root.querySelectorAll('[data-formula-row]'));
+            this.formulaSaveButton = this.root.querySelector('[data-formula-save]');
+            this.formulaTestButton = this.root.querySelector('[data-formula-test]');
+            this.formulaInputs = new Map();
+            this.formulaResults = new Map();
+            this.formulaErrors = new Map();
+            this.formulaValues = {};
+            this.formulaErrorState = {};
             this.bagGridList = this.root.querySelector('[data-bag-grid-list]');
             this.fastSlotList = this.root.querySelector('[data-fast-slot-list]');
             this.fastSlotPanel = this.root.querySelector('[data-fast-slot-panel]');
@@ -131,6 +149,17 @@
             this.lastPointer = null;
             this.debugActionTimestamps = new Map();
             this.pendingSplits = new Set();
+
+            this.formulaRows.forEach((row) => {
+                const statKey = row.dataset.formulaKey;
+                if (!statKey) return;
+                const input = row.querySelector('[data-formula-input]');
+                const result = row.querySelector('[data-formula-result]');
+                const error = row.querySelector('[data-formula-error]');
+                if (input) this.formulaInputs.set(statKey, input);
+                if (result) this.formulaResults.set(statKey, result);
+                if (error) this.formulaErrors.set(statKey, error);
+            });
 
             this.bindEvents();
             this.loadInitialState();
@@ -272,6 +301,25 @@
                     const statKey = row.dataset.attributeKey;
                     if (!statKey) return;
                     this.toggleAttributeProficiency(statKey);
+                });
+            });
+
+            if (this.formulaSaveButton) {
+                this.formulaSaveButton.addEventListener('click', () => {
+                    if (!this.canEditFormulas()) return;
+                    this.saveFormulas();
+                });
+            }
+
+            if (this.formulaTestButton) {
+                this.formulaTestButton.addEventListener('click', () => {
+                    this.evaluateFormulas();
+                });
+            }
+
+            this.formulaInputs.forEach((input, statKey) => {
+                input.addEventListener('input', () => {
+                    this.clearFormulaError(statKey);
                 });
             });
 
@@ -552,6 +600,7 @@
             this.updateStatsUI();
             this.updateClassUI(payload.user);
             this.updateAttributesUI();
+            this.loadFormulas();
             this.updateWeightDisplay(payload.weight);
             this.root.classList.toggle('is-readonly', !this.permissions.can_edit);
             if (this.inventoryActions) {
@@ -1690,6 +1739,18 @@
             if (this.attributeFormulaSave) {
                 this.attributeFormulaSave.disabled = !this.canEditAttributes();
             }
+            if (this.formulaSection) {
+                this.formulaSection.classList.toggle('is-hidden', !this.permissions.is_master);
+            }
+            this.formulaInputs.forEach((input) => {
+                input.disabled = !this.canEditFormulas();
+            });
+            if (this.formulaSaveButton) {
+                this.formulaSaveButton.disabled = !this.canEditFormulas();
+            }
+            if (this.formulaTestButton) {
+                this.formulaTestButton.disabled = !this.permissions.is_master;
+            }
         }
 
         canEditStats() {
@@ -1697,6 +1758,10 @@
         }
 
         canEditAttributes() {
+            return this.permissions.is_master && this.masterMode === 'control';
+        }
+
+        canEditFormulas() {
             return this.permissions.is_master && this.masterMode === 'control';
         }
 
@@ -1754,6 +1819,25 @@
                         break;
                 }
             });
+            this.updateHealthUI();
+        }
+
+        updateHealthUI() {
+            const defaults = {
+                hp_head: 0,
+                hp_torso: 0,
+                hp_left_arm: 0,
+                hp_right_arm: 0,
+                hp_left_leg: 0,
+                hp_right_leg: 0,
+                reason: this.stats?.reason ?? 0,
+            };
+            const values = { ...defaults, ...this.formulaValues };
+            Object.entries(this.healthValues).forEach(([key, node]) => {
+                if (!node) return;
+                const value = values[key];
+                node.textContent = Number.isFinite(value) ? `${value}` : '—';
+            });
         }
 
         updateClassUI(userPayload) {
@@ -1804,6 +1888,121 @@
                 this.attributeFormulaWrap.classList.toggle('is-hidden', !this.permissions.is_master);
             }
             this.refreshMasterModeState();
+        }
+
+        clearFormulaError(statKey) {
+            const errorNode = this.formulaErrors.get(statKey);
+            const row = this.formulaRows.find((entry) => entry.dataset.formulaKey === statKey);
+            if (errorNode) errorNode.textContent = '';
+            if (row) row.classList.remove('is-error');
+            delete this.formulaErrorState[statKey];
+        }
+
+        applyFormulaResponse(payload) {
+            const results = payload?.results || {};
+            const errors = payload?.errors || {};
+            Object.entries(results).forEach(([statKey, result]) => {
+                if (!result || typeof result.value !== 'number') return;
+                this.formulaValues[statKey] = result.value;
+                const resultNode = this.formulaResults.get(statKey);
+                if (resultNode) {
+                    resultNode.textContent = `${result.value}`;
+                }
+                this.clearFormulaError(statKey);
+            });
+            Object.entries(errors).forEach(([statKey, error]) => {
+                const errorNode = this.formulaErrors.get(statKey);
+                const row = this.formulaRows.find((entry) => entry.dataset.formulaKey === statKey);
+                if (errorNode) {
+                    errorNode.textContent = error?.error || 'Error';
+                }
+                if (row) row.classList.add('is-error');
+                this.formulaErrorState[statKey] = error?.error || 'Error';
+            });
+            this.updateHealthUI();
+        }
+
+        async loadFormulas() {
+            if (!this.permissions.is_master || !this.formulaSection) return;
+            if (!this.selectedPlayerId) return;
+            try {
+                const response = await fetch(
+                    `/api/character/${this.selectedPlayerId}/formulas?lobby_id=${this.lobbyId}`,
+                );
+                if (!response.ok) return;
+                const data = await response.json().catch(() => ({}));
+                const formulas = data?.formulas || {};
+                this.formulaValues = {};
+                this.formulaErrorState = {};
+                this.formulaInputs.forEach((input, statKey) => {
+                    input.value = formulas[statKey] || '';
+                    const resultNode = this.formulaResults.get(statKey);
+                    if (resultNode) {
+                        resultNode.textContent = '—';
+                    }
+                    this.clearFormulaError(statKey);
+                });
+                if (Object.keys(formulas).length) {
+                    await this.evaluateFormulas();
+                } else {
+                    this.updateHealthUI();
+                }
+            } catch (error) {
+                console.debug('[Formulas] Load failed', error);
+            }
+        }
+
+        async saveFormulas() {
+            if (!this.selectedPlayerId) return;
+            const formulas = {};
+            this.formulaInputs.forEach((input, statKey) => {
+                formulas[statKey] = input.value.trim();
+            });
+            try {
+                const response = await fetch(`/api/character/${this.selectedPlayerId}/formulas`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        lobby_id: this.lobbyId,
+                        formulas,
+                    }),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data?.ok) {
+                    const details = data?.details || {};
+                    Object.entries(details).forEach(([statKey, info]) => {
+                        const errorNode = this.formulaErrors.get(statKey);
+                        const row = this.formulaRows.find((entry) => entry.dataset.formulaKey === statKey);
+                        if (errorNode) errorNode.textContent = info?.error || 'Error';
+                        if (row) row.classList.add('is-error');
+                        this.formulaErrorState[statKey] = info?.error || 'Error';
+                    });
+                    return;
+                }
+                await this.evaluateFormulas();
+            } catch (error) {
+                console.debug('[Formulas] Save failed', error);
+            }
+        }
+
+        async evaluateFormulas(statKeys = null) {
+            if (!this.permissions.is_master || !this.selectedPlayerId) return;
+            const payload = { lobby_id: this.lobbyId };
+            if (Array.isArray(statKeys) && statKeys.length) {
+                payload.stat_keys = statKeys;
+            }
+            try {
+                const response = await fetch(`/api/character/${this.selectedPlayerId}/formulas/evaluate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                if (!response.ok) return;
+                const data = await response.json().catch(() => ({}));
+                this.applyFormulaResponse(data);
+            } catch (error) {
+                console.debug('[Formulas] Evaluate failed', error);
+            }
         }
 
         updateWeightDisplay(weight) {

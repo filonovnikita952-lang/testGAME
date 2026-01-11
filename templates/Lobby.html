@@ -285,14 +285,90 @@
                                                     <span class="panel-tag">HP</span>
                                                 </div>
                                                 <ul class="health-list">
-                                                    <li><span>Голова</span><strong>0/0</strong></li>
-                                                    <li><span>Торс</span><strong>0/0</strong></li>
-                                                    <li><span>Ліва рука</span><strong>0/0</strong></li>
-                                                    <li><span>Права рука</span><strong>0/0</strong></li>
-                                                    <li><span>Ліва нога</span><strong>0/0</strong></li>
-                                                    <li><span>Права нога</span><strong>0/0</strong></li>
+                                                    <li><span>Голова</span><strong data-health-value="hp_head">0</strong></li>
+                                                    <li><span>Торс</span><strong data-health-value="hp_torso">0</strong></li>
+                                                    <li><span>Ліва рука</span><strong data-health-value="hp_left_arm">0</strong></li>
+                                                    <li><span>Права рука</span><strong data-health-value="hp_right_arm">0</strong></li>
+                                                    <li><span>Ліва нога</span><strong data-health-value="hp_left_leg">0</strong></li>
+                                                    <li><span>Права нога</span><strong data-health-value="hp_right_leg">0</strong></li>
+                                                    <li><span>Reason</span><strong data-health-value="reason">0</strong></li>
                                                 </ul>
                                             </div>
+                                            {% if is_master_user %}
+                                                <div class="inventory-panel panel-secondary lobby-panel dra-card" data-formula-section>
+                                                    <div class="panel-header">
+                                                        <span class="panel-title">Formulas</span>
+                                                        <span class="panel-tag">DERIVED</span>
+                                                    </div>
+                                                    <p class="muted">Use attributes, current stats, and equipment values (e.g. STR, ArmorClass, ArmorBaseDef).</p>
+                                                    <div class="formula-grid">
+                                                        <div class="formula-row" data-formula-row data-formula-key="mana">
+                                                            <div class="formula-row__label">Mana</div>
+                                                            <div class="formula-row__value" data-formula-result>—</div>
+                                                            <input type="text" placeholder="e.g. (INT / 2 + 1)" data-formula-input>
+                                                            <div class="formula-row__error" data-formula-error></div>
+                                                        </div>
+                                                        <div class="formula-row" data-formula-row data-formula-key="armor_class">
+                                                            <div class="formula-row__label">Armor Class</div>
+                                                            <div class="formula-row__value" data-formula-result>—</div>
+                                                            <input type="text" placeholder="e.g. ArmorBaseDef + (DEX - 10) / 2" data-formula-input>
+                                                            <div class="formula-row__error" data-formula-error></div>
+                                                        </div>
+                                                        <div class="formula-row" data-formula-row data-formula-key="max_hp">
+                                                            <div class="formula-row__label">Max HP</div>
+                                                            <div class="formula-row__value" data-formula-result>—</div>
+                                                            <input type="text" placeholder="e.g. 10 + CON * 2" data-formula-input>
+                                                            <div class="formula-row__error" data-formula-error></div>
+                                                        </div>
+                                                        <div class="formula-row" data-formula-row data-formula-key="hp_head">
+                                                            <div class="formula-row__label">HP Head</div>
+                                                            <div class="formula-row__value" data-formula-result>—</div>
+                                                            <input type="text" placeholder="e.g. MaxHP * 0.2" data-formula-input>
+                                                            <div class="formula-row__error" data-formula-error></div>
+                                                        </div>
+                                                        <div class="formula-row" data-formula-row data-formula-key="hp_torso">
+                                                            <div class="formula-row__label">HP Torso</div>
+                                                            <div class="formula-row__value" data-formula-result>—</div>
+                                                            <input type="text" placeholder="e.g. MaxHP * 0.4" data-formula-input>
+                                                            <div class="formula-row__error" data-formula-error></div>
+                                                        </div>
+                                                        <div class="formula-row" data-formula-row data-formula-key="hp_left_arm">
+                                                            <div class="formula-row__label">HP Left Arm</div>
+                                                            <div class="formula-row__value" data-formula-result>—</div>
+                                                            <input type="text" placeholder="e.g. MaxHP * 0.2" data-formula-input>
+                                                            <div class="formula-row__error" data-formula-error></div>
+                                                        </div>
+                                                        <div class="formula-row" data-formula-row data-formula-key="hp_right_arm">
+                                                            <div class="formula-row__label">HP Right Arm</div>
+                                                            <div class="formula-row__value" data-formula-result>—</div>
+                                                            <input type="text" placeholder="e.g. MaxHP * 0.2" data-formula-input>
+                                                            <div class="formula-row__error" data-formula-error></div>
+                                                        </div>
+                                                        <div class="formula-row" data-formula-row data-formula-key="hp_left_leg">
+                                                            <div class="formula-row__label">HP Left Leg</div>
+                                                            <div class="formula-row__value" data-formula-result>—</div>
+                                                            <input type="text" placeholder="e.g. MaxHP * 0.2" data-formula-input>
+                                                            <div class="formula-row__error" data-formula-error></div>
+                                                        </div>
+                                                        <div class="formula-row" data-formula-row data-formula-key="hp_right_leg">
+                                                            <div class="formula-row__label">HP Right Leg</div>
+                                                            <div class="formula-row__value" data-formula-result>—</div>
+                                                            <input type="text" placeholder="e.g. MaxHP * 0.2" data-formula-input>
+                                                            <div class="formula-row__error" data-formula-error></div>
+                                                        </div>
+                                                        <div class="formula-row" data-formula-row data-formula-key="reason">
+                                                            <div class="formula-row__label">Reason</div>
+                                                            <div class="formula-row__value" data-formula-result>—</div>
+                                                            <input type="text" placeholder="e.g. WIS + INT / 2" data-formula-input>
+                                                            <div class="formula-row__error" data-formula-error></div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="formula-actions">
+                                                        <button type="button" class="button ghost" data-formula-test>Test/Recalculate</button>
+                                                        <button type="button" class="button" data-formula-save>Save</button>
+                                                    </div>
+                                                </div>
+                                            {% endif %}
                                             <div class="inventory-panel panel-secondary lobby-panel dra-card">
                                                 <div class="panel-header">
                                                     <span class="panel-title">Дебафи</span>
