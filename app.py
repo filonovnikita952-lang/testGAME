@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+import html
 import logging
 import os
 import random
+import re
 import secrets
 import ast
 import math
@@ -78,6 +80,8 @@ CHARACTER_CLASSES = {
     '???',
 }
 SKILL_CHECK_TIME_LIMIT = 30
+
+ROLL_INVALID_MESSAGE = 'Невірний кидок'
 CHARACTER_STAT_FORMULA_KEYS = {
     'mana': 'Mana',
     'armor_class': 'Armor Class',
@@ -1468,6 +1472,143 @@ def evaluate_stat_formula(expression: str, context: dict[str, float]) -> float:
     return eval_node(tree)
 
 
+class RollValidationError(ValueError):
+    pass
+
+
+ROLL_COMMAND_PATTERN = re.compile(
+    r'^(?P<count>\d+|\{[^{}]+\})d(?P<faces>\d+)(?P<modifier>\s*[+-]\s*(?:\d+|\{[^{}]+\}))?\s*$'
+)
+ROLL_MODIFIER_PATTERN = re.compile(r'^(?P<sign>[+-])\s*(?P<value>\d+|\{[^{}]+\})$')
+
+
+def build_roll_context(user_id: int) -> dict[str, float]:
+    stats = ensure_character_stats(user_id)
+    attributes = ensure_character_attributes(user_id)
+    equipment = _build_equipment_variables(user_id)
+    context = build_stat_formula_context_from(stats, attributes, equipment)
+    context['MANA'] = float(stats.mana_current or 0)
+    return context
+
+
+def _resolve_roll_value(value_text: str, context: dict[str, float]) -> int:
+    if value_text.startswith('{') and value_text.endswith('}'):
+        expression = value_text[1:-1].strip()
+        if not expression:
+            raise RollValidationError('Empty formula.')
+        value = evaluate_stat_formula(expression, context)
+    else:
+        if not value_text.isdigit():
+            raise RollValidationError('Invalid literal.')
+        value = float(int(value_text))
+    if not math.isfinite(value) or not float(value).is_integer():
+        raise RollValidationError('Non-integer value.')
+    return int(value)
+
+
+def parse_roll_text(roll_text: str, context: dict[str, float]) -> dict[str, object]:
+    match = ROLL_COMMAND_PATTERN.match(roll_text)
+    if not match:
+        raise RollValidationError('Invalid syntax.')
+    count_text = match.group('count')
+    faces_text = match.group('faces')
+    modifier_text = match.group('modifier')
+    count = _resolve_roll_value(count_text, context)
+    faces = int(faces_text)
+    if count <= 0 or count > 100:
+        raise RollValidationError('Invalid dice count.')
+    if faces <= 0 or faces > 100:
+        raise RollValidationError('Invalid dice faces.')
+
+    modifier_value = None
+    modifier_literal = None
+    modifier_sign = None
+    if modifier_text:
+        modifier_match = ROLL_MODIFIER_PATTERN.match(modifier_text.strip())
+        if not modifier_match:
+            raise RollValidationError('Invalid modifier.')
+        modifier_sign = modifier_match.group('sign')
+        modifier_raw = modifier_match.group('value')
+        modifier_literal = f"{modifier_sign}{modifier_raw}"
+        modifier_value = _resolve_roll_value(modifier_raw, context)
+    return {
+        'count': count,
+        'faces': faces,
+        'modifier_sign': modifier_sign,
+        'modifier_value': modifier_value,
+        'modifier_literal': modifier_literal,
+    }
+
+
+def format_roll_results(rolls: list[int]) -> str:
+    if not rolls:
+        return '()'
+    max_value = max(rolls)
+    parts = []
+    for value in rolls:
+        classes = ['roll-result']
+        if value == 1:
+            classes.append('roll-result--min')
+        if value == max_value:
+            classes.append('roll-result--max')
+        class_attr = ' '.join(classes)
+        parts.append(f'<span class="{class_attr}">{value}</span>')
+    return f"({', '.join(parts)})"
+
+
+def build_roll_message(
+    *,
+    username: str,
+    roll_text: str,
+    rolls: list[int],
+    modifier_literal: Optional[str],
+    modifier_sign: Optional[str],
+    modifier_value: Optional[int],
+) -> str:
+    safe_username = html.escape(username)
+    safe_roll_text = html.escape(roll_text)
+    line_one = f'{safe_username} – {safe_roll_text}'
+
+    line_two = format_roll_results(rolls)
+    if modifier_literal:
+        line_two = f'{line_two} {html.escape(modifier_literal)}'
+
+    total = sum(rolls)
+    if modifier_sign and modifier_value is not None:
+        signed_modifier = modifier_value if modifier_sign == '+' else -modifier_value
+        modifier_display_sign = '+' if signed_modifier >= 0 else '-'
+        modifier_display_value = abs(signed_modifier)
+        final_total = total + signed_modifier
+        line_three = f'SUM: {total} {modifier_display_sign} {modifier_display_value} = {final_total}'
+    else:
+        line_three = f'SUM: {total}'
+    return f'{line_one}<br>{line_two}<br>{line_three}'
+
+
+def create_roll_chat_message(
+    lobby_id: int,
+    actor: User,
+    roll_text: str,
+    *,
+    target_user_id: Optional[int] = None,
+) -> ChatMessage:
+    context = build_roll_context(target_user_id or actor.id)
+    try:
+        parsed = parse_roll_text(roll_text, context)
+    except (RollValidationError, StatFormulaError, TypeError, ValueError):
+        return create_chat_message(lobby_id, actor.id, ROLL_INVALID_MESSAGE, is_system=True)
+    rolls = [random.randint(1, parsed['faces']) for _ in range(parsed['count'])]
+    message_html = build_roll_message(
+        username=actor.nickname or 'User',
+        roll_text=roll_text,
+        rolls=rolls,
+        modifier_literal=parsed['modifier_literal'],
+        modifier_sign=parsed['modifier_sign'],
+        modifier_value=parsed['modifier_value'],
+    )
+    return create_chat_message(lobby_id, actor.id, message_html, is_system=True)
+
+
 def get_character_formulas(lobby_id: int, user_id: int) -> dict[str, str]:
     records = CharacterFormula.query.filter_by(lobby_id=lobby_id, user_id=user_id).all()
     return {record.field_key: record.formula for record in records}
@@ -2443,7 +2584,11 @@ def lobby_chat_api(lobby_id: int):
         if not message_text:
             log_debug('Chat send failed: empty message from user %s in lobby %s', user.id, lobby_id)
             return jsonify({'error': 'empty_message'}), 400
-        message = create_chat_message(lobby_id, user.id, message_text)
+        if message_text.startswith('!'):
+            roll_text = message_text[1:]
+            message = create_roll_chat_message(lobby_id, user, roll_text)
+        else:
+            message = create_chat_message(lobby_id, user.id, message_text)
         db.session.commit()
         return jsonify({'status': 'ok', 'message': serialize_chat_message(message)})
 
@@ -3623,7 +3768,7 @@ def evaluate_character_formulas_api(character_id: int):
     return jsonify({'ok': ok, 'results': results, 'errors': errors})
 
 
-def _require_notes_permission(user: User, lobby_id: int, character_id: int):
+def _require_notes_view_permission(user: User, lobby_id: int, character_id: int):
     viewer_membership = LobbyMember.query.filter_by(
         lobby_id=lobby_id,
         user_id=user.id,
@@ -3636,6 +3781,13 @@ def _require_notes_permission(user: User, lobby_id: int, character_id: int):
     ).first()
     if not target_membership:
         return (jsonify({'ok': False, 'error': 'not_in_lobby'}), 403)
+    return None
+
+
+def _require_notes_edit_permission(user: User, lobby_id: int, character_id: int):
+    error_response = _require_notes_view_permission(user, lobby_id, character_id)
+    if error_response:
+        return error_response
     if not is_master(user, lobby_id) and user.id != character_id:
         return (jsonify({'ok': False, 'error': 'forbidden'}), 403)
     return None
@@ -3644,7 +3796,7 @@ def _require_notes_permission(user: User, lobby_id: int, character_id: int):
 @app.route('/api/lobby/<int:lobby_id>/character/<int:user_id>/notes')
 def lobby_character_notes_get_api(lobby_id: int, user_id: int):
     user = require_user()
-    error_response = _require_notes_permission(user, lobby_id, user_id)
+    error_response = _require_notes_view_permission(user, lobby_id, user_id)
     if error_response:
         return error_response
     record = CharacterNote.query.filter_by(lobby_id=lobby_id, user_id=user_id).first()
@@ -3658,7 +3810,7 @@ def lobby_character_notes_get_api(lobby_id: int, user_id: int):
 @app.route('/api/lobby/<int:lobby_id>/character/<int:user_id>/notes', methods=['POST'])
 def lobby_character_notes_set_api(lobby_id: int, user_id: int):
     user = require_user()
-    error_response = _require_notes_permission(user, lobby_id, user_id)
+    error_response = _require_notes_edit_permission(user, lobby_id, user_id)
     if error_response:
         return error_response
     data = request.get_json(silent=True) or {}
@@ -3677,6 +3829,27 @@ def lobby_character_notes_set_api(lobby_id: int, user_id: int):
         db.session.add(record)
     db.session.commit()
     return jsonify({'ok': True, 'updated_at': record.updated_at.isoformat()})
+
+
+@app.route('/api/lobby/<int:lobby_id>/notes/roll', methods=['POST'])
+def lobby_notes_roll_api(lobby_id: int):
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    target_user_id = parse_int(data.get('user_id'), 0)
+    roll_text = (data.get('roll_text') or '').strip()
+    if not target_user_id or not roll_text:
+        return jsonify({'ok': False, 'error': 'invalid_payload'}), 400
+    error_response = _require_notes_edit_permission(user, lobby_id, target_user_id)
+    if error_response:
+        return error_response
+    message = create_roll_chat_message(
+        lobby_id,
+        user,
+        roll_text,
+        target_user_id=target_user_id,
+    )
+    db.session.commit()
+    return jsonify({'ok': True, 'message': serialize_chat_message(message)})
 
 
 @app.route('/api/master/set_class', methods=['POST'])
