@@ -1487,12 +1487,13 @@
             if (DEBUG_INVENTORY) {
                 console.debug('[IssueById]', 'context issue start', { definitionId, target, amount });
             }
+            const durabilityRaw = durabilityInput?.value ?? '';
             const payload = {
                 lobby_id: this.lobbyId,
                 definition_id: definitionId,
                 target_user_id: target,
                 amount: Number.isNaN(amount) ? 1 : amount,
-                durability_current: durabilityInput?.value || null,
+                durability_current: durabilityRaw === '' ? null : durabilityRaw,
                 random_durability: randomInput?.value || '',
             };
             console.debug('GiveID fetch started', payload);
@@ -1513,6 +1514,7 @@
             console.debug('GiveID response', {
                 status: response.status,
                 request_id: responsePayload?.request_id || null,
+                payload: responsePayload,
             });
             if (response.ok) {
                 await this.refreshInventory(this.selectedPlayerId);
@@ -2261,7 +2263,8 @@
                     form.querySelector('input[id^="issue_amount_"]')?.value || '1',
                     10,
                 );
-                const durabilityCurrent = form.querySelector('input[id^="issue_durability_current_"]')?.value || '';
+                const durabilityRaw = form.querySelector('input[id^="issue_durability_current_"]')?.value ?? '';
+                const durabilityCurrent = durabilityRaw === '' ? null : durabilityRaw;
                 const randomDurability = form.querySelector('input[id^="issue_random_durability_"]')?.value || '';
                 if (!definitionId || !targetId) {
                     logIssueDebug('issue validation failed', { definitionId, targetId });
@@ -2274,6 +2277,14 @@
                 }
                 controller.trackAction(`issue-by-id:${definitionId}:${targetId}`);
                 logIssueDebug('issue fetch', { definitionId, targetId, amount });
+                console.debug('GiveID fetch payload', {
+                    lobby_id: lobbyId,
+                    definition_id: definitionId,
+                    target_user_id: targetId,
+                    amount,
+                    durability_current: durabilityCurrent,
+                    random_durability: randomDurability,
+                });
                 console.log('GiveID fetch starting', { definitionId, targetId, amount });
                 let response;
                 try {
@@ -2294,12 +2305,18 @@
                     console.log('GiveID fetch failed', error);
                     throw error;
                 }
-                logIssueDebug('issue response', { ok: response.ok, status: response.status });
+                const responsePayload = await response.clone().json().catch(() => null);
+                logIssueDebug('issue response', {
+                    ok: response.ok,
+                    status: response.status,
+                    request_id: responsePayload?.request_id || null,
+                });
+                console.debug('GiveID response', responsePayload);
                 if (response.ok) {
                     await controller.refreshInventory(controller.selectedPlayerId);
                     return;
                 }
-                const payload = await response.json().catch(() => ({}));
+                const payload = responsePayload || await response.json().catch(() => ({}));
                 controller.showIssueByIdError(payload);
                 await controller.refreshInventory(controller.selectedPlayerId);
             };
