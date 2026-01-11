@@ -2740,9 +2740,6 @@ def use_inventory_item():
                 'Weapon selected: %s',
                 item_display_name(instance),
             )
-            max_durability = max(instance.definition.max_durability or 0, 0)
-            if instance.str_current is None:
-                instance.str_current = max_durability
             current_durability = instance.str_current
             if current_durability is None or current_durability <= 0:
                 log_weapon_ammo_step(lobby_id, user.id, 'Use blocked: broken weapon.')

@@ -1614,8 +1614,7 @@
                 );
                 if (useButton && item.type === 'weapon') {
                     const ammoType = this.normalizeAmmoType(item.ammo_type);
-                    const effectiveDurability = item.str_current ?? item.max_durability ?? 0;
-                    const isBroken = effectiveDurability <= 0;
+                    const isBroken = (item.str_current ?? 0) <= 0;
                     const hasAmmo = !ammoType || this.hasAmmoForWeapon(ammoType);
                     useButton.disabled = isBroken || !hasAmmo;
                 } else if (useButton) {
