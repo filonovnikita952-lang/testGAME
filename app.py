@@ -20,59 +20,19 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.utils import secure_filename
 
-DEFAULT_DB_DIR = '/home/Sanya1825/DRAsite_data'
-DEFAULT_DB_PATH = os.path.join(DEFAULT_DB_DIR, 'databaseDRA.db')
-
-
-def get_db_path(db_uri: str) -> str:
-    """Return a filesystem path or ":memory:" from a SQLAlchemy database URI."""
-    # NOTE: _sqlite_db_path was removed to avoid WSGI NameError; keep parsing local and stdlib-only.
-    if not db_uri:
-        return ''
-    if db_uri == 'sqlite://':
-        return ':memory:'
-    if not db_uri.startswith('sqlite:///'):
-        return ''
-    sqlite_path = db_uri[len('sqlite:///') :]
-    if not sqlite_path:
-        return ''
-    if os.path.isabs(sqlite_path):
-        return os.path.realpath(sqlite_path)
-    return os.path.abspath(sqlite_path)
-
-
-def resolve_sqlalchemy_db_uri() -> str:
-    default_uri = f"sqlite:///{DEFAULT_DB_PATH}"
-    override_uri = os.environ.get('DATABASE_URI')
-    if not override_uri:
-        return default_uri
-    sqlite_path = get_db_path(override_uri)
-    if not sqlite_path or sqlite_path == ':memory:' or not os.path.isabs(sqlite_path):
-        return default_uri
-    resolved_path = os.path.realpath(sqlite_path)
-    allowed_root = os.path.realpath(DEFAULT_DB_DIR)
-    if os.path.commonpath([resolved_path, allowed_root]) != allowed_root:
-        return default_uri
-    return f"sqlite:///{resolved_path}"
+DB_URI = 'sqlite:////home/Sanya1825/DRAsite_data/databaseDRA.db'
 
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = resolve_sqlalchemy_db_uri()
+app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'supersecretkey')
 
-resolved_db_path = get_db_path(app.config['SQLALCHEMY_DATABASE_URI'])
 print(
-    f"[DB] SQLALCHEMY_DATABASE_URI={app.config['SQLALCHEMY_DATABASE_URI']} resolved_db_path={resolved_db_path}",
+    f"[DB] Using SQLALCHEMY_DATABASE_URI={app.config['SQLALCHEMY_DATABASE_URI']}",
     file=sys.stderr,
     flush=True,
 )
-if resolved_db_path and resolved_db_path != ':memory:' and not os.path.exists(resolved_db_path):
-    print(
-        f"[DB] ERROR: SQLite database file missing at {resolved_db_path}",
-        file=sys.stderr,
-        flush=True,
-    )
 
 UPLOAD_SUBDIR = 'uploads'
 RESET_DB_ENV = 'RESET_DB_ON_START'
@@ -534,16 +494,6 @@ def initialize_database():
 
 
 def initialize_database_if_ready() -> None:
-    db_uri = app.config['SQLALCHEMY_DATABASE_URI']
-    sqlite_path = get_db_path(db_uri)
-    if sqlite_path and sqlite_path != ':memory:':
-        abs_path = os.path.abspath(sqlite_path)
-        exists = os.path.exists(abs_path)
-        print(f"[DB] SQLite path: {abs_path} (exists={exists})", file=sys.stderr, flush=True)
-        if not exists:
-            print('[DB] ERROR: SQLite file missing; skipping initialization.', file=sys.stderr, flush=True)
-    else:
-        print(f"[DB] Database URI: {db_uri} (non-sqlite)", file=sys.stderr, flush=True)
     initialize_database()
 
 
@@ -3471,71 +3421,76 @@ def issue_item_by_id():
         created_instances = []
         placement_results = []
         try:
-            with db.session.begin():
-                for index, stack_amount in enumerate(stack_amounts, start=1):
-                    temp_instance = PlacementPreview(
-                        owner_id=target_user_id,
-                        definition=definition,
-                    )
-                    placement, candidates = find_preferred_placement_with_logs(
-                        temp_instance,
+            for index, stack_amount in enumerate(stack_amounts, start=1):
+                temp_instance = PlacementPreview(
+                    owner_id=target_user_id,
+                    definition=definition,
+                )
+                placement, candidates = find_preferred_placement_with_logs(
+                    temp_instance,
+                    target_user_id,
+                    prefer_container,
+                )
+                placement_results.append({
+                    'stack_index': index,
+                    'amount': stack_amount,
+                    'candidates': candidates,
+                    'placement': placement,
+                })
+                if not placement:
+                    logger.warning(
+                        'GiveID failed: no space for user %s definition=%s stack=%s/%s amount=%s cloth=%s type=%s',
                         target_user_id,
-                        prefer_container,
-                    )
-                    placement_results.append({
-                        'stack_index': index,
-                        'amount': stack_amount,
-                        'candidates': candidates,
-                        'placement': placement,
-                    })
-                    if not placement:
-                        logger.warning(
-                            'GiveID failed: no space for user %s definition=%s stack=%s/%s amount=%s cloth=%s type=%s',
-                            target_user_id,
-                            definition.id,
-                            index,
-                            len(stack_amounts),
-                            stack_amount,
-                            definition.is_cloth,
-                            definition.item_type.name if definition.item_type else None,
-                        )
-                        raise ValueError('no_space')
-                    resolved_durability = resolve_durability_value(
-                        definition,
-                        durability_current_value,
-                        randomize=random_durability,
-                    )
-                    container_id, pos_x, pos_y, rotation = placement
-                    debug(
-                        'GiveID placement selected stack=%s/%s container=%s pos=%s,%s rotation=%s',
+                        definition.id,
                         index,
                         len(stack_amounts),
-                        container_id,
-                        pos_x,
-                        pos_y,
-                        rotation,
-                    )
-                    new_instance = ItemInstance(
-                        owner_id=target_user_id,
-                        definition_id=definition.id,
-                        container_i=container_id,
-                        pos_x=pos_x,
-                        pos_y=pos_y,
-                        rotated=rotation,
-                        durability_current=resolved_durability,
-                        amount=stack_amount,
-                    )
-                    db.session.add(new_instance)
-                    db.session.flush()
-                    created_instances.append(new_instance)
-                    debug(
-                        'GiveID instance created id=%s amount=%s container=%s pos=%s,%s',
-                        new_instance.id,
                         stack_amount,
-                        container_id,
-                        pos_x,
-                        pos_y,
+                        definition.is_cloth,
+                        definition.item_type.name if definition.item_type else None,
                     )
+                    raise ValueError('no_space')
+                resolved_durability = resolve_durability_value(
+                    definition,
+                    durability_current_value,
+                    randomize=random_durability,
+                )
+                container_id, pos_x, pos_y, rotation = placement
+                debug(
+                    'GiveID placement selected stack=%s/%s container=%s pos=%s,%s rotation=%s',
+                    index,
+                    len(stack_amounts),
+                    container_id,
+                    pos_x,
+                    pos_y,
+                    rotation,
+                )
+                new_instance = ItemInstance(
+                    owner_id=target_user_id,
+                    definition_id=definition.id,
+                    container_i=container_id,
+                    pos_x=pos_x,
+                    pos_y=pos_y,
+                    rotated=rotation,
+                    durability_current=resolved_durability,
+                    amount=stack_amount,
+                )
+                db.session.add(new_instance)
+                db.session.flush()
+                created_instances.append(new_instance)
+                debug(
+                    'GiveID instance created id=%s amount=%s container=%s pos=%s,%s',
+                    new_instance.id,
+                    stack_amount,
+                    container_id,
+                    pos_x,
+                    pos_y,
+                )
+            db.session.commit()
+            logger.info(
+                'GiveID instance creation committed request_id=%s created_instance_ids=%s',
+                request_id,
+                [instance.id for instance in created_instances],
+            )
             debug('GiveID commit success created_count=%s', len(created_instances))
         except ValueError:
             db.session.rollback()
@@ -3595,7 +3550,7 @@ def master_db_info():
     user = require_user()
     if not user.is_admin:
         return jsonify({'ok': False, 'error': 'forbidden'}), 403
-    db_path = get_db_path()
+    db_path = '/home/Sanya1825/DRAsite_data/databaseDRA.db'
     inspector = inspect(db.engine)
     tables = set(inspector.get_table_names())
     instance_columns = set()
