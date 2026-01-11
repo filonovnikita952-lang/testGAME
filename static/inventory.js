@@ -2080,10 +2080,7 @@
             const templateInput = form.querySelector('[data-template-id]');
             const searchInput = form.querySelector('[data-template-search]');
             const resultsBox = form.querySelector('[data-template-results]');
-            const max_durability_input = document.createElement('input');
-            max_durability_input.type = 'hidden';
-            max_durability_input.value = '';
-            form.appendChild(max_durability_input);
+            const max_durability_input = form.querySelector('[data-template-max-durability]');
             const nameInput = form.querySelector('[data-template-name]');
             const descriptionInput = form.querySelector('[data-template-description]');
             const imageInput = form.querySelector('[data-template-image]');
@@ -2121,6 +2118,7 @@
             };
             const applyTemplate = (template) => {
                 if (!template) return;
+                console.debug('[GiveID] Template payload', template);
                 if (nameInput) nameInput.value = template.name || '';
                 if (descriptionInput) descriptionInput.value = template.description || '';
                 if (typeInput) typeInput.value = template.type || 'other';
@@ -2148,6 +2146,24 @@
                     }
                 }
                 updateClothBeltVisibility(form);
+                console.debug('[GiveID] Template applied', {
+                    id: templateInput?.value || '',
+                    name: nameInput?.value || '',
+                    description: descriptionInput?.value || '',
+                    type: typeInput?.value || '',
+                    quality: qualityInput?.value || '',
+                    width: widthInput?.value || '',
+                    height: heightInput?.value || '',
+                    weight: weightInput?.value || '',
+                    max_durability: max_durability_input?.value ?? '',
+                    max_amount: maxAmountInput?.value || '',
+                    is_cloth: clothToggle?.checked || false,
+                    bag_width: bagWidthInput?.value || '',
+                    bag_height: bagHeightInput?.value || '',
+                    fast_w: fastWInput?.value || '',
+                    fast_h: fastHInput?.value || '',
+                    image: imageInput?.value || '',
+                });
             };
             const loadTemplate = async (templateId) => {
                 if (!templateId) return;
@@ -2325,6 +2341,7 @@
             };
             const applyTemplate = (template) => {
                 if (!template) return;
+                console.debug('[Settings] Template payload', template);
                 if (originalIdInput) originalIdInput.value = `${template.id}`;
                 if (templateIdInput) templateIdInput.value = `${template.id}`;
                 if (nameInput) nameInput.value = template.name || '';
@@ -2343,6 +2360,23 @@
                 if (fastHInput) fastHInput.value = `${template.fast_h || 0}`;
                 updateClothBeltVisibility(form);
                 if (statusLine) statusLine.textContent = '';
+                console.debug('[Settings] Template applied', {
+                    id: templateIdInput?.value || '',
+                    name: nameInput?.value || '',
+                    description: descriptionInput?.value || '',
+                    type: typeSelect?.value || '',
+                    quality: qualitySelect?.value || '',
+                    width: widthInput?.value || '',
+                    height: heightInput?.value || '',
+                    weight: weightInput?.value || '',
+                    max_durability: max_durability_input?.value ?? '',
+                    max_amount: maxAmountInput?.value || '',
+                    is_cloth: clothToggle?.checked || false,
+                    bag_width: bagWidthInput?.value || '',
+                    bag_height: bagHeightInput?.value || '',
+                    fast_w: fastWInput?.value || '',
+                    fast_h: fastHInput?.value || '',
+                });
             };
             const loadTemplate = async (templateId) => {
                 if (!templateId) return;
