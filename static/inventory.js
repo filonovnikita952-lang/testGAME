@@ -358,14 +358,19 @@
                 this.notesRendered.addEventListener('click', (event) => {
                     const target = event.target.closest('.note-roll');
                     if (target && target instanceof HTMLElement && !target.classList.contains('is-disabled')) {
+                        event.preventDefault();
+                        event.stopPropagation();
                         const rollText = target.dataset.roll || '';
                         if (!rollText.trim()) return;
+                        // Manual test: click (1d10) in notes; no new notes UI appears.
                         this.submitNotesRoll(rollText);
                         return;
                     }
                     const formulaTarget = event.target.closest('.note-formula');
                     if (!formulaTarget || !(formulaTarget instanceof HTMLElement)) return;
                     if (formulaTarget.classList.contains('is-disabled')) return;
+                    event.preventDefault();
+                    event.stopPropagation();
                     const formulaText = formulaTarget.dataset.formula || '';
                     if (!formulaText.trim()) return;
                     this.submitNotesFormula(formulaText);

@@ -662,6 +662,12 @@ def _ensure_character_stats_columns():
             db.session.commit()
 
 
+def _ensure_character_notes_table() -> None:
+    inspector = inspect(db.engine)
+    if 'character_notes' not in inspector.get_table_names():
+        CharacterNote.__table__.create(db.engine, checkfirst=True)
+
+
 def ensure_attribute_formula() -> AttributeFormula:
     formula = AttributeFormula.query.first()
     if not formula:
@@ -677,6 +683,7 @@ def initialize_database():
     _ensure_item_type_columns()
     _ensure_item_definition_columns()
     _ensure_character_stats_columns()
+    _ensure_character_notes_table()
     ensure_attribute_formula()
 
 
@@ -1540,10 +1547,11 @@ def parse_roll_text(roll_text: str, context: dict[str, float]) -> dict[str, obje
     }
 
 
-def format_roll_results(rolls: list[int]) -> str:
+def format_roll_results(rolls: list[int], faces: int) -> str:
     if not rolls:
         return '()'
-    max_value = max(rolls)
+    # Manual tests: 8d4 -> only 4 green, 1 red; 10d100 -> only 100 green.
+    max_value = faces
     parts = []
     for value in rolls:
         classes = ['roll-result']
@@ -1601,6 +1609,7 @@ def build_roll_message(
     username: str,
     roll_text: str,
     rolls: list[int],
+    faces: int,
     modifier_literal: Optional[str],
     modifier_sign: Optional[str],
     modifier_value: Optional[int],
@@ -1609,7 +1618,7 @@ def build_roll_message(
     safe_roll_text = html.escape(roll_text)
     line_one = f'{safe_username} – {safe_roll_text}'
 
-    line_two = format_roll_results(rolls)
+    line_two = format_roll_results(rolls, faces)
     if modifier_literal:
         line_two = f'{line_two} {html.escape(modifier_literal)}'
 
@@ -1642,6 +1651,7 @@ def create_roll_chat_message(
         username=actor.nickname or 'User',
         roll_text=roll_text,
         rolls=rolls,
+        faces=parsed['faces'],
         modifier_literal=parsed['modifier_literal'],
         modifier_sign=parsed['modifier_sign'],
         modifier_value=parsed['modifier_value'],
