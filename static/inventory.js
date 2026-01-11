@@ -124,6 +124,8 @@
             this.formulaValues = {};
             this.formulaErrorState = {};
             this.notesInput = this.root.querySelector('[data-notes-input]');
+            this.notesRendered = this.root.querySelector('[data-notes-rendered]');
+            this.notesActions = this.root.querySelector('[data-notes-actions]');
             this.notesSaveButton = this.root.querySelector('[data-notes-save]');
             this.notesStatus = this.root.querySelector('[data-notes-status]');
             this.notesPayload = null;
@@ -348,6 +350,17 @@
             if (this.notesInput) {
                 this.notesInput.addEventListener('input', () => {
                     this.setNotesStatus('unsaved');
+                    this.renderNotesPreview(this.notesInput.value);
+                });
+            }
+            if (this.notesRendered) {
+                this.notesRendered.addEventListener('click', (event) => {
+                    const target = event.target.closest('.note-roll');
+                    if (!target || !(target instanceof HTMLElement)) return;
+                    if (target.classList.contains('is-disabled')) return;
+                    const rollText = target.dataset.roll || '';
+                    if (!rollText.trim()) return;
+                    this.submitNotesRoll(rollText);
                 });
             }
 
@@ -1781,10 +1794,21 @@
                 this.formulaTestButton.disabled = !this.permissions.is_master;
             }
             if (this.notesInput) {
-                this.notesInput.disabled = !this.canEditNotes();
+                const canEditNotes = this.canEditNotes();
+                this.notesInput.disabled = !canEditNotes;
+                this.notesInput.classList.toggle('is-hidden', !canEditNotes);
             }
             if (this.notesSaveButton) {
-                this.notesSaveButton.disabled = !this.canEditNotes();
+                const canEditNotes = this.canEditNotes();
+                this.notesSaveButton.disabled = !canEditNotes;
+                this.notesSaveButton.classList.toggle('is-hidden', !canEditNotes);
+            }
+            if (this.notesActions) {
+                this.notesActions.classList.toggle('is-hidden', !this.canEditNotes());
+            }
+            if (this.notesRendered) {
+                const notesText = this.notesInput?.value ?? this.notesPayload?.notes_text ?? '';
+                this.renderNotesPreview(notesText);
             }
         }
 
@@ -1803,6 +1827,10 @@
         canEditNotes() {
             if (!this.selectedPlayerId) return false;
             return this.permissions.is_master || String(this.currentUserId) === String(this.selectedPlayerId);
+        }
+
+        canRollNotes() {
+            return this.canEditNotes();
         }
 
         setNotesStatus(state, updatedAt = null) {
@@ -1825,6 +1853,90 @@
             }
             if (state === 'saved') {
                 this.notesStatus.textContent = updatedAt ? `Збережено: ${updatedAt}` : 'Збережено.';
+            }
+        }
+
+        buildNotesTokens(text) {
+            const tokens = [];
+            if (!text) return tokens;
+            let index = 0;
+            while (index < text.length) {
+                const start = text.indexOf('(', index);
+                if (start === -1) {
+                    tokens.push({ type: 'text', value: text.slice(index) });
+                    break;
+                }
+                if (start > index) {
+                    tokens.push({ type: 'text', value: text.slice(index, start) });
+                }
+                let depth = 0;
+                let end = -1;
+                for (let i = start; i < text.length; i += 1) {
+                    const char = text[i];
+                    if (char === '(') depth += 1;
+                    if (char === ')') {
+                        depth -= 1;
+                        if (depth === 0) {
+                            end = i;
+                            break;
+                        }
+                    }
+                }
+                if (end === -1) {
+                    tokens.push({ type: 'text', value: text.slice(start) });
+                    break;
+                }
+                const rollText = text.slice(start + 1, end);
+                tokens.push({ type: 'roll', value: rollText });
+                index = end + 1;
+            }
+            return tokens;
+        }
+
+        renderNotesPreview(text) {
+            if (!this.notesRendered) return;
+            this.notesRendered.innerHTML = '';
+            const fragment = document.createDocumentFragment();
+            const tokens = this.buildNotesTokens(text);
+            if (!tokens.length) {
+                this.notesRendered.classList.add('is-hidden');
+                return;
+            }
+            tokens.forEach((token) => {
+                if (token.type === 'text') {
+                    fragment.appendChild(document.createTextNode(token.value));
+                    return;
+                }
+                const span = document.createElement('span');
+                span.className = 'note-roll';
+                if (!this.canRollNotes()) {
+                    span.classList.add('is-disabled');
+                }
+                span.dataset.roll = token.value;
+                span.textContent = `(${token.value})`;
+                fragment.appendChild(span);
+            });
+            this.notesRendered.appendChild(fragment);
+            this.notesRendered.classList.remove('is-hidden');
+        }
+
+        async submitNotesRoll(rollText) {
+            if (!this.lobbyId || !this.selectedPlayerId) return;
+            if (!this.canRollNotes()) return;
+            try {
+                const response = await fetch(`/api/lobby/${this.lobbyId}/notes/roll`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: this.selectedPlayerId,
+                        roll_text: rollText,
+                    }),
+                });
+                if (!response.ok) {
+                    console.debug('[Notes] Roll failed', response.status);
+                }
+            } catch (error) {
+                console.debug('[Notes] Roll failed', error);
             }
         }
 
@@ -2041,12 +2153,7 @@
 
         async loadNotes() {
             if (!this.selectedPlayerId || !this.lobbyId) return;
-            if (!this.notesInput) return;
-            if (!this.canEditNotes()) {
-                this.notesInput.value = '';
-                this.setNotesStatus('');
-                return;
-            }
+            if (!this.notesInput && !this.notesRendered) return;
             try {
                 const response = await fetch(
                     `/api/lobby/${this.lobbyId}/character/${this.selectedPlayerId}/notes`,
@@ -2054,12 +2161,20 @@
                 if (!response.ok) return;
                 const data = await response.json().catch(() => ({}));
                 this.notesPayload = data;
-                this.notesInput.value = data?.notes_text ?? '';
-                if (data?.updated_at) {
-                    const updatedAt = new Date(data.updated_at).toLocaleString();
-                    this.setNotesStatus('saved', updatedAt);
+                const notesText = data?.notes_text ?? '';
+                if (this.notesInput) {
+                    this.notesInput.value = notesText;
+                }
+                this.renderNotesPreview(notesText);
+                if (this.canEditNotes()) {
+                    if (data?.updated_at) {
+                        const updatedAt = new Date(data.updated_at).toLocaleString();
+                        this.setNotesStatus('saved', updatedAt);
+                    } else {
+                        this.setNotesStatus('saved');
+                    }
                 } else {
-                    this.setNotesStatus('saved');
+                    this.setNotesStatus('');
                 }
             } catch (error) {
                 console.debug('[Notes] Load failed', error);
