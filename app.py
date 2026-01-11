@@ -16,7 +16,7 @@ from uuid import uuid4
 
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text, func
 from sqlalchemy.orm import synonym
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.utils import secure_filename
@@ -791,7 +791,7 @@ def log_giveid_step(
 ) -> None:
     if not lobby_id:
         return
-    if not giveid_chat_debug_enabled():
+    if not giveid_chat_debug_enabled() and not force:
         return
     formatted_message = f'[GiveID][{request_id}] {message}' if request_id else f'[GiveID] {message}'
     giveid_chat_log(lobby_id, formatted_message, user_id=user_id)
@@ -3373,6 +3373,13 @@ def _handle_giveid_request(lobby_id: int, data: dict, user: User):
     def log_step(text: str, *, level: str = 'info', force: bool = False) -> None:
         log_giveid_step(lobby_id, actor_id, request_id, text, level=level, force=force)
 
+    def abort_with_logs(reason: str, *, status: int, error: str) -> tuple:
+        log_step(f'Step 1: definition resolved -> skipped ({reason}).', level='error', force=True)
+        log_step(f'Step 2: durability resolved -> skipped ({reason}).', level='error', force=True)
+        log_step(f'Step 3: placement attempt -> skipped ({reason}).', level='error', force=True)
+        log_step(f'Step 4: rollback reason={reason}.', level='error', force=True)
+        return jsonify({'ok': False, 'request_id': request_id, 'error': error}), status
+
     def parse_optional_int(raw_value: Optional[object]) -> Optional[int]:
         if raw_value is None or raw_value == '':
             return None
@@ -3383,159 +3390,126 @@ def _handle_giveid_request(lobby_id: int, data: dict, user: User):
         except (TypeError, ValueError):
             raise ValueError('invalid')
 
-    log_step('Request received.')
-    log_step(
-        'GiveID start: '
-        f'request_id={request_id} master={actor_id} target={data.get("target_user_id")} '
-        f'def={data.get("definition_id")} amount={data.get("amount")} '
-        f'durability={data.get("durability_current")}',
-    )
-
     if not is_master(user, lobby_id):
-        log_step('Permission check failed (not master).', level='error')
-        return jsonify({'ok': False, 'request_id': request_id, 'error': 'forbidden'}), 403
-    log_step('Permission check passed (master).')
+        return abort_with_logs('forbidden', status=403, error='forbidden')
 
     definition_id = parse_int(data.get('definition_id'), 0)
+    definition_name = (data.get('definition_name') or '').strip()
     target_user_id = parse_int(data.get('target_user_id'), 0)
     amount = parse_int(data.get('amount'), 0, minimum=0)
     if not definition_id or not target_user_id:
-        log_step('Validation failed: missing target or definition.', level='error')
-        return jsonify({'ok': False, 'request_id': request_id, 'error': 'missing_fields'}), 400
+        if not definition_id and definition_name:
+            pass
+        else:
+            return abort_with_logs('missing_fields', status=400, error='missing_fields')
+    if not target_user_id:
+        return abort_with_logs('missing_fields', status=400, error='missing_fields')
     if amount < 1:
-        log_step('Validation failed: invalid amount.', level='error')
-        return jsonify({'ok': False, 'request_id': request_id, 'error': 'invalid_amount'}), 400
+        return abort_with_logs('invalid_amount', status=400, error='invalid_amount')
 
     target_user = User.query.get(target_user_id)
-    log_step(f'Target user lookup id={target_user_id} found={bool(target_user)}')
     if not target_user:
-        log_step('Target user not found.', level='error')
-        return jsonify({'ok': False, 'request_id': request_id, 'error': 'invalid_recipient'}), 400
+        return abort_with_logs('invalid_recipient', status=400, error='invalid_recipient')
 
     target_membership = LobbyMember.query.filter_by(
         lobby_id=lobby_id,
         user_id=target_user_id,
     ).first()
-    log_step(f'Membership check target_user_id={target_user_id} in_lobby={bool(target_membership)}')
     if not target_membership:
-        log_step('Target user not in lobby.', level='error')
-        return jsonify({'ok': False, 'request_id': request_id, 'error': 'invalid_recipient'}), 400
+        return abort_with_logs('invalid_recipient', status=400, error='invalid_recipient')
 
-    definition = ItemDefinition.query.get(definition_id)
-    log_step(f'Definition lookup id={definition_id} found={bool(definition)}')
+    definition = None
+    if definition_id:
+        definition = ItemDefinition.query.get(definition_id)
+    elif definition_name:
+        definition = (
+            ItemDefinition.query
+            .filter(func.lower(ItemDefinition.name) == definition_name.lower())
+            .order_by(ItemDefinition.id.asc())
+            .first()
+        )
     if not definition:
-        log_step('Definition not found.', level='error')
+        log_step('Step 1: definition resolved -> not found.', level='error', force=True)
+        log_step('Step 2: durability resolved -> skipped (definition not found).', level='error', force=True)
+        log_step('Step 3: placement attempt -> skipped (definition not found).', level='error', force=True)
+        log_step('Step 4: rollback reason=not_found.', level='error', force=True)
         return jsonify({'ok': False, 'request_id': request_id, 'error': 'not_found'}), 404
     log_step(
-        f'Loaded definition: id={definition.id} name="{definition.name}" max_stack={definition.max_stack} '
-        f'max_durability={definition.max_durability}',
+        f'Step 1: definition resolved id={definition.id} name="{definition.name}" '
+        f'max_stack={definition.max_stack} max_durability={definition.max_durability}.',
+        force=True,
     )
 
-    random_durability = str(data.get('random_durability') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
     try:
         durability_current_value = parse_optional_int(data.get('durability_current'))
     except ValueError:
-        log_step('Durability parse failed.', level='error')
+        log_step('Step 2: durability resolved -> invalid input.', level='error', force=True)
+        log_step('Step 3: placement attempt -> skipped (invalid durability).', level='error', force=True)
+        log_step('Step 4: rollback reason=invalid_durability.', level='error', force=True)
         return jsonify({'ok': False, 'request_id': request_id, 'error': 'invalid_durability'}), 400
-    randomize_durability = random_durability and durability_current_value is None
 
     if definition.max_durability is None:
-        if durability_current_value is not None or random_durability:
-            log_step(
-                'Durability rejected: template has no durability.',
-                level='error',
-            )
-            # When templates have no durability, provided values are rejected to avoid silent bugs.
-            return jsonify({
-                'ok': False,
-                'request_id': request_id,
-                'error': 'durability_not_allowed',
-                'message': 'this item has no durability',
-            }), 400
-        durability_current_value = None
         resolved_durability = None
-        log_step('Durability resolved none (template has no durability).')
+        log_step('Step 2: durability resolved = null (definition has no durability).', force=True)
     else:
-        max_durability = max(definition.max_durability or 1, 1)
-        if randomize_durability:
-            resolved_durability = random.randint(0, max_durability)
-        elif durability_current_value is not None:
-            resolved_durability = min(max(durability_current_value, 0), max_durability)
-        else:
-            resolved_durability = None
+        max_durability = max(definition.max_durability, 0)
+        if durability_current_value is None:
+            durability_current_value = max_durability
+        resolved_durability = min(max(durability_current_value, 0), max_durability)
         log_step(
-            f'Durability resolved value={resolved_durability} max={max_durability} '
-            f'random={randomize_durability}',
+            f'Step 2: durability resolved = {resolved_durability} (input={durability_current_value}, '
+            f'max={max_durability}).',
+            force=True,
         )
 
-    stack_amounts = split_stack_amounts(definition, amount)
-    log_step(f'Split into stacks: {stack_amounts}')
+    resolved_amount = normalize_stack_amount(definition, amount)
 
-    created_instances = []
-    try:
-        with db.session.begin():
-            for index, stack_amount in enumerate(stack_amounts, start=1):
-                log_step(f'Placement attempt #{index}: amount={stack_amount}')
-                temp_instance = PlacementPreview(
-                    owner_id=target_user_id,
-                    definition=definition,
-                )
-                placement = find_preferred_placement(temp_instance, target_user_id)
-                if not placement:
-                    log_step(
-                        f'Placement attempt #{index}: no_space',
-                        level='error',
-                    )
-                    raise ValueError('no_space')
-                container_id, pos_x, pos_y, rotation = placement
-                log_step(
-                    f'Placement attempt #{index}: container={container_id} '
-                    f'rotated={rotation} pos={pos_x},{pos_y} (success)',
-                )
-                new_instance = ItemInstance(
-                    lobby_id=lobby_id,
-                    owner_id=target_user_id,
-                    definition_id=definition.id,
-                    container_id=container_id,
-                    pos_x=pos_x,
-                    pos_y=pos_y,
-                    rotated=rotation,
-                    durability_current=resolved_durability,
-                    amount=stack_amount,
-                    version=1,
-                )
-                db.session.add(new_instance)
-                db.session.flush()
-                created_instances.append(new_instance)
-                log_step(
-                    f'Instance created id={new_instance.id} amount={stack_amount} '
-                    f'container={container_id} pos={pos_x},{pos_y}',
-                )
-        log_step(f'Commit success: created_ids={[instance.id for instance in created_instances]}')
-    except ValueError:
+    log_step('Step 3: placement attempt started.', force=True)
+    temp_instance = PlacementPreview(
+        owner_id=target_user_id,
+        definition=definition,
+    )
+    placement = find_preferred_placement(temp_instance, target_user_id)
+    if not placement:
         db.session.rollback()
-        log_step('Transaction rollback reason=no_space', level='error')
+        log_step('Step 4: rollback reason=no_space.', level='error', force=True)
         return jsonify({'ok': False, 'request_id': request_id, 'error': 'no_space'}), 400
+    container_id, pos_x, pos_y, rotation = placement
+    log_step(
+        f'Step 3: placement resolved container={container_id} pos={pos_x},{pos_y} rotated={rotation}.',
+        force=True,
+    )
+
+    new_instance = ItemInstance(
+        lobby_id=lobby_id,
+        owner_id=target_user_id,
+        definition_id=definition.id,
+        container_id=container_id,
+        pos_x=pos_x,
+        pos_y=pos_y,
+        rotated=rotation,
+        durability_current=resolved_durability,
+        amount=resolved_amount,
+        version=1,
+    )
+    db.session.add(new_instance)
+
+    try:
+        db.session.commit()
     except SQLAlchemyError:
         db.session.rollback()
-        log_step('Transaction rollback reason=db_error', level='error')
+        log_step('Step 4: rollback reason=db_error.', level='error', force=True)
         return jsonify({'ok': False, 'request_id': request_id, 'error': 'db_error'}), 500
-    except Exception:
-        db.session.rollback()
-        log_step('Transaction rollback reason=server_error', level='error')
-        return jsonify({'ok': False, 'request_id': request_id, 'error': 'server_error'}), 500
 
     log_step(
-        f'GiveID SUCCESS created_ids={[instance.id for instance in created_instances]}',
+        f'Step 4: instance created id={new_instance.id} amount={resolved_amount}.',
         level='info',
+        force=True,
     )
     return jsonify({
         'ok': True,
         'request_id': request_id,
-        'instances': [
-            build_instance_payload(instance, user, lobby_id)
-            for instance in created_instances
-        ],
+        'instances': [build_instance_payload(new_instance, user, lobby_id)],
     })
 
 
