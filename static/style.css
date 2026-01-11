@@ -2567,6 +2567,12 @@ textarea {
     color: rgba(255, 255, 255, 0.7);
 }
 
+.item-detail__meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
 .item-detail__meta-item.is-hidden {
     display: none;
 }

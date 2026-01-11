@@ -416,6 +416,12 @@
                                                                             <option value="map">Map</option>
                                                                             <option value="other">Other</option>
                                                                         </select>
+                                                                        <div class="form inline admin-form-section is-hidden" data-ammo-fields>
+                                                                            <div>
+                                                                                <label for="item_ammo_type_{{ membership.lobby.id }}">Ammo type</label>
+                                                                                <input type="text" id="item_ammo_type_{{ membership.lobby.id }}" placeholder="e.g. arrows">
+                                                                            </div>
+                                                                        </div>
                                                                         <label for="item_quality_{{ membership.lobby.id }}">Редкість</label>
                                                                         <select id="item_quality_{{ membership.lobby.id }}">
                                                                             <option value="common">Common</option>
@@ -638,6 +644,12 @@
                                                                             <option value="map">Map</option>
                                                                             <option value="other">Other</option>
                                                                         </select>
+                                                                        <div class="form inline admin-form-section is-hidden" data-ammo-fields>
+                                                                            <div>
+                                                                                <label for="setting_template_ammo_type_{{ membership.lobby.id }}">Ammo type</label>
+                                                                                <input type="text" id="setting_template_ammo_type_{{ membership.lobby.id }}" data-template-ammo-type>
+                                                                            </div>
+                                                                        </div>
                                                                         <label for="setting_template_quality_{{ membership.lobby.id }}">Редкість</label>
                                                                         <select id="setting_template_quality_{{ membership.lobby.id }}" data-template-quality>
                                                                             <option value="common">Common</option>
@@ -761,6 +773,9 @@
                                             <div class="item-detail__content">
                                                 <strong class="item-detail__name" data-item-detail-name>Оберіть предмет</strong>
                                                 <p class="muted item-detail__description" data-item-detail-description></p>
+                                                <div class="item-detail__meta" data-item-detail-meta>
+                                                    <span class="item-detail__meta-item is-hidden" data-item-detail-ammo></span>
+                                                </div>
                                             </div>
                                         </div>
                                         <div class="item-detail__actions is-hidden" data-item-detail-actions>

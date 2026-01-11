@@ -71,6 +71,7 @@
             this.detailImage = this.root.querySelector('[data-item-detail-image]');
             this.detailName = this.root.querySelector('[data-item-detail-name]');
             this.detailDescription = this.root.querySelector('[data-item-detail-description]');
+            this.detailAmmo = this.root.querySelector('[data-item-detail-ammo]');
             this.detailActions = this.root.querySelector('[data-item-detail-actions]');
             this.detailSplitField = this.root.querySelector('[data-detail-split]');
             this.detailSplitAmount = this.root.querySelector('[data-detail-split-amount]');
@@ -1579,6 +1580,10 @@
                 this.detailImage.alt = 'Item';
                 this.detailName.textContent = 'Оберіть предмет';
                 this.detailDescription.textContent = '';
+                if (this.detailAmmo) {
+                    this.detailAmmo.classList.add('is-hidden');
+                    this.detailAmmo.textContent = '';
+                }
                 if (this.detailActions) {
                     this.detailActions.classList.add('is-hidden');
                 }
@@ -1589,12 +1594,33 @@
             this.detailImage.alt = item.name || 'Item';
             this.detailName.textContent = item.name || 'Item';
             this.detailDescription.textContent = item.description || '';
+            if (this.detailAmmo) {
+                const ammoType = `${item.ammo_type || ''}`.trim();
+                const isWeapon = item.type === 'weapon';
+                if (isWeapon) {
+                    this.detailAmmo.textContent = ammoType ? `AmmoType: ${ammoType}` : 'Ammo: none';
+                    this.detailAmmo.classList.remove('is-hidden');
+                } else {
+                    this.detailAmmo.textContent = '';
+                    this.detailAmmo.classList.add('is-hidden');
+                }
+            }
             if (this.detailActions) {
                 this.detailActions.classList.toggle('is-hidden', !this.permissions.can_edit);
-                this.detailActions.querySelector('[data-detail-action="use"]')?.classList.toggle(
+                const useButton = this.detailActions.querySelector('[data-detail-action="use"]');
+                useButton?.classList.toggle(
                     'is-hidden',
                     !['food', 'map', 'weapon'].includes(item.type),
                 );
+                if (useButton && item.type === 'weapon') {
+                    const ammoType = this.normalizeAmmoType(item.ammo_type);
+                    const effectiveDurability = item.str_current ?? item.max_durability ?? 0;
+                    const isBroken = effectiveDurability <= 0;
+                    const hasAmmo = !ammoType || this.hasAmmoForWeapon(ammoType);
+                    useButton.disabled = isBroken || !hasAmmo;
+                } else if (useButton) {
+                    useButton.disabled = false;
+                }
                 this.detailActions.querySelector('[data-detail-action="rotate"]')?.classList.toggle(
                     'is-hidden',
                     !item.rotatable,
@@ -1617,6 +1643,20 @@
                     this.detailDurabilityInput.value = `${item.str_current ?? 0}`;
                 }
             }
+        }
+
+        normalizeAmmoType(value) {
+            return `${value || ''}`.trim().toLowerCase();
+        }
+
+        hasAmmoForWeapon(ammoType) {
+            if (!ammoType) return true;
+            const target = this.normalizeAmmoType(ammoType);
+            return this.items.some((entry) => (
+                entry.type === 'ammo'
+                && this.normalizeAmmoType(entry.ammo_type) === target
+                && (entry.amount ?? 0) > 0
+            ));
         }
 
         setMasterMode(mode) {
@@ -1964,6 +2004,14 @@
             beltFields?.classList.toggle('is-hidden', !isBelt);
         };
 
+        const updateAmmoVisibility = (form) => {
+            const typeSelect = form.querySelector('select[id^="item_type_"], select[data-template-type]');
+            const ammoFields = form.querySelector('[data-ammo-fields]');
+            const typeValue = typeSelect?.value || 'other';
+            const isAmmoRelevant = typeValue === 'weapon' || typeValue === 'ammo';
+            ammoFields?.classList.toggle('is-hidden', !isAmmoRelevant);
+        };
+
         const wireRandomDurability = (options) => {
             const {
                 randomButton,
@@ -1999,6 +2047,7 @@
             const randomInput = form.querySelector('input[id^="item_random_durability_"]');
             const max_durability_input = form.querySelector('input[id^="item_durability_"]');
             const typeSelect = form.querySelector('select[id^="item_type_"]');
+            const ammoTypeInput = form.querySelector('input[id^="item_ammo_type_"]');
             const clothToggle = form.querySelector('input[id^="item_is_cloth_"]');
             const issueSelfToggle = form.querySelector('[data-issue-self]');
             const refreshRandom = wireRandomDurability({
@@ -2008,8 +2057,10 @@
             });
             if (randomInput) randomInput.value = '0';
             updateClothBeltVisibility(form);
+            updateAmmoVisibility(form);
             typeSelect?.addEventListener('change', () => {
                 updateClothBeltVisibility(form);
+                updateAmmoVisibility(form);
             });
             clothToggle?.addEventListener('change', () => {
                 updateClothBeltVisibility(form);
@@ -2035,11 +2086,16 @@
                 const bagHeight = Number.parseInt(form.querySelector('input[id^="item_bag_h_"]')?.value || '0', 10);
                 const fastWidth = Number.parseInt(form.querySelector('input[id^="item_fast_w_"]')?.value || '0', 10);
                 const fastHeight = Number.parseInt(form.querySelector('input[id^="item_fast_h_"]')?.value || '0', 10);
+                const ammoType = ammoTypeInput?.value?.trim() || '';
                 const targetSelect = form.querySelector('select[id^="item_target_"]');
                 const target = targetSelect?.value;
                 const imageInput = form.querySelector('input[type="file"]');
 
                 if (!name) {
+                    return;
+                }
+                if (type === 'ammo' && !ammoType) {
+                    window.alert('Ammo type is required for ammo items.');
                     return;
                 }
 
@@ -2062,6 +2118,7 @@
                 payload.append('bag_height', Number.isNaN(bagHeight) ? 0 : bagHeight);
                 payload.append('fast_w', Number.isNaN(fastWidth) ? 0 : fastWidth);
                 payload.append('fast_h', Number.isNaN(fastHeight) ? 0 : fastHeight);
+                payload.append('ammo_type', ammoType);
                 const issueTo = issueSelfToggle?.checked ? root.dataset.currentUserId : (target || '');
                 payload.append('issue_to', issueTo || '');
                 if (imageInput?.files?.length) {
@@ -2077,6 +2134,7 @@
                     form.reset();
                     refreshRandom();
                     updateClothBeltVisibility(form);
+                    updateAmmoVisibility(form);
                     if (randomInput) randomInput.value = '0';
                     if (targetSelect) targetSelect.value = '';
                     return;
@@ -2406,9 +2464,11 @@
             const bagHeightInput = form.querySelector('[data-template-bag-height]');
             const fastWInput = form.querySelector('[data-template-fast-w]');
             const fastHInput = form.querySelector('[data-template-fast-h]');
+            const ammoTypeInput = form.querySelector('[data-template-ammo-type]');
             const saveButton = form.querySelector('[data-template-save]');
             const statusLine = form.querySelector('[data-template-status]');
             let searchTimer = null;
+            updateAmmoVisibility(form);
 
             const clearResults = () => {
                 if (!resultsBox) return;
@@ -2434,7 +2494,9 @@
                 if (bagHeightInput) bagHeightInput.value = `${template.bag_height || 0}`;
                 if (fastWInput) fastWInput.value = `${template.fast_w || 0}`;
                 if (fastHInput) fastHInput.value = `${template.fast_h || 0}`;
+                if (ammoTypeInput) ammoTypeInput.value = template.ammo_type || '';
                 updateClothBeltVisibility(form);
+                updateAmmoVisibility(form);
                 if (statusLine) statusLine.textContent = '';
                 console.debug('[Settings] Template applied', {
                     id: templateIdInput?.value || '',
@@ -2452,6 +2514,7 @@
                     bag_height: bagHeightInput?.value || '',
                     fast_w: fastWInput?.value || '',
                     fast_h: fastHInput?.value || '',
+                    ammo_type: ammoTypeInput?.value || '',
                 });
             };
             const loadTemplate = async (templateId) => {
@@ -2544,6 +2607,7 @@
             });
             typeSelect?.addEventListener('change', () => {
                 updateClothBeltVisibility(form);
+                updateAmmoVisibility(form);
             });
             clothToggle?.addEventListener('change', () => {
                 updateClothBeltVisibility(form);
@@ -2574,7 +2638,12 @@
                     bag_height: parseNumber(bagHeightInput?.value || '0', 0),
                     fast_w: parseNumber(fastWInput?.value || '0', 0),
                     fast_h: parseNumber(fastHInput?.value || '0', 0),
+                    ammo_type: ammoTypeInput?.value?.trim() || '',
                 };
+                if (payload.type === 'ammo' && !payload.ammo_type) {
+                    if (statusLine) statusLine.textContent = 'Ammo type is required for ammo items.';
+                    return;
+                }
                 const response = await fetch('/api/master/item_template/update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
