@@ -1613,10 +1613,8 @@
                     !['food', 'map', 'weapon'].includes(item.type),
                 );
                 if (useButton && item.type === 'weapon') {
-                    const ammoType = this.normalizeAmmoType(item.ammo_type);
                     const isBroken = (item.str_current ?? 0) <= 0;
-                    const hasAmmo = !ammoType || this.hasAmmoForWeapon(ammoType);
-                    useButton.disabled = isBroken || !hasAmmo;
+                    useButton.disabled = isBroken;
                 } else if (useButton) {
                     useButton.disabled = false;
                 }
@@ -2006,9 +2004,27 @@
         const updateAmmoVisibility = (form) => {
             const typeSelect = form.querySelector('select[id^="item_type_"], select[data-template-type]');
             const ammoFields = form.querySelector('[data-ammo-fields]');
+            const ammoInput = form.querySelector('input[id^="item_ammo_type_"], input[data-template-ammo-type]');
             const typeValue = typeSelect?.value || 'other';
             const isAmmoRelevant = typeValue === 'weapon' || typeValue === 'ammo';
             ammoFields?.classList.toggle('is-hidden', !isAmmoRelevant);
+            if (ammoInput) {
+                ammoInput.required = typeValue === 'ammo';
+            }
+        };
+
+        const updateWeaponDurabilityRequirement = (form) => {
+            const typeSelect = form.querySelector('select[id^="item_type_"], select[data-template-type]');
+            const durabilityInput = form.querySelector('input[id^="item_durability_"], input[data-template-max-durability]');
+            const typeValue = typeSelect?.value || 'other';
+            if (!durabilityInput) return;
+            if (typeValue === 'weapon') {
+                durabilityInput.required = true;
+                durabilityInput.min = '1';
+            } else {
+                durabilityInput.required = false;
+                durabilityInput.min = '0';
+            }
         };
 
         const wireRandomDurability = (options) => {
@@ -2057,9 +2073,11 @@
             if (randomInput) randomInput.value = '0';
             updateClothBeltVisibility(form);
             updateAmmoVisibility(form);
+            updateWeaponDurabilityRequirement(form);
             typeSelect?.addEventListener('change', () => {
                 updateClothBeltVisibility(form);
                 updateAmmoVisibility(form);
+                updateWeaponDurabilityRequirement(form);
             });
             clothToggle?.addEventListener('change', () => {
                 updateClothBeltVisibility(form);
@@ -2091,6 +2109,10 @@
                 const imageInput = form.querySelector('input[type="file"]');
 
                 if (!name) {
+                    return;
+                }
+                if (type === 'weapon' && (!Number.isFinite(max_durability_value) || max_durability_value < 1)) {
+                    window.alert('Weapon max durability must be at least 1.');
                     return;
                 }
                 if (type === 'ammo' && !ammoType) {
@@ -2134,6 +2156,7 @@
                     refreshRandom();
                     updateClothBeltVisibility(form);
                     updateAmmoVisibility(form);
+                    updateWeaponDurabilityRequirement(form);
                     if (randomInput) randomInput.value = '0';
                     if (targetSelect) targetSelect.value = '';
                     return;
@@ -2468,6 +2491,7 @@
             const statusLine = form.querySelector('[data-template-status]');
             let searchTimer = null;
             updateAmmoVisibility(form);
+            updateWeaponDurabilityRequirement(form);
 
             const clearResults = () => {
                 if (!resultsBox) return;
@@ -2496,6 +2520,7 @@
                 if (ammoTypeInput) ammoTypeInput.value = template.ammo_type || '';
                 updateClothBeltVisibility(form);
                 updateAmmoVisibility(form);
+                updateWeaponDurabilityRequirement(form);
                 if (statusLine) statusLine.textContent = '';
                 console.debug('[Settings] Template applied', {
                     id: templateIdInput?.value || '',
@@ -2607,6 +2632,7 @@
             typeSelect?.addEventListener('change', () => {
                 updateClothBeltVisibility(form);
                 updateAmmoVisibility(form);
+                updateWeaponDurabilityRequirement(form);
             });
             clothToggle?.addEventListener('change', () => {
                 updateClothBeltVisibility(form);
@@ -2639,6 +2665,10 @@
                     fast_h: parseNumber(fastHInput?.value || '0', 0),
                     ammo_type: ammoTypeInput?.value?.trim() || '',
                 };
+                if (payload.type === 'weapon' && (!Number.isFinite(payload.max_durability) || payload.max_durability < 1)) {
+                    if (statusLine) statusLine.textContent = 'Weapon max durability must be at least 1.';
+                    return;
+                }
                 if (payload.type === 'ammo' && !payload.ammo_type) {
                     if (statusLine) statusLine.textContent = 'Ammo type is required for ammo items.';
                     return;
