@@ -1473,7 +1473,6 @@
             const targetInput = issueForm.querySelector('select[id^="issue_target_"]');
             const amountInput = issueForm.querySelector('input[id^="issue_amount_"]');
             const durabilityInput = issueForm.querySelector('input[id^="issue_durability_current_"]');
-            const randomInput = issueForm.querySelector('input[id^="issue_random_durability_"]');
             if (templateInput && item?.template_id) {
                 templateInput.value = `${item.template_id}`;
             }
@@ -1498,7 +1497,6 @@
                 target_user_id: target,
                 amount: Number.isNaN(amount) ? 1 : amount,
                 durability_current: durabilityRaw === '' ? null : durabilityRaw,
-                random_durability: randomInput?.value || '',
             };
             console.debug('GiveID fetch started', payload);
             console.log('GiveID fetch starting', payload);
@@ -1542,6 +1540,10 @@
                 message = 'Некоректне значення durability.';
             } else if (error === 'durability_not_allowed') {
                 message = 'Цей предмет не має durability. Очистіть значення.';
+            } else if (error === 'missing_definition') {
+                message = 'Вкажіть ID або назву шаблону.';
+            } else if (error === 'not_found') {
+                message = 'Шаблон не знайдено.';
             } else if (error === 'forbidden') {
                 message = 'Недостатньо прав для видачі предмета.';
             }
@@ -2086,9 +2088,7 @@
 
         root.querySelectorAll('[data-master-issue]').forEach((form) => {
             const button = form.querySelector('[data-issue-submit]');
-            const randomButton = form.querySelector('[data-random-durability]');
             const durabilityInput = form.querySelector('input[id^="issue_durability_current_"]');
-            const randomInput = form.querySelector('input[id^="issue_random_durability_"]');
             const templateInput = form.querySelector('[data-template-id]');
             const searchInput = form.querySelector('[data-template-search]');
             const resultsBox = form.querySelector('[data-template-results]');
@@ -2118,15 +2118,52 @@
                 console.debug('[IssueById]', message, payload);
             };
             const refreshRandom = wireRandomDurability({
-                randomButton,
+                randomButton: null,
                 maxInput: max_durability_input,
                 durabilityInput,
             });
-            if (randomInput) randomInput.value = '0';
             const clearResults = () => {
                 if (!resultsBox) return;
                 resultsBox.innerHTML = '';
                 resultsBox.classList.remove('is-open');
+            };
+            const resolveTemplateFromInput = async () => {
+                const templateId = parseNumber(templateInput?.value, 0);
+                if (templateId) {
+                    const loadedTemplate = await loadTemplate(templateId);
+                    if (!loadedTemplate) {
+                        return { ok: false, error: 'not_found' };
+                    }
+                    return { ok: true, id: templateId, name: loadedTemplate.name || '' };
+                }
+                const query = searchInput?.value?.trim() || '';
+                if (!query) {
+                    return { ok: false, error: 'missing_definition' };
+                }
+                const response = await fetch(
+                    `/api/master/item_template/search?lobby_id=${encodeURIComponent(lobbyId)}&q=${encodeURIComponent(query)}`,
+                );
+                if (!response.ok) {
+                    return { ok: false, error: 'not_found' };
+                }
+                const payload = await response.json().catch(() => ({}));
+                const results = Array.isArray(payload.results) ? payload.results : [];
+                const queryLower = query.toLowerCase();
+                const matched = results.find((result) => (
+                    `${result.id}` === query || `${result.id}` === queryLower
+                    || `${result.name || ''}`.toLowerCase() === queryLower
+                ));
+                const resolved = matched || (results.length === 1 ? results[0] : null);
+                if (!resolved) {
+                    return { ok: false, error: 'not_found' };
+                }
+                if (templateInput) templateInput.value = `${resolved.id}`;
+                if (searchInput && resolved.name) searchInput.value = resolved.name;
+                const loadedTemplate = await loadTemplate(resolved.id);
+                if (!loadedTemplate) {
+                    return { ok: false, error: 'not_found' };
+                }
+                return { ok: true, id: resolved.id, name: loadedTemplate.name || '' };
             };
             const applyTemplate = (template) => {
                 if (!template) return;
@@ -2182,12 +2219,13 @@
                 const response = await fetch(
                     `/api/master/item_template/${templateId}?lobby_id=${encodeURIComponent(lobbyId || '')}`,
                 );
-                if (!response.ok) return;
+                if (!response.ok) return null;
                 const payload = await response.json().catch(() => ({}));
                 const template = payload.template;
-                if (!template) return;
+                if (!template) return null;
                 applyTemplate(template);
                 refreshRandom();
+                return template;
             };
             const renderResults = (results) => {
                 if (!resultsBox) return;
@@ -2252,6 +2290,11 @@
                 if (!templateId) return;
                 await loadTemplate(templateId);
             });
+            searchInput?.addEventListener('blur', async () => {
+                if (!templateInput?.value) {
+                    await resolveTemplateFromInput();
+                }
+            });
             document.addEventListener('click', (event) => {
                 if (!resultsBox || !searchInput) return;
                 if (!form.contains(event.target)) {
@@ -2261,10 +2304,12 @@
             const submitIssue = async (event) => {
                 event?.preventDefault();
                 logIssueDebug('issue click', { lobbyId });
-                const definitionId = Number.parseInt(
-                    form.querySelector('input[id^="issue_template_"]')?.value || '0',
-                    10,
-                );
+                const templateResult = await resolveTemplateFromInput();
+                if (!templateResult.ok) {
+                    controller.showIssueByIdError({ error: templateResult.error });
+                    return;
+                }
+                const definitionId = templateResult.id;
                 const targetId = Number.parseInt(
                     form.querySelector('select[id^="issue_target_"]')?.value || '0',
                     10,
@@ -2275,7 +2320,6 @@
                 );
                 const durabilityRaw = form.querySelector('input[id^="issue_durability_current_"]')?.value ?? '';
                 const durabilityCurrent = durabilityRaw === '' ? null : durabilityRaw;
-                const randomDurability = form.querySelector('input[id^="issue_random_durability_"]')?.value || '';
                 if (!definitionId || !targetId) {
                     logIssueDebug('issue validation failed', { definitionId, targetId });
                     return;
@@ -2284,7 +2328,8 @@
                     controller.showIssueByIdError({ error: 'invalid_amount' });
                     return;
                 }
-                const confirmed = window.confirm(`Видати шаблон #${definitionId} для користувача ${targetId}?`);
+                const templateLabel = templateResult.name ? `${templateResult.name} (#${definitionId})` : `#${definitionId}`;
+                const confirmed = window.confirm(`Видати шаблон ${templateLabel} для користувача ${targetId}?`);
                 if (!confirmed) {
                     logIssueDebug('issue cancelled', { definitionId, targetId });
                     return;
@@ -2294,10 +2339,10 @@
                 console.debug('GiveID fetch payload', {
                     lobby_id: lobbyId,
                     definition_id: definitionId,
+                    definition_name: templateInput?.value ? '' : searchInput?.value?.trim(),
                     target_user_id: targetId,
                     amount,
                     durability_current: durabilityCurrent,
-                    random_durability: randomDurability,
                 });
                 console.log('GiveID fetch starting', { definitionId, targetId, amount });
                 let response;
@@ -2308,10 +2353,10 @@
                         body: JSON.stringify({
                             lobby_id: lobbyId,
                             definition_id: definitionId,
+                            definition_name: templateInput?.value ? '' : searchInput?.value?.trim(),
                             target_user_id: targetId,
                             amount,
                             durability_current: durabilityCurrent,
-                            random_durability: randomDurability,
                         }),
                     });
                     console.log('GiveID fetch completed', { status: response.status });
