@@ -129,6 +129,7 @@
             this.notesSaveButton = this.root.querySelector('[data-notes-save]');
             this.notesStatus = this.root.querySelector('[data-notes-status]');
             this.notesPayload = null;
+            this.notesIsEditing = false;
             this.bagGridList = this.root.querySelector('[data-bag-grid-list]');
             this.fastSlotList = this.root.querySelector('[data-fast-slot-list]');
             this.fastSlotPanel = this.root.querySelector('[data-fast-slot-panel]');
@@ -1810,6 +1811,11 @@
                 const notesText = this.notesInput?.value ?? this.notesPayload?.notes_text ?? '';
                 this.renderNotesPreview(notesText);
             }
+            if (this.notesRendered) {
+                const notesText = this.notesInput?.value ?? this.notesPayload?.notes_text ?? '';
+                this.renderNotesPreview(notesText);
+            }
+            this.syncNotesVisibility();
         }
 
         canEditStats() {
@@ -2207,6 +2213,7 @@
                 } else {
                     this.setNotesStatus('saved');
                 }
+                this.setNotesEditing(false);
             } catch (error) {
                 console.debug('[Notes] Save failed', error);
                 this.setNotesStatus('error');
