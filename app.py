@@ -9,6 +9,7 @@ import secrets
 import ast
 import math
 import difflib
+import shutil
 import sys
 import time
 from typing import Optional
@@ -378,6 +379,33 @@ def _sqlite_db_path(db_uri: str) -> Optional[str]:
         return None
     path = db_uri[len('sqlite:///'):]
     return path or None
+
+
+def _migrate_legacy_sqlite_db(target_path: str) -> None:
+    if os.path.exists(target_path):
+        return
+    target_dir = os.path.dirname(target_path)
+    if target_dir:
+        os.makedirs(target_dir, exist_ok=True)
+    legacy_candidates = [
+        os.path.join(os.getcwd(), os.path.basename(target_path)),
+        os.path.join(os.path.dirname(__file__), os.path.basename(target_path)),
+    ]
+    if DEFAULT_DB_PATH != target_path:
+        legacy_candidates.append(DEFAULT_DB_PATH)
+    for legacy_path in legacy_candidates:
+        if legacy_path == target_path:
+            continue
+        if not os.path.exists(legacy_path):
+            continue
+        try:
+            shutil.move(legacy_path, target_path)
+            print(f"[DB] Migrated legacy SQLite DB from {legacy_path} to {target_path}")
+        except OSError as exc:
+            print(
+                f"[DB] Failed to migrate legacy SQLite DB from {legacy_path} to {target_path}: {exc}"
+            )
+        return
 
 
 def _ensure_user_columns():
