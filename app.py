@@ -78,6 +78,18 @@ CHARACTER_CLASSES = {
     '???',
 }
 SKILL_CHECK_TIME_LIMIT = 30
+CHARACTER_STAT_FORMULA_KEYS = {
+    'mana': 'Mana',
+    'armor_class': 'Armor Class',
+    'max_hp': 'Max HP',
+    'hp_head': 'HP Head',
+    'hp_torso': 'HP Torso',
+    'hp_left_arm': 'HP Left Arm',
+    'hp_right_arm': 'HP Right Arm',
+    'hp_left_leg': 'HP Left Leg',
+    'hp_right_leg': 'HP Right Leg',
+    'reason': 'Reason',
+}
 
 
 @dataclass
@@ -354,6 +366,20 @@ class CharacterAttributes(db.Model):
     intelligence_prof = db.Column(db.Boolean, nullable=False, default=False)
     wisdom_prof = db.Column(db.Boolean, nullable=False, default=False)
     charisma_prof = db.Column(db.Boolean, nullable=False, default=False)
+
+
+class CharacterStatFormula(db.Model):
+    __tablename__ = 'character_stat_formula'
+
+    id = db.Column(db.Integer, primary_key=True)
+    character_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False)
+    stat_key = db.Column(db.String(64), nullable=False)
+    formula = db.Column(db.Text, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('character_id', 'stat_key', name='uniq_character_stat_formula'),
+    )
 
 
 class AttributeFormula(db.Model):
@@ -1140,6 +1166,221 @@ def ensure_character_attributes(user_id: int) -> CharacterAttributes:
     return attributes
 
 
+@dataclass(frozen=True)
+class StatFormulaContext:
+    stats: CharacterStats
+    attributes: CharacterAttributes
+    equipment: dict[str, float]
+
+
+STAT_FORMULA_VARIABLE_REGISTRY = {
+    'STR': lambda ctx: ctx.attributes.strength,
+    'DEX': lambda ctx: ctx.attributes.dexterity,
+    'CON': lambda ctx: ctx.attributes.constitution,
+    'INT': lambda ctx: ctx.attributes.intelligence,
+    'WIS': lambda ctx: ctx.attributes.wisdom,
+    'CHA': lambda ctx: ctx.attributes.charisma,
+    'str': lambda ctx: ctx.attributes.strength,
+    'dex': lambda ctx: ctx.attributes.dexterity,
+    'con': lambda ctx: ctx.attributes.constitution,
+    'int': lambda ctx: ctx.attributes.intelligence,
+    'wis': lambda ctx: ctx.attributes.wisdom,
+    'cha': lambda ctx: ctx.attributes.charisma,
+    'HP': lambda ctx: ctx.stats.hp_current,
+    'MaxHP': lambda ctx: ctx.stats.hp_max,
+    'Mana': lambda ctx: ctx.stats.mana_current,
+    'MaxMana': lambda ctx: ctx.stats.mana_max,
+    'ArmorClass': lambda ctx: ctx.stats.armor_class,
+    'Hungry': lambda ctx: ctx.stats.hungry,
+    'hp_current': lambda ctx: ctx.stats.hp_current,
+    'hp_max': lambda ctx: ctx.stats.hp_max,
+    'mana_current': lambda ctx: ctx.stats.mana_current,
+    'mana_max': lambda ctx: ctx.stats.mana_max,
+    'armor_class': lambda ctx: ctx.stats.armor_class,
+    'hungry': lambda ctx: ctx.stats.hungry,
+    'ArmorBaseDef': lambda ctx: ctx.equipment.get('ArmorBaseDef', 0),
+}
+
+
+def _build_equipment_variables(character_id: int) -> dict[str, float]:
+    equipped_containers = list(EQUIPMENT_GRIDS.keys()) + list(SPECIAL_GRIDS.keys())
+    equipped_instances = ItemInstance.query.filter(
+        ItemInstance.owner_id == character_id,
+        ItemInstance.container_i.in_(equipped_containers),
+    ).all()
+    armor_containers = {
+        'equip_armor',
+        'equip_shield',
+        'equip_head',
+        'equip_shirt',
+        'equip_pants',
+        'equip_boots',
+    }
+    armor_base_def = sum(
+        (instance.definition.max_durability or 0)
+        for instance in equipped_instances
+        if instance.definition and instance.container_i in armor_containers
+    )
+    return {
+        'ArmorBaseDef': armor_base_def,
+    }
+
+
+def build_stat_formula_context(character_id: int) -> dict[str, float]:
+    stats = ensure_character_stats(character_id)
+    attributes = ensure_character_attributes(character_id)
+    equipment = _build_equipment_variables(character_id)
+    context = StatFormulaContext(stats=stats, attributes=attributes, equipment=equipment)
+    resolved = {}
+    for name, resolver in STAT_FORMULA_VARIABLE_REGISTRY.items():
+        value = resolver(context)
+        resolved[name] = float(value or 0)
+    return resolved
+
+
+class StatFormulaError(ValueError):
+    pass
+
+
+def validate_stat_formula(expression: str, allowed_names: set[str]) -> ast.Expression:
+    try:
+        tree = ast.parse(expression, mode='eval')
+    except SyntaxError as exc:
+        raise StatFormulaError('Invalid syntax.') from exc
+
+    def validate_node(node: ast.AST) -> None:
+        if isinstance(node, ast.Expression):
+            validate_node(node.body)
+            return
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+                raise StatFormulaError('Only numeric literals are allowed.')
+            return
+        if isinstance(node, ast.Name):
+            if node.id not in allowed_names:
+                raise StatFormulaError(f'Unknown identifier: {node.id}')
+            return
+        if isinstance(node, ast.BinOp):
+            if not isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div)):
+                raise StatFormulaError('Only +, -, *, / operators are allowed.')
+            validate_node(node.left)
+            validate_node(node.right)
+            return
+        if isinstance(node, ast.UnaryOp):
+            if not isinstance(node.op, (ast.UAdd, ast.USub)):
+                raise StatFormulaError('Only unary + and - are allowed.')
+            validate_node(node.operand)
+            return
+        if isinstance(node, ast.Call):
+            if node.keywords:
+                raise StatFormulaError('Only positional arguments are allowed.')
+            if not isinstance(node.func, ast.Name):
+                raise StatFormulaError('Only simple function names are allowed.')
+            func_name = node.func.id
+            if func_name not in {'round', 'floor', 'ceil', 'min', 'max', 'clamp'}:
+                raise StatFormulaError(f'Unsupported function: {func_name}')
+            arg_count = len(node.args)
+            if func_name == 'round' and arg_count not in {1, 2}:
+                raise StatFormulaError('round() expects 1 or 2 arguments.')
+            if func_name in {'floor', 'ceil'} and arg_count != 1:
+                raise StatFormulaError(f'{func_name}() expects 1 argument.')
+            if func_name in {'min', 'max'} and arg_count < 1:
+                raise StatFormulaError(f'{func_name}() expects at least 1 argument.')
+            if func_name == 'clamp' and arg_count != 3:
+                raise StatFormulaError('clamp() expects 3 arguments.')
+            for arg in node.args:
+                validate_node(arg)
+            return
+        raise StatFormulaError(f'Disallowed syntax: {node.__class__.__name__}')
+
+    validate_node(tree)
+    return tree
+
+
+def evaluate_stat_formula(expression: str, context: dict[str, float]) -> float:
+    allowed_names = set(context.keys())
+    tree = validate_stat_formula(expression, allowed_names)
+
+    def eval_node(node: ast.AST) -> float:
+        if isinstance(node, ast.Expression):
+            return eval_node(node.body)
+        if isinstance(node, ast.Constant):
+            return float(node.value)
+        if isinstance(node, ast.Name):
+            return float(context[node.id])
+        if isinstance(node, ast.UnaryOp):
+            operand = eval_node(node.operand)
+            return operand if isinstance(node.op, ast.UAdd) else -operand
+        if isinstance(node, ast.BinOp):
+            left = eval_node(node.left)
+            right = eval_node(node.right)
+            if isinstance(node.op, ast.Add):
+                return left + right
+            if isinstance(node.op, ast.Sub):
+                return left - right
+            if isinstance(node.op, ast.Mult):
+                return left * right
+            if isinstance(node.op, ast.Div):
+                if right == 0:
+                    raise StatFormulaError('Division by zero.')
+                return left / right
+        if isinstance(node, ast.Call):
+            func_name = node.func.id
+            args = [eval_node(arg) for arg in node.args]
+            if func_name == 'round':
+                if len(args) == 1:
+                    return float(round(args[0]))
+                if len(args) == 2:
+                    digits = args[1]
+                    if not float(digits).is_integer():
+                        raise StatFormulaError('round() expects an integer number of digits.')
+                    return float(round(args[0], int(digits)))
+            if func_name == 'floor':
+                return float(math.floor(args[0]))
+            if func_name == 'ceil':
+                return float(math.ceil(args[0]))
+            if func_name == 'min':
+                return float(min(args))
+            if func_name == 'max':
+                return float(max(args))
+            if func_name == 'clamp':
+                value, lo, hi = args
+                return float(min(max(value, lo), hi))
+        raise StatFormulaError('Disallowed expression.')
+
+    return eval_node(tree)
+
+
+def get_character_formulas(character_id: int) -> dict[str, str]:
+    records = CharacterStatFormula.query.filter_by(character_id=character_id).all()
+    return {record.stat_key: record.formula for record in records}
+
+
+def upsert_character_formula(character_id: int, stat_key: str, formula: str) -> None:
+    record = CharacterStatFormula.query.filter_by(
+        character_id=character_id,
+        stat_key=stat_key,
+    ).first()
+    if record:
+        record.formula = formula
+    else:
+        record = CharacterStatFormula(
+            character_id=character_id,
+            stat_key=stat_key,
+            formula=formula,
+        )
+        db.session.add(record)
+
+
+def delete_character_formula(character_id: int, stat_key: str) -> None:
+    record = CharacterStatFormula.query.filter_by(
+        character_id=character_id,
+        stat_key=stat_key,
+    ).first()
+    if record:
+        db.session.delete(record)
+
+
 class FormulaError(ValueError):
     pass
 
@@ -1637,6 +1878,7 @@ def build_inventory_payload(
             'mana_max': stats.mana_max,
             'armor_class': stats.armor_class,
             'hungry': stats.hungry,
+            'reason': 0,
         },
         'attributes': build_attributes_payload(user.id, viewer, lobby_id),
     }
@@ -2996,6 +3238,118 @@ def update_character_stats():
             'hungry': stats.hungry,
         },
     })
+
+
+def _require_formula_permission(user: User, lobby_id: int, character_id: int):
+    if not is_master(user, lobby_id):
+        return None, (jsonify({'ok': False, 'error': 'forbidden'}), 403)
+    membership = LobbyMember.query.filter_by(
+        lobby_id=lobby_id,
+        user_id=character_id,
+    ).first()
+    if not membership:
+        return None, (jsonify({'ok': False, 'error': 'not_in_lobby'}), 403)
+    return membership, None
+
+
+@app.route('/api/character/<int:character_id>/formulas')
+def get_character_formulas_api(character_id: int):
+    user = require_user()
+    lobby_id = parse_int(request.args.get('lobby_id'), 0) or current_lobby_id_for(user)
+    if not lobby_id:
+        return jsonify({'ok': False, 'error': 'missing_lobby'}), 400
+    _membership, error_response = _require_formula_permission(user, lobby_id, character_id)
+    if error_response:
+        return error_response
+    formulas = get_character_formulas(character_id)
+    return jsonify({'ok': True, 'formulas': formulas})
+
+
+@app.route('/api/character/<int:character_id>/formulas', methods=['POST'])
+def save_character_formulas_api(character_id: int):
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    lobby_id = parse_int(data.get('lobby_id'), 0) or current_lobby_id_for(user)
+    if not lobby_id:
+        return jsonify({'ok': False, 'error': 'missing_lobby'}), 400
+    _membership, error_response = _require_formula_permission(user, lobby_id, character_id)
+    if error_response:
+        return error_response
+    formulas = data.get('formulas')
+    if not isinstance(formulas, dict):
+        return jsonify({'ok': False, 'error': 'invalid_payload'}), 400
+    allowed_names = set(STAT_FORMULA_VARIABLE_REGISTRY.keys())
+    errors = {}
+    for stat_key, formula in formulas.items():
+        if stat_key not in CHARACTER_STAT_FORMULA_KEYS:
+            errors[stat_key] = {'error': 'Unknown stat key.'}
+            continue
+        formula_text = (formula or '').strip()
+        if not formula_text:
+            continue
+        try:
+            validate_stat_formula(formula_text, allowed_names)
+        except StatFormulaError as exc:
+            errors[stat_key] = {'error': str(exc)}
+    if errors:
+        return jsonify({'ok': False, 'error': 'invalid_formula', 'details': errors})
+    for stat_key, formula in formulas.items():
+        formula_text = (formula or '').strip()
+        if not formula_text:
+            delete_character_formula(character_id, stat_key)
+        else:
+            upsert_character_formula(character_id, stat_key, formula_text)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/character/<int:character_id>/formulas/evaluate', methods=['POST'])
+def evaluate_character_formulas_api(character_id: int):
+    user = require_user()
+    data = request.get_json(silent=True) or {}
+    lobby_id = parse_int(data.get('lobby_id'), 0) or current_lobby_id_for(user)
+    if not lobby_id:
+        return jsonify({'ok': False, 'error': 'missing_lobby'}), 400
+    _membership, error_response = _require_formula_permission(user, lobby_id, character_id)
+    if error_response:
+        return error_response
+    stat_keys = data.get('stat_keys')
+    if stat_keys is not None and not isinstance(stat_keys, list):
+        return jsonify({'ok': False, 'error': 'invalid_payload'}), 400
+    formulas = get_character_formulas(character_id)
+    if stat_keys:
+        unknown_keys = [key for key in stat_keys if key not in CHARACTER_STAT_FORMULA_KEYS]
+        if unknown_keys:
+            return jsonify({'ok': False, 'error': 'invalid_stat_key'}), 400
+        target_keys = [key for key in stat_keys if key in formulas]
+    else:
+        target_keys = list(formulas.keys())
+    context = build_stat_formula_context(character_id)
+    results = {}
+    errors = {}
+    for stat_key in target_keys:
+        formula = formulas.get(stat_key, '')
+        if not formula:
+            continue
+        try:
+            value = evaluate_stat_formula(formula, context)
+            results[stat_key] = {'value': value}
+        except StatFormulaError as exc:
+            error_message = str(exc)
+            errors[stat_key] = {'error': error_message}
+            send_system_chat(
+                lobby_id,
+                (
+                    'Formula error '
+                    f'character_id={character_id} '
+                    f'stat_name={stat_key} '
+                    f'formula="{formula}" '
+                    f'error="{error_message}"'
+                ),
+                user_id=user.id,
+            )
+    ok = not errors
+    return jsonify({'ok': ok, 'results': results, 'errors': errors})
 
 
 @app.route('/api/master/set_class', methods=['POST'])

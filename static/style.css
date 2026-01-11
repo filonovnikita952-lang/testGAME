@@ -1466,6 +1466,50 @@ textarea {
     background: rgba(10, 12, 20, 0.6);
 }
 
+.formula-grid {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.formula-row {
+    display: grid;
+    gap: 6px;
+    grid-template-columns: minmax(120px, 1fr) minmax(80px, 120px) minmax(220px, 2fr);
+    align-items: center;
+}
+
+.formula-row__label {
+    font-weight: 600;
+}
+
+.formula-row__value {
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.formula-row input {
+    width: 100%;
+}
+
+.formula-row__error {
+    grid-column: 1 / -1;
+    color: #ff8a8a;
+    font-size: 0.85rem;
+    min-height: 1.1em;
+}
+
+.formula-row.is-error input {
+    border-color: rgba(255, 138, 138, 0.8);
+}
+
+.formula-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+    justify-content: flex-end;
+}
+
 .character-frame {
     border-radius: 8px;
     padding: 12px;
