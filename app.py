@@ -90,6 +90,30 @@ CHARACTER_STAT_FORMULA_KEYS = {
     'hp_right_leg': 'HP Right Leg',
     'reason': 'Reason',
 }
+CHARACTER_FORMULA_FIELD_MAP = {
+    'mana': 'mana_max',
+    'armor_class': 'armor_class',
+    'max_hp': 'hp_max',
+    'hp_head': 'hp_head',
+    'hp_torso': 'hp_torso',
+    'hp_left_arm': 'hp_left_arm',
+    'hp_right_arm': 'hp_right_arm',
+    'hp_left_leg': 'hp_left_leg',
+    'hp_right_leg': 'hp_right_leg',
+    'reason': 'reason',
+}
+CHARACTER_FORMULA_ORDER = [
+    'max_hp',
+    'mana',
+    'armor_class',
+    'hp_head',
+    'hp_torso',
+    'hp_left_arm',
+    'hp_right_arm',
+    'hp_left_leg',
+    'hp_right_leg',
+    'reason',
+]
 
 
 @dataclass
@@ -341,12 +365,19 @@ class CharacterStats(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False, unique=True)
     strength = db.Column(db.Integer, nullable=False, default=10)
-    hp_current = db.Column(db.Integer, nullable=True)
-    hp_max = db.Column(db.Integer, nullable=True)
-    mana_current = db.Column(db.Integer, nullable=True)
-    mana_max = db.Column(db.Integer, nullable=True)
-    armor_class = db.Column(db.Integer, nullable=True)
-    hungry = db.Column(db.Integer, nullable=True)
+    hp_current = db.Column(db.Float, nullable=True)
+    hp_max = db.Column(db.Float, nullable=True)
+    mana_current = db.Column(db.Float, nullable=True)
+    mana_max = db.Column(db.Float, nullable=True)
+    armor_class = db.Column(db.Float, nullable=True)
+    hungry = db.Column(db.Float, nullable=True)
+    hp_head = db.Column(db.Float, nullable=True)
+    hp_torso = db.Column(db.Float, nullable=True)
+    hp_left_arm = db.Column(db.Float, nullable=True)
+    hp_right_arm = db.Column(db.Float, nullable=True)
+    hp_left_leg = db.Column(db.Float, nullable=True)
+    hp_right_leg = db.Column(db.Float, nullable=True)
+    reason = db.Column(db.Float, nullable=True)
 
 
 class CharacterAttributes(db.Model):
@@ -379,6 +410,35 @@ class CharacterStatFormula(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint('character_id', 'stat_key', name='uniq_character_stat_formula'),
+    )
+
+
+class CharacterFormula(db.Model):
+    __tablename__ = 'character_formula'
+
+    id = db.Column(db.Integer, primary_key=True)
+    lobby_id = db.Column(db.Integer, db.ForeignKey('lobby.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False)
+    field_key = db.Column(db.String(64), nullable=False)
+    formula = db.Column(db.Text, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('lobby_id', 'user_id', 'field_key', name='uniq_character_formula'),
+    )
+
+
+class CharacterNote(db.Model):
+    __tablename__ = 'character_notes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    lobby_id = db.Column(db.Integer, db.ForeignKey('lobby.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False)
+    notes_text = db.Column(db.Text, nullable=False, default='')
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('lobby_id', 'user_id', name='uniq_character_notes'),
     )
 
 
@@ -574,6 +634,27 @@ def _ensure_character_stats_columns():
             db.session.commit()
         if 'hungry' not in columns:
             db.session.execute(text('ALTER TABLE character_stats ADD COLUMN hungry INTEGER'))
+            db.session.commit()
+        if 'hp_head' not in columns:
+            db.session.execute(text('ALTER TABLE character_stats ADD COLUMN hp_head REAL'))
+            db.session.commit()
+        if 'hp_torso' not in columns:
+            db.session.execute(text('ALTER TABLE character_stats ADD COLUMN hp_torso REAL'))
+            db.session.commit()
+        if 'hp_left_arm' not in columns:
+            db.session.execute(text('ALTER TABLE character_stats ADD COLUMN hp_left_arm REAL'))
+            db.session.commit()
+        if 'hp_right_arm' not in columns:
+            db.session.execute(text('ALTER TABLE character_stats ADD COLUMN hp_right_arm REAL'))
+            db.session.commit()
+        if 'hp_left_leg' not in columns:
+            db.session.execute(text('ALTER TABLE character_stats ADD COLUMN hp_left_leg REAL'))
+            db.session.commit()
+        if 'hp_right_leg' not in columns:
+            db.session.execute(text('ALTER TABLE character_stats ADD COLUMN hp_right_leg REAL'))
+            db.session.commit()
+        if 'reason' not in columns:
+            db.session.execute(text('ALTER TABLE character_stats ADD COLUMN reason REAL'))
             db.session.commit()
 
 
@@ -1134,6 +1215,20 @@ def ensure_character_stats(user_id: int) -> CharacterStats:
         stats.armor_class = 10
     if stats.hungry is None:
         stats.hungry = 100
+    if stats.hp_head is None:
+        stats.hp_head = 0
+    if stats.hp_torso is None:
+        stats.hp_torso = 0
+    if stats.hp_left_arm is None:
+        stats.hp_left_arm = 0
+    if stats.hp_right_arm is None:
+        stats.hp_right_arm = 0
+    if stats.hp_left_leg is None:
+        stats.hp_left_leg = 0
+    if stats.hp_right_leg is None:
+        stats.hp_right_leg = 0
+    if stats.reason is None:
+        stats.reason = 0
     stats.hp_current = min(stats.hp_current or 0, stats.hp_max or hp_max)
     stats.mana_current = min(stats.mana_current or 0, stats.mana_max or mana_max)
     stats.hungry = min(max(stats.hungry or 0, 0), 100)
@@ -1199,6 +1294,20 @@ STAT_FORMULA_VARIABLE_REGISTRY = {
     'armor_class': lambda ctx: ctx.stats.armor_class,
     'hungry': lambda ctx: ctx.stats.hungry,
     'ArmorBaseDef': lambda ctx: ctx.equipment.get('ArmorBaseDef', 0),
+    'HPHead': lambda ctx: ctx.stats.hp_head,
+    'HPTorso': lambda ctx: ctx.stats.hp_torso,
+    'HPLeftArm': lambda ctx: ctx.stats.hp_left_arm,
+    'HPRightArm': lambda ctx: ctx.stats.hp_right_arm,
+    'HPLeftLeg': lambda ctx: ctx.stats.hp_left_leg,
+    'HPRightLeg': lambda ctx: ctx.stats.hp_right_leg,
+    'Reason': lambda ctx: ctx.stats.reason,
+    'hp_head': lambda ctx: ctx.stats.hp_head,
+    'hp_torso': lambda ctx: ctx.stats.hp_torso,
+    'hp_left_arm': lambda ctx: ctx.stats.hp_left_arm,
+    'hp_right_arm': lambda ctx: ctx.stats.hp_right_arm,
+    'hp_left_leg': lambda ctx: ctx.stats.hp_left_leg,
+    'hp_right_leg': lambda ctx: ctx.stats.hp_right_leg,
+    'reason': lambda ctx: ctx.stats.reason,
 }
 
 
@@ -1226,16 +1335,24 @@ def _build_equipment_variables(character_id: int) -> dict[str, float]:
     }
 
 
-def build_stat_formula_context(character_id: int) -> dict[str, float]:
-    stats = ensure_character_stats(character_id)
-    attributes = ensure_character_attributes(character_id)
-    equipment = _build_equipment_variables(character_id)
+def build_stat_formula_context_from(
+    stats: CharacterStats,
+    attributes: CharacterAttributes,
+    equipment: dict[str, float],
+) -> dict[str, float]:
     context = StatFormulaContext(stats=stats, attributes=attributes, equipment=equipment)
     resolved = {}
     for name, resolver in STAT_FORMULA_VARIABLE_REGISTRY.items():
         value = resolver(context)
         resolved[name] = float(value or 0)
     return resolved
+
+
+def build_stat_formula_context(character_id: int) -> dict[str, float]:
+    stats = ensure_character_stats(character_id)
+    attributes = ensure_character_attributes(character_id)
+    equipment = _build_equipment_variables(character_id)
+    return build_stat_formula_context_from(stats, attributes, equipment)
 
 
 class StatFormulaError(ValueError):
@@ -1351,34 +1468,92 @@ def evaluate_stat_formula(expression: str, context: dict[str, float]) -> float:
     return eval_node(tree)
 
 
-def get_character_formulas(character_id: int) -> dict[str, str]:
-    records = CharacterStatFormula.query.filter_by(character_id=character_id).all()
-    return {record.stat_key: record.formula for record in records}
+def get_character_formulas(lobby_id: int, user_id: int) -> dict[str, str]:
+    records = CharacterFormula.query.filter_by(lobby_id=lobby_id, user_id=user_id).all()
+    return {record.field_key: record.formula for record in records}
 
 
-def upsert_character_formula(character_id: int, stat_key: str, formula: str) -> None:
-    record = CharacterStatFormula.query.filter_by(
-        character_id=character_id,
-        stat_key=stat_key,
+def upsert_character_formula(lobby_id: int, user_id: int, field_key: str, formula: str) -> None:
+    record = CharacterFormula.query.filter_by(
+        lobby_id=lobby_id,
+        user_id=user_id,
+        field_key=field_key,
     ).first()
     if record:
         record.formula = formula
     else:
-        record = CharacterStatFormula(
-            character_id=character_id,
-            stat_key=stat_key,
+        record = CharacterFormula(
+            lobby_id=lobby_id,
+            user_id=user_id,
+            field_key=field_key,
             formula=formula,
         )
         db.session.add(record)
 
 
-def delete_character_formula(character_id: int, stat_key: str) -> None:
-    record = CharacterStatFormula.query.filter_by(
-        character_id=character_id,
-        stat_key=stat_key,
+def delete_character_formula(lobby_id: int, user_id: int, field_key: str) -> None:
+    record = CharacterFormula.query.filter_by(
+        lobby_id=lobby_id,
+        user_id=user_id,
+        field_key=field_key,
     ).first()
     if record:
         db.session.delete(record)
+
+
+def recompute_character_formulas(
+    lobby_id: int,
+    user_id: int,
+    *,
+    stat_keys: Optional[list[str]] = None,
+    actor_id: Optional[int] = None,
+) -> tuple[dict[str, dict[str, float]], dict[str, dict[str, str]]]:
+    formulas = get_character_formulas(lobby_id, user_id)
+    if not formulas:
+        return {}, {}
+    if stat_keys:
+        target_keys = [key for key in CHARACTER_FORMULA_ORDER if key in stat_keys and key in formulas]
+    else:
+        target_keys = [key for key in CHARACTER_FORMULA_ORDER if key in formulas]
+    stats = ensure_character_stats(user_id)
+    attributes = ensure_character_attributes(user_id)
+    equipment = _build_equipment_variables(user_id)
+    context = build_stat_formula_context_from(stats, attributes, equipment)
+    results = {}
+    errors = {}
+    for stat_key in target_keys:
+        formula = (formulas.get(stat_key) or '').strip()
+        if not formula:
+            continue
+        try:
+            value = evaluate_stat_formula(formula, context)
+        except StatFormulaError as exc:
+            error_message = str(exc)
+            errors[stat_key] = {'error': error_message}
+            log_message = (
+                'Formula error '
+                f'lobby_id={lobby_id} '
+                f'character_id={user_id} '
+                f'stat_name={stat_key} '
+                f'formula="{formula}" '
+                f'error="{error_message}"'
+            )
+            app.logger.warning(log_message)
+            send_system_chat(lobby_id, log_message, user_id=actor_id)
+            continue
+        field_name = CHARACTER_FORMULA_FIELD_MAP.get(stat_key)
+        if not field_name:
+            continue
+        setattr(stats, field_name, value)
+        if field_name == 'hp_max':
+            stats.hp_current = min(stats.hp_current or 0, value)
+        if field_name == 'mana_max':
+            stats.mana_current = min(stats.mana_current or 0, value)
+        results[stat_key] = {'value': value}
+        context = build_stat_formula_context_from(stats, attributes, equipment)
+    if results:
+        db.session.commit()
+    return results, errors
 
 
 class FormulaError(ValueError):
@@ -1845,6 +2020,8 @@ def build_inventory_payload(
         'can_edit': can_edit_inventory(viewer, user.id, lobby_id),
         'is_master': is_master(viewer, lobby_id),
     }
+    if lobby_id and is_master(viewer, lobby_id):
+        recompute_character_formulas(lobby_id, user.id, actor_id=viewer.id)
     stats = ensure_character_stats(user.id)
     strength_modifier = (stats.strength - 10) // 2
     capacity = max(5, 5 + 5 * strength_modifier)
@@ -1878,7 +2055,13 @@ def build_inventory_payload(
             'mana_max': stats.mana_max,
             'armor_class': stats.armor_class,
             'hungry': stats.hungry,
-            'reason': 0,
+            'hp_head': stats.hp_head,
+            'hp_torso': stats.hp_torso,
+            'hp_left_arm': stats.hp_left_arm,
+            'hp_right_arm': stats.hp_right_arm,
+            'hp_left_leg': stats.hp_left_leg,
+            'hp_right_leg': stats.hp_right_leg,
+            'reason': stats.reason,
         },
         'attributes': build_attributes_payload(user.id, viewer, lobby_id),
     }
@@ -3226,6 +3409,8 @@ def update_character_stats():
     stats.armor_class = armor_class
     stats.hungry = min(max(hungry, 0), 100)
     db.session.commit()
+    recompute_character_formulas(lobby_id, target_user_id, actor_id=user.id)
+    stats = ensure_character_stats(target_user_id)
     return jsonify({
         'ok': True,
         'stats': {
@@ -3236,20 +3421,131 @@ def update_character_stats():
             'mana_max': stats.mana_max,
             'armor_class': stats.armor_class,
             'hungry': stats.hungry,
+            'hp_head': stats.hp_head,
+            'hp_torso': stats.hp_torso,
+            'hp_left_arm': stats.hp_left_arm,
+            'hp_right_arm': stats.hp_right_arm,
+            'hp_left_leg': stats.hp_left_leg,
+            'hp_right_leg': stats.hp_right_leg,
+            'reason': stats.reason,
         },
     })
 
 
-def _require_formula_permission(user: User, lobby_id: int, character_id: int):
-    if not is_master(user, lobby_id):
+def _require_formula_membership(user: User, lobby_id: int, character_id: int):
+    viewer_membership = LobbyMember.query.filter_by(
+        lobby_id=lobby_id,
+        user_id=user.id,
+    ).first()
+    if not viewer_membership:
         return None, (jsonify({'ok': False, 'error': 'forbidden'}), 403)
-    membership = LobbyMember.query.filter_by(
+    target_membership = LobbyMember.query.filter_by(
         lobby_id=lobby_id,
         user_id=character_id,
     ).first()
-    if not membership:
+    if not target_membership:
         return None, (jsonify({'ok': False, 'error': 'not_in_lobby'}), 403)
-    return membership, None
+    return target_membership, None
+
+
+def _require_formula_view_permission(user: User, lobby_id: int, character_id: int):
+    if not is_master(user, lobby_id) and user.id != character_id:
+        return (jsonify({'ok': False, 'error': 'forbidden'}), 403)
+    _membership, error_response = _require_formula_membership(user, lobby_id, character_id)
+    if error_response:
+        return error_response
+    return None
+
+
+def _require_formula_edit_permission(user: User, lobby_id: int, character_id: int):
+    if not is_master(user, lobby_id):
+        return (jsonify({'ok': False, 'error': 'forbidden'}), 403)
+    _membership, error_response = _require_formula_membership(user, lobby_id, character_id)
+    if error_response:
+        return error_response
+    return None
+
+
+@app.route('/api/lobby/<int:lobby_id>/character/<int:user_id>/formulas')
+def lobby_character_formulas_api(lobby_id: int, user_id: int):
+    user = require_user()
+    error_response = _require_formula_view_permission(user, lobby_id, user_id)
+    if error_response:
+        return error_response
+    formulas = get_character_formulas(lobby_id, user_id)
+    payload = {}
+    for key in CHARACTER_FORMULA_FIELD_MAP:
+        formula_text = formulas.get(key)
+        if is_master(user, lobby_id):
+            payload[key] = {'has_formula': bool(formula_text), 'formula': formula_text or ''}
+        else:
+            payload[key] = {'has_formula': bool(formula_text)}
+    return jsonify({'ok': True, 'formulas': payload})
+
+
+@app.route('/api/lobby/<int:lobby_id>/character/<int:user_id>/formulas/set', methods=['POST'])
+def lobby_character_formulas_set_api(lobby_id: int, user_id: int):
+    user = require_user()
+    error_response = _require_formula_edit_permission(user, lobby_id, user_id)
+    if error_response:
+        return error_response
+    data = request.get_json(silent=True) or {}
+    field_key = (data.get('field_key') or '').strip()
+    formula_text = (data.get('formula') or '').strip()
+    if field_key not in CHARACTER_FORMULA_FIELD_MAP:
+        return jsonify({'ok': False, 'error': 'invalid_field'}), 400
+    if formula_text:
+        allowed_names = set(STAT_FORMULA_VARIABLE_REGISTRY.keys())
+        try:
+            validate_stat_formula(formula_text, allowed_names)
+        except StatFormulaError as exc:
+            error_message = str(exc)
+            app.logger.warning(
+                'Formula validation error lobby_id=%s character_id=%s stat_name=%s error=%s',
+                lobby_id,
+                user_id,
+                field_key,
+                error_message,
+            )
+            return jsonify({'ok': False, 'error': error_message}), 400
+        upsert_character_formula(lobby_id, user_id, field_key, formula_text)
+    else:
+        delete_character_formula(lobby_id, user_id, field_key)
+    db.session.commit()
+    results, errors = recompute_character_formulas(
+        lobby_id,
+        user_id,
+        stat_keys=[field_key],
+        actor_id=user.id,
+    )
+    if field_key in errors:
+        return jsonify({'ok': False, 'error': errors[field_key]['error']}), 400
+    computed = results.get(field_key, {}).get('value')
+    if computed is None:
+        stats = ensure_character_stats(user_id)
+        stat_field = CHARACTER_FORMULA_FIELD_MAP.get(field_key)
+        computed = getattr(stats, stat_field) if stat_field else None
+    return jsonify({'ok': True, 'computed_value': computed})
+
+
+@app.route('/api/lobby/<int:lobby_id>/character/<int:user_id>/formulas/recompute', methods=['POST'])
+def lobby_character_formulas_recompute_api(lobby_id: int, user_id: int):
+    user = require_user()
+    error_response = _require_formula_edit_permission(user, lobby_id, user_id)
+    if error_response:
+        return error_response
+    data = request.get_json(silent=True) or {}
+    stat_keys = data.get('stat_keys')
+    if stat_keys is not None and not isinstance(stat_keys, list):
+        return jsonify({'ok': False, 'error': 'invalid_payload'}), 400
+    results, errors = recompute_character_formulas(
+        lobby_id,
+        user_id,
+        stat_keys=stat_keys,
+        actor_id=user.id,
+    )
+    ok = not errors
+    return jsonify({'ok': ok, 'results': results, 'errors': errors})
 
 
 @app.route('/api/character/<int:character_id>/formulas')
@@ -3258,10 +3554,10 @@ def get_character_formulas_api(character_id: int):
     lobby_id = parse_int(request.args.get('lobby_id'), 0) or current_lobby_id_for(user)
     if not lobby_id:
         return jsonify({'ok': False, 'error': 'missing_lobby'}), 400
-    _membership, error_response = _require_formula_permission(user, lobby_id, character_id)
+    error_response = _require_formula_edit_permission(user, lobby_id, character_id)
     if error_response:
         return error_response
-    formulas = get_character_formulas(character_id)
+    formulas = get_character_formulas(lobby_id, character_id)
     return jsonify({'ok': True, 'formulas': formulas})
 
 
@@ -3272,7 +3568,7 @@ def save_character_formulas_api(character_id: int):
     lobby_id = parse_int(data.get('lobby_id'), 0) or current_lobby_id_for(user)
     if not lobby_id:
         return jsonify({'ok': False, 'error': 'missing_lobby'}), 400
-    _membership, error_response = _require_formula_permission(user, lobby_id, character_id)
+    error_response = _require_formula_edit_permission(user, lobby_id, character_id)
     if error_response:
         return error_response
     formulas = data.get('formulas')
@@ -3281,7 +3577,7 @@ def save_character_formulas_api(character_id: int):
     allowed_names = set(STAT_FORMULA_VARIABLE_REGISTRY.keys())
     errors = {}
     for stat_key, formula in formulas.items():
-        if stat_key not in CHARACTER_STAT_FORMULA_KEYS:
+        if stat_key not in CHARACTER_FORMULA_FIELD_MAP:
             errors[stat_key] = {'error': 'Unknown stat key.'}
             continue
         formula_text = (formula or '').strip()
@@ -3296,10 +3592,11 @@ def save_character_formulas_api(character_id: int):
     for stat_key, formula in formulas.items():
         formula_text = (formula or '').strip()
         if not formula_text:
-            delete_character_formula(character_id, stat_key)
+            delete_character_formula(lobby_id, character_id, stat_key)
         else:
-            upsert_character_formula(character_id, stat_key, formula_text)
+            upsert_character_formula(lobby_id, character_id, stat_key, formula_text)
     db.session.commit()
+    recompute_character_formulas(lobby_id, character_id, actor_id=user.id)
     return jsonify({'ok': True})
 
 
@@ -3310,46 +3607,76 @@ def evaluate_character_formulas_api(character_id: int):
     lobby_id = parse_int(data.get('lobby_id'), 0) or current_lobby_id_for(user)
     if not lobby_id:
         return jsonify({'ok': False, 'error': 'missing_lobby'}), 400
-    _membership, error_response = _require_formula_permission(user, lobby_id, character_id)
+    error_response = _require_formula_edit_permission(user, lobby_id, character_id)
     if error_response:
         return error_response
     stat_keys = data.get('stat_keys')
     if stat_keys is not None and not isinstance(stat_keys, list):
         return jsonify({'ok': False, 'error': 'invalid_payload'}), 400
-    formulas = get_character_formulas(character_id)
-    if stat_keys:
-        unknown_keys = [key for key in stat_keys if key not in CHARACTER_STAT_FORMULA_KEYS]
-        if unknown_keys:
-            return jsonify({'ok': False, 'error': 'invalid_stat_key'}), 400
-        target_keys = [key for key in stat_keys if key in formulas]
-    else:
-        target_keys = list(formulas.keys())
-    context = build_stat_formula_context(character_id)
-    results = {}
-    errors = {}
-    for stat_key in target_keys:
-        formula = formulas.get(stat_key, '')
-        if not formula:
-            continue
-        try:
-            value = evaluate_stat_formula(formula, context)
-            results[stat_key] = {'value': value}
-        except StatFormulaError as exc:
-            error_message = str(exc)
-            errors[stat_key] = {'error': error_message}
-            send_system_chat(
-                lobby_id,
-                (
-                    'Formula error '
-                    f'character_id={character_id} '
-                    f'stat_name={stat_key} '
-                    f'formula="{formula}" '
-                    f'error="{error_message}"'
-                ),
-                user_id=user.id,
-            )
+    results, errors = recompute_character_formulas(
+        lobby_id,
+        character_id,
+        stat_keys=stat_keys,
+        actor_id=user.id,
+    )
     ok = not errors
     return jsonify({'ok': ok, 'results': results, 'errors': errors})
+
+
+def _require_notes_permission(user: User, lobby_id: int, character_id: int):
+    viewer_membership = LobbyMember.query.filter_by(
+        lobby_id=lobby_id,
+        user_id=user.id,
+    ).first()
+    if not viewer_membership:
+        return (jsonify({'ok': False, 'error': 'forbidden'}), 403)
+    target_membership = LobbyMember.query.filter_by(
+        lobby_id=lobby_id,
+        user_id=character_id,
+    ).first()
+    if not target_membership:
+        return (jsonify({'ok': False, 'error': 'not_in_lobby'}), 403)
+    if not is_master(user, lobby_id) and user.id != character_id:
+        return (jsonify({'ok': False, 'error': 'forbidden'}), 403)
+    return None
+
+
+@app.route('/api/lobby/<int:lobby_id>/character/<int:user_id>/notes')
+def lobby_character_notes_get_api(lobby_id: int, user_id: int):
+    user = require_user()
+    error_response = _require_notes_permission(user, lobby_id, user_id)
+    if error_response:
+        return error_response
+    record = CharacterNote.query.filter_by(lobby_id=lobby_id, user_id=user_id).first()
+    return jsonify({
+        'ok': True,
+        'notes_text': record.notes_text if record else '',
+        'updated_at': record.updated_at.isoformat() if record else None,
+    })
+
+
+@app.route('/api/lobby/<int:lobby_id>/character/<int:user_id>/notes', methods=['POST'])
+def lobby_character_notes_set_api(lobby_id: int, user_id: int):
+    user = require_user()
+    error_response = _require_notes_permission(user, lobby_id, user_id)
+    if error_response:
+        return error_response
+    data = request.get_json(silent=True) or {}
+    notes_text = data.get('notes_text')
+    if notes_text is None:
+        return jsonify({'ok': False, 'error': 'invalid_payload'}), 400
+    record = CharacterNote.query.filter_by(lobby_id=lobby_id, user_id=user_id).first()
+    if record:
+        record.notes_text = notes_text
+    else:
+        record = CharacterNote(
+            lobby_id=lobby_id,
+            user_id=user_id,
+            notes_text=notes_text,
+        )
+        db.session.add(record)
+    db.session.commit()
+    return jsonify({'ok': True, 'updated_at': record.updated_at.isoformat()})
 
 
 @app.route('/api/master/set_class', methods=['POST'])
@@ -3399,8 +3726,29 @@ def update_character_attributes():
             value = parse_int(data.get(stat_key), getattr(attributes, column), minimum=0)
             setattr(attributes, column, value)
     db.session.commit()
+    recompute_character_formulas(lobby_id, target_user_id, actor_id=user.id)
     viewer = user
-    return jsonify({'ok': True, 'attributes': build_attributes_payload(target_user_id, viewer, lobby_id)})
+    stats = ensure_character_stats(target_user_id)
+    return jsonify({
+        'ok': True,
+        'attributes': build_attributes_payload(target_user_id, viewer, lobby_id),
+        'stats': {
+            'strength': stats.strength,
+            'hp_current': stats.hp_current,
+            'hp_max': stats.hp_max,
+            'mana_current': stats.mana_current,
+            'mana_max': stats.mana_max,
+            'armor_class': stats.armor_class,
+            'hungry': stats.hungry,
+            'hp_head': stats.hp_head,
+            'hp_torso': stats.hp_torso,
+            'hp_left_arm': stats.hp_left_arm,
+            'hp_right_arm': stats.hp_right_arm,
+            'hp_left_leg': stats.hp_left_leg,
+            'hp_right_leg': stats.hp_right_leg,
+            'reason': stats.reason,
+        },
+    })
 
 
 @app.route('/api/master/attributes/formula', methods=['POST'])

@@ -45,6 +45,19 @@
         belt: 'equip_belt',
     };
 
+    const formulaStatMap = {
+        mana: 'mana_max',
+        armor_class: 'armor_class',
+        max_hp: 'hp_max',
+        hp_head: 'hp_head',
+        hp_torso: 'hp_torso',
+        hp_left_arm: 'hp_left_arm',
+        hp_right_arm: 'hp_right_arm',
+        hp_left_leg: 'hp_left_leg',
+        hp_right_leg: 'hp_right_leg',
+        reason: 'reason',
+    };
+
     class LobbyInventory {
         constructor(root) {
             this.root = root;
@@ -110,6 +123,10 @@
             this.formulaErrors = new Map();
             this.formulaValues = {};
             this.formulaErrorState = {};
+            this.notesInput = this.root.querySelector('[data-notes-input]');
+            this.notesSaveButton = this.root.querySelector('[data-notes-save]');
+            this.notesStatus = this.root.querySelector('[data-notes-status]');
+            this.notesPayload = null;
             this.bagGridList = this.root.querySelector('[data-bag-grid-list]');
             this.fastSlotList = this.root.querySelector('[data-fast-slot-list]');
             this.fastSlotPanel = this.root.querySelector('[data-fast-slot-panel]');
@@ -322,6 +339,17 @@
                     this.clearFormulaError(statKey);
                 });
             });
+
+            if (this.notesSaveButton) {
+                this.notesSaveButton.addEventListener('click', () => {
+                    this.saveNotes();
+                });
+            }
+            if (this.notesInput) {
+                this.notesInput.addEventListener('input', () => {
+                    this.setNotesStatus('unsaved');
+                });
+            }
 
             this.mapClose?.addEventListener('click', () => this.closeMapOverlay());
             this.mapOverlay?.addEventListener('click', (event) => {
@@ -601,6 +629,7 @@
             this.updateClassUI(payload.user);
             this.updateAttributesUI();
             this.loadFormulas();
+            this.loadNotes();
             this.updateWeightDisplay(payload.weight);
             this.root.classList.toggle('is-readonly', !this.permissions.can_edit);
             if (this.inventoryActions) {
@@ -1751,6 +1780,12 @@
             if (this.formulaTestButton) {
                 this.formulaTestButton.disabled = !this.permissions.is_master;
             }
+            if (this.notesInput) {
+                this.notesInput.disabled = !this.canEditNotes();
+            }
+            if (this.notesSaveButton) {
+                this.notesSaveButton.disabled = !this.canEditNotes();
+            }
         }
 
         canEditStats() {
@@ -1763,6 +1798,55 @@
 
         canEditFormulas() {
             return this.permissions.is_master && this.masterMode === 'control';
+        }
+
+        canEditNotes() {
+            if (!this.selectedPlayerId) return false;
+            return this.permissions.is_master || String(this.currentUserId) === String(this.selectedPlayerId);
+        }
+
+        setNotesStatus(state, updatedAt = null) {
+            if (!this.notesStatus) return;
+            if (!state) {
+                this.notesStatus.textContent = '';
+                return;
+            }
+            if (state === 'saving') {
+                this.notesStatus.textContent = 'Збереження...';
+                return;
+            }
+            if (state === 'error') {
+                this.notesStatus.textContent = 'Не вдалося зберегти.';
+                return;
+            }
+            if (state === 'unsaved') {
+                this.notesStatus.textContent = 'Є незбережені зміни.';
+                return;
+            }
+            if (state === 'saved') {
+                this.notesStatus.textContent = updatedAt ? `Збережено: ${updatedAt}` : 'Збережено.';
+            }
+        }
+
+        updateFormulaValuesFromStats() {
+            if (!this.stats) return;
+            this.formulaValues = {};
+            Object.entries(formulaStatMap).forEach(([formulaKey, statKey]) => {
+                const value = this.stats?.[statKey];
+                if (value !== undefined && value !== null) {
+                    this.formulaValues[formulaKey] = value;
+                }
+            });
+        }
+
+        refreshFormulaResultsFromStats() {
+            if (!this.permissions.is_master) return;
+            this.formulaResults.forEach((node, statKey) => {
+                const value = this.formulaValues?.[statKey];
+                if (node) {
+                    node.textContent = Number.isFinite(value) ? `${value}` : '—';
+                }
+            });
         }
 
         updateStatsUI() {
@@ -1819,17 +1903,19 @@
                         break;
                 }
             });
+            this.updateFormulaValuesFromStats();
+            this.refreshFormulaResultsFromStats();
             this.updateHealthUI();
         }
 
         updateHealthUI() {
             const defaults = {
-                hp_head: 0,
-                hp_torso: 0,
-                hp_left_arm: 0,
-                hp_right_arm: 0,
-                hp_left_leg: 0,
-                hp_right_leg: 0,
+                hp_head: this.stats?.hp_head ?? 0,
+                hp_torso: this.stats?.hp_torso ?? 0,
+                hp_left_arm: this.stats?.hp_left_arm ?? 0,
+                hp_right_arm: this.stats?.hp_right_arm ?? 0,
+                hp_left_leg: this.stats?.hp_left_leg ?? 0,
+                hp_right_leg: this.stats?.hp_right_leg ?? 0,
                 reason: this.stats?.reason ?? 0,
             };
             const values = { ...defaults, ...this.formulaValues };
@@ -1904,6 +1990,10 @@
             Object.entries(results).forEach(([statKey, result]) => {
                 if (!result || typeof result.value !== 'number') return;
                 this.formulaValues[statKey] = result.value;
+                const statField = formulaStatMap[statKey];
+                if (statField && this.stats) {
+                    this.stats[statField] = result.value;
+                }
                 const resultNode = this.formulaResults.get(statKey);
                 if (resultNode) {
                     resultNode.textContent = `${result.value}`;
@@ -1919,7 +2009,7 @@
                 if (row) row.classList.add('is-error');
                 this.formulaErrorState[statKey] = error?.error || 'Error';
             });
-            this.updateHealthUI();
+            this.updateStatsUI();
         }
 
         async loadFormulas() {
@@ -1927,59 +2017,127 @@
             if (!this.selectedPlayerId) return;
             try {
                 const response = await fetch(
-                    `/api/character/${this.selectedPlayerId}/formulas?lobby_id=${this.lobbyId}`,
+                    `/api/lobby/${this.lobbyId}/character/${this.selectedPlayerId}/formulas`,
                 );
                 if (!response.ok) return;
                 const data = await response.json().catch(() => ({}));
                 const formulas = data?.formulas || {};
-                this.formulaValues = {};
                 this.formulaErrorState = {};
                 this.formulaInputs.forEach((input, statKey) => {
-                    input.value = formulas[statKey] || '';
+                    const entry = formulas[statKey] || {};
+                    input.value = entry.formula || '';
                     const resultNode = this.formulaResults.get(statKey);
                     if (resultNode) {
-                        resultNode.textContent = '—';
+                        const value = this.formulaValues?.[statKey];
+                        resultNode.textContent = Number.isFinite(value) ? `${value}` : '—';
                     }
                     this.clearFormulaError(statKey);
                 });
-                if (Object.keys(formulas).length) {
-                    await this.evaluateFormulas();
-                } else {
-                    this.updateHealthUI();
-                }
+                this.updateHealthUI();
             } catch (error) {
                 console.debug('[Formulas] Load failed', error);
             }
         }
 
-        async saveFormulas() {
-            if (!this.selectedPlayerId) return;
-            const formulas = {};
-            this.formulaInputs.forEach((input, statKey) => {
-                formulas[statKey] = input.value.trim();
-            });
+        async loadNotes() {
+            if (!this.selectedPlayerId || !this.lobbyId) return;
+            if (!this.notesInput) return;
+            if (!this.canEditNotes()) {
+                this.notesInput.value = '';
+                this.setNotesStatus('');
+                return;
+            }
             try {
-                const response = await fetch(`/api/character/${this.selectedPlayerId}/formulas`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        lobby_id: this.lobbyId,
-                        formulas,
-                    }),
-                });
+                const response = await fetch(
+                    `/api/lobby/${this.lobbyId}/character/${this.selectedPlayerId}/notes`,
+                );
+                if (!response.ok) return;
                 const data = await response.json().catch(() => ({}));
-                if (!response.ok || !data?.ok) {
-                    const details = data?.details || {};
-                    Object.entries(details).forEach(([statKey, info]) => {
-                        const errorNode = this.formulaErrors.get(statKey);
-                        const row = this.formulaRows.find((entry) => entry.dataset.formulaKey === statKey);
-                        if (errorNode) errorNode.textContent = info?.error || 'Error';
-                        if (row) row.classList.add('is-error');
-                        this.formulaErrorState[statKey] = info?.error || 'Error';
-                    });
+                this.notesPayload = data;
+                this.notesInput.value = data?.notes_text ?? '';
+                if (data?.updated_at) {
+                    const updatedAt = new Date(data.updated_at).toLocaleString();
+                    this.setNotesStatus('saved', updatedAt);
+                } else {
+                    this.setNotesStatus('saved');
+                }
+            } catch (error) {
+                console.debug('[Notes] Load failed', error);
+            }
+        }
+
+        async saveNotes() {
+            if (!this.selectedPlayerId || !this.lobbyId || !this.notesInput) return;
+            if (!this.canEditNotes()) return;
+            this.setNotesStatus('saving');
+            try {
+                const response = await fetch(
+                    `/api/lobby/${this.lobbyId}/character/${this.selectedPlayerId}/notes`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            notes_text: this.notesInput.value,
+                        }),
+                    },
+                );
+                if (!response.ok) {
+                    this.setNotesStatus('error');
                     return;
                 }
-                await this.evaluateFormulas();
+                const data = await response.json().catch(() => ({}));
+                if (data?.updated_at) {
+                    const updatedAt = new Date(data.updated_at).toLocaleString();
+                    this.setNotesStatus('saved', updatedAt);
+                } else {
+                    this.setNotesStatus('saved');
+                }
+            } catch (error) {
+                console.debug('[Notes] Save failed', error);
+                this.setNotesStatus('error');
+            }
+        }
+
+        async saveFormulas() {
+            if (!this.selectedPlayerId) return;
+            for (const [statKey, input] of this.formulaInputs.entries()) {
+                await this.setFormula(statKey, input.value.trim());
+            }
+            this.updateStatsUI();
+        }
+
+        async setFormula(statKey, formula) {
+            if (!this.permissions.is_master || !this.selectedPlayerId) return;
+            try {
+                const response = await fetch(
+                    `/api/lobby/${this.lobbyId}/character/${this.selectedPlayerId}/formulas/set`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            field_key: statKey,
+                            formula,
+                        }),
+                    },
+                );
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || !data?.ok) {
+                    const errorNode = this.formulaErrors.get(statKey);
+                    const row = this.formulaRows.find((entry) => entry.dataset.formulaKey === statKey);
+                    const message = data?.error || 'Error';
+                    if (errorNode) errorNode.textContent = message;
+                    if (row) row.classList.add('is-error');
+                    this.formulaErrorState[statKey] = message;
+                    return;
+                }
+                const statField = formulaStatMap[statKey];
+                if (typeof data.computed_value === 'number') {
+                    this.formulaValues[statKey] = data.computed_value;
+                    if (statField && this.stats) {
+                        this.stats[statField] = data.computed_value;
+                    }
+                }
+                this.clearFormulaError(statKey);
             } catch (error) {
                 console.debug('[Formulas] Save failed', error);
             }
@@ -1992,11 +2150,14 @@
                 payload.stat_keys = statKeys;
             }
             try {
-                const response = await fetch(`/api/character/${this.selectedPlayerId}/formulas/evaluate`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
+                const response = await fetch(
+                    `/api/lobby/${this.lobbyId}/character/${this.selectedPlayerId}/formulas/recompute`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    },
+                );
                 if (!response.ok) return;
                 const data = await response.json().catch(() => ({}));
                 this.applyFormulaResponse(data);
@@ -2053,6 +2214,10 @@
                 if (data?.attributes) {
                     this.attributes = data.attributes;
                     this.updateAttributesUI();
+                    if (data?.stats) {
+                        this.stats = data.stats;
+                        this.updateStatsUI();
+                    }
                 } else {
                     await this.refreshInventory(this.selectedPlayerId);
                 }

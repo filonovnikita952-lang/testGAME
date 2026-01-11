@@ -176,6 +176,7 @@
                                     <input type="radio" name="lobby-tab-{{ membership.lobby.id }}" id="lobby-tab-summary-{{ membership.lobby.id }}" checked>
                                     <input type="radio" name="lobby-tab-{{ membership.lobby.id }}" id="lobby-tab-health-{{ membership.lobby.id }}">
                                     <input type="radio" name="lobby-tab-{{ membership.lobby.id }}" id="lobby-tab-attributes-{{ membership.lobby.id }}">
+                                    <input type="radio" name="lobby-tab-{{ membership.lobby.id }}" id="lobby-tab-notes-{{ membership.lobby.id }}">
                                     {% if is_master_user %}
                                         <input type="radio" name="lobby-tab-{{ membership.lobby.id }}" id="lobby-tab-admin-{{ membership.lobby.id }}">
                                     {% endif %}
@@ -183,6 +184,7 @@
                                         <label for="lobby-tab-summary-{{ membership.lobby.id }}">Персонаж</label>
                                         <label for="lobby-tab-health-{{ membership.lobby.id }}">Здоровʼя</label>
                                         <label for="lobby-tab-attributes-{{ membership.lobby.id }}">Характеристики</label>
+                                        <label for="lobby-tab-notes-{{ membership.lobby.id }}">Нотатки</label>
                                         {% if is_master_user %}
                                             <label for="lobby-tab-admin-{{ membership.lobby.id }}">Адмін</label>
                                         {% endif %}
@@ -449,6 +451,25 @@
                                                         </div>
                                                         <span class="attribute-modifier" data-attribute-modifier>+0</span>
                                                         <button type="button" class="button ghost" data-attribute-prof-toggle>Proficiency</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </section>
+                                        <section class="lobby-tab__panel lobby-tab__panel--notes">
+                                            <div class="inventory-panel panel-secondary lobby-panel dra-card">
+                                                <div class="panel-header">
+                                                    <span class="panel-title">Нотатки</span>
+                                                    <span class="panel-tag">NOTES</span>
+                                                </div>
+                                                <div class="notes-panel">
+                                                    <textarea
+                                                        class="notes-panel__input"
+                                                        placeholder="Нотатки про персонажа..."
+                                                        data-notes-input
+                                                    ></textarea>
+                                                    <div class="notes-panel__actions">
+                                                        <span class="notes-panel__status" data-notes-status></span>
+                                                        <button type="button" class="button ghost" data-notes-save>Зберегти</button>
                                                     </div>
                                                 </div>
                                             </div>
