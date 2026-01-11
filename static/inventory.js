@@ -1473,7 +1473,6 @@
             const targetInput = issueForm.querySelector('select[id^="issue_target_"]');
             const amountInput = issueForm.querySelector('input[id^="issue_amount_"]');
             const durabilityInput = issueForm.querySelector('input[id^="issue_durability_current_"]');
-            const randomInput = issueForm.querySelector('input[id^="issue_random_durability_"]');
             if (templateInput && item?.template_id) {
                 templateInput.value = `${item.template_id}`;
             }
@@ -1487,43 +1486,39 @@
             if (DEBUG_INVENTORY) {
                 console.debug('[IssueById]', 'context issue start', { templateId, target, amount });
             }
+            const durabilityValue = durabilityInput?.value === '' ? null : Number.parseInt(durabilityInput?.value || '0', 10);
             const payload = {
-                lobby_id: this.lobbyId,
-                template_id: templateId,
+                definition_id: templateId,
                 target_user_id: target,
                 amount: Number.isNaN(amount) ? 1 : amount,
-                durability_current: durabilityInput?.value || null,
-                random_durability: randomInput?.value || '',
+                durability_current: Number.isNaN(durabilityValue) ? null : durabilityValue,
             };
-            console.debug('GiveID fetch started', payload);
-            console.log('GiveID fetch starting', payload);
+            console.debug('[GiveID] payload', payload);
+            this.setGiveIdStatus(issueForm, 'Надсилання запиту...', false);
             let response;
             try {
-                response = await fetch('/api/master/issue_by_id', {
+                response = await fetch(`/api/lobby/${this.lobbyId}/master/give-by-id`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
                 });
-                console.log('GiveID fetch completed', { status: response.status });
             } catch (error) {
-                console.log('GiveID fetch failed', error);
-                throw error;
+                console.debug('GiveID fetch failed', error);
+                this.setGiveIdStatus(issueForm, 'Помилка мережі. Спробуйте ще раз.', true);
+                return;
             }
             const responsePayload = await response.clone().json().catch(() => null);
-            console.debug('GiveID response', {
-                status: response.status,
-                request_id: responsePayload?.request_id || null,
-            });
             if (response.ok) {
-                await this.refreshInventory(this.selectedPlayerId);
+                this.setGiveIdStatus(issueForm, 'Предмет видано.', false);
+                await this.refreshInventory(target);
                 return;
             }
             const errorPayload = responsePayload || await response.json().catch(() => ({}));
-            this.showIssueByIdError(errorPayload);
-            await this.refreshInventory(this.selectedPlayerId);
+            this.showIssueByIdError(errorPayload, issueForm);
+            await this.refreshInventory(target);
         }
 
-        showIssueByIdError(payload) {
+        showIssueByIdError(payload, form) {
             const error = payload?.error || '';
             let message = 'Не вдалося видати предмет.';
             if (error === 'no_space') {
@@ -1533,7 +1528,15 @@
             } else if (error === 'invalid_durability') {
                 message = 'Некоректне значення durability.';
             }
-            window.alert(message);
+            this.setGiveIdStatus(form, message, true);
+        }
+
+        setGiveIdStatus(form, message, isError) {
+            if (!form) return;
+            const statusLine = form.querySelector('[data-giveid-status]');
+            if (!statusLine) return;
+            statusLine.textContent = message || '';
+            statusLine.classList.toggle('is-error', Boolean(isError));
         }
 
         resolveImageUrl(path) {
@@ -2073,7 +2076,7 @@
         });
 
         root.querySelectorAll('[data-master-issue]').forEach((form) => {
-            const button = form.querySelector('[data-issue-submit]');
+            const button = form.querySelector('[data-action="giveid-submit"]');
             const randomButton = form.querySelector('[data-random-durability]');
             const durabilityInput = form.querySelector('input[id^="issue_durability_current_"]');
             const randomInput = form.querySelector('input[id^="issue_random_durability_"]');
@@ -2197,9 +2200,14 @@
                     10,
                 );
                 const durabilityCurrent = form.querySelector('input[id^="issue_durability_current_"]')?.value || '';
-                const randomDurability = form.querySelector('input[id^="issue_random_durability_"]')?.value || '';
+                const durabilityValue = durabilityCurrent === '' ? null : Number.parseInt(durabilityCurrent, 10);
                 if (!templateId || !targetId) {
                     logIssueDebug('issue validation failed', { templateId, targetId });
+                    controller.setGiveIdStatus(form, 'Заповніть ID та отримувача.', true);
+                    return;
+                }
+                if (Number.isNaN(amount) || amount < 1) {
+                    controller.setGiveIdStatus(form, 'Некоректна кількість.', true);
                     return;
                 }
                 const confirmed = window.confirm(`Видати шаблон #${templateId} для користувача ${targetId}?`);
@@ -2208,35 +2216,36 @@
                     return;
                 }
                 controller.trackAction(`issue-by-id:${templateId}:${targetId}`);
-                logIssueDebug('issue fetch', { templateId, targetId, amount });
-                console.log('GiveID fetch starting', { templateId, targetId, amount });
+                const payload = {
+                    definition_id: templateId,
+                    target_user_id: targetId,
+                    amount,
+                    durability_current: Number.isNaN(durabilityValue) ? null : durabilityValue,
+                };
+                logIssueDebug('issue fetch', payload);
+                console.debug('[GiveID] payload', payload);
+                controller.setGiveIdStatus(form, 'Надсилання запиту...', false);
                 let response;
                 try {
-                    response = await fetch('/api/master/issue_by_id', {
+                    response = await fetch(`/api/lobby/${lobbyId}/master/give-by-id`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            lobby_id: lobbyId,
-                            template_id: templateId,
-                            target_user_id: targetId,
-                            amount,
-                            durability_current: durabilityCurrent,
-                            random_durability: randomDurability,
-                        }),
+                        body: JSON.stringify(payload),
                     });
-                    console.log('GiveID fetch completed', { status: response.status });
                 } catch (error) {
-                    console.log('GiveID fetch failed', error);
-                    throw error;
+                    console.debug('GiveID fetch failed', error);
+                    controller.setGiveIdStatus(form, 'Помилка мережі. Спробуйте ще раз.', true);
+                    return;
                 }
                 logIssueDebug('issue response', { ok: response.ok, status: response.status });
                 if (response.ok) {
-                    await controller.refreshInventory(controller.selectedPlayerId);
+                    controller.setGiveIdStatus(form, 'Предмет видано.', false);
+                    await controller.refreshInventory(targetId);
                     return;
                 }
                 const payload = await response.json().catch(() => ({}));
-                controller.showIssueByIdError(payload);
-                await controller.refreshInventory(controller.selectedPlayerId);
+                controller.showIssueByIdError(payload, form);
+                await controller.refreshInventory(targetId);
             };
             button?.addEventListener('click', submitIssue);
             form.addEventListener('submit', submitIssue);

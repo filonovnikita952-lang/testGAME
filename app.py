@@ -8,10 +8,8 @@ import random
 import secrets
 import ast
 import math
-import shutil
 import difflib
 import sys
-import time
 from typing import Optional
 from uuid import uuid4
 
@@ -21,44 +19,21 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.utils import secure_filename
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-HOME_DIR = os.path.expanduser('~')
-DEFAULT_DB_DIR = os.path.join(HOME_DIR, 'DRAsite_data')
-DEFAULT_DB_PATH = os.path.join(DEFAULT_DB_DIR, 'databaseDRA.db')
-LEGACY_DB_PATHS = (
-    os.path.join(BASE_DIR, 'databases', 'databaseDRA.db'),
-    os.path.join(BASE_DIR, 'databaseDRA.db'),
-    os.path.join(BASE_DIR, 'dra.db'),
-)
+REQUIRED_DB_PATH = '/home/Sanya1825/DRAsite_data/databaseDRA.db'
+REQUIRED_DB_URI = f"sqlite:///{REQUIRED_DB_PATH}"
 
 
 def _ensure_directory(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
 
-def _migrate_legacy_sqlite_db(target_path: str) -> Optional[str]:
-    if os.path.exists(target_path):
-        return None
-    for legacy_path in LEGACY_DB_PATHS:
-        if os.path.exists(legacy_path):
-            _ensure_directory(os.path.dirname(target_path))
-            shutil.copy2(legacy_path, target_path)
-            print(f"[DB] Copied legacy SQLite DB from {legacy_path} to {target_path}")
-            return legacy_path
-    return None
-
-
 def _normalize_database_uri(db_uri: Optional[str]) -> str:
-    if not db_uri:
-        _ensure_directory(DEFAULT_DB_DIR)
-        _migrate_legacy_sqlite_db(DEFAULT_DB_PATH)
-        return f"sqlite:///{DEFAULT_DB_PATH}"
-    if db_uri.startswith('sqlite:///'):
-        sqlite_path = db_uri[len('sqlite:///'):]
-        if sqlite_path and not os.path.isabs(sqlite_path):
-            sqlite_path = os.path.join(BASE_DIR, sqlite_path)
-        return f"sqlite:///{sqlite_path}"
-    return db_uri
+    if db_uri and db_uri != REQUIRED_DB_URI:
+        print(f"[DB] Ignoring DATABASE_URL={db_uri}; forcing {REQUIRED_DB_URI}")
+    elif db_uri == REQUIRED_DB_URI:
+        print(f"[DB] Using DATABASE_URL override: {db_uri}")
+    _ensure_directory(os.path.dirname(REQUIRED_DB_PATH))
+    return REQUIRED_DB_URI
 
 
 app = Flask(__name__)
@@ -537,7 +512,6 @@ def initialize_database_if_ready() -> None:
     sqlite_path = _sqlite_db_path(db_uri)
     if sqlite_path:
         abs_path = os.path.abspath(sqlite_path)
-        _migrate_legacy_sqlite_db(abs_path)
         exists = os.path.exists(abs_path)
         print(f"[DB] SQLite path: {abs_path} (exists={exists})")
         if not exists:
@@ -724,6 +698,28 @@ def giveid_debug_enabled() -> bool:
     if config_value is not None:
         return str(config_value).strip().lower() in {'1', 'true', 'yes', 'on'}
     return os.environ.get(DEBUG_GIVEID_ENV, '').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def log_giveid_step(lobby_id: int, user_id: int, text: str) -> None:
+    if lobby_id <= 0 or user_id <= 0:
+        return
+    try:
+        with db.engine.begin() as connection:
+            connection.execute(
+                text(
+                    'INSERT INTO chat_message (lobby_id, user_id, message, is_system, created_at) '
+                    'VALUES (:lobby_id, :user_id, :message, :is_system, :created_at)'
+                ),
+                {
+                    'lobby_id': lobby_id,
+                    'user_id': user_id,
+                    'message': text,
+                    'is_system': True,
+                    'created_at': datetime.utcnow(),
+                },
+            )
+    except Exception:
+        app.logger.warning('GiveID chat log failed', exc_info=True)
 
 
 def log_shop_debug(message: str, *args) -> None:
@@ -1817,6 +1813,24 @@ def inventory_api(user_id: int):
     if not target:
         return jsonify({'error': 'not_found'}), 404
     return jsonify(build_inventory_payload(target, lobby_id, viewer=user))
+
+
+@app.route('/api/debug/db')
+def debug_db():
+    db_uri = app.config.get('SQLALCHEMY_DATABASE_URI')
+    raw_path = _sqlite_db_path(db_uri) if db_uri else None
+    db_path = os.path.abspath(raw_path) if raw_path else None
+    exists = os.path.exists(db_path) if db_path else False
+    try:
+        tables_count = len(inspect(db.engine).get_table_names())
+    except SQLAlchemyError:
+        tables_count = 0
+    return jsonify({
+        'db_uri': db_uri,
+        'db_path': db_path,
+        'exists': exists,
+        'tables_count': tables_count,
+    })
 
 
 @app.route('/api/lobby/<int:lobby_id>/inventory/<int:user_id>')
@@ -3281,245 +3295,192 @@ def update_item_template():
     return jsonify(payload)
 
 
-@app.route('/api/master/issue_by_id', methods=['POST'])
-def issue_item_by_id():
+def _handle_give_by_id(lobby_id: int):
     request_id = str(uuid4())
-    logger = logging.LoggerAdapter(giveid_logger, {'request_id': request_id})
-    debug_enabled = giveid_debug_enabled()
-
-    def debug(message: str, *args) -> None:
-        if debug_enabled:
-            logger.debug(message, *args)
-
-    def find_preferred_placement_with_logs(
-        instance: ItemInstance,
-        owner_id: int,
-    ) -> Optional[tuple[str, int, int, int]]:
-        candidate_containers = preferred_container_ids(owner_id)
-        debug('GiveID placement candidates=%s', candidate_containers)
-        rotations = [normalize_rotation_value(None)]
-        rotations.append(1 - rotations[0])
-        for container_id in candidate_containers:
-            if not container_size(container_id):
-                debug('GiveID placement skip container=%s reason=invalid_container', container_id)
-                continue
-            allowed, reason = is_container_allowed(instance, container_id, owner_id)
-            if not allowed:
-                debug('GiveID placement skip container=%s reason=%s', container_id, reason)
-                continue
-            for rotation in rotations:
-                position = find_first_fit(instance, container_id, rotation)
-                if position:
-                    debug(
-                        'GiveID placement fit container=%s rotation=%s pos=%s',
-                        container_id,
-                        rotation,
-                        position,
-                    )
-                    return container_id, position[0], position[1], rotation
-                debug('GiveID placement no_space container=%s rotation=%s', container_id, rotation)
-        return None
-
-    def log_return(error: str) -> None:
-        print(
-            f"[GIVEID RETURN] request_id={request_id} error={error}",
-            file=sys.stderr,
-            flush=True,
-        )
-
     try:
-        auth_error = None
-        try:
-            user = require_user()
-        except AuthError as exc:
-            auth_error = exc
-            user = type('AnonymousUser', (), {'id': 'unauthorized'})()
-        print(
-            f"[GIVEID HIT] ts={time.time()} user_id={user.id} raw_json={request.get_data(as_text=True)[:500]}",
-            file=sys.stderr,
-            flush=True,
-        )
+        user = require_user()
+    except AuthError:
+        return jsonify({'ok': False, 'request_id': request_id, 'error': 'unauthorized'}), 401
 
-        if auth_error:
-            log_return('unauthorized')
-            logger.warning('GiveID unauthorized request')
-            return jsonify({'ok': False, 'request_id': request_id, 'error': 'unauthorized'}), 401
+    data = request.get_json(silent=True) or {}
+    definition_id = parse_int(data.get('definition_id') or data.get('template_id'), 0)
+    target_user_id = parse_int(data.get('target_user_id') or data.get('to_user_id'), 0)
+    amount = parse_int(data.get('amount'), 1, minimum=1)
+    durability_raw = data.get('durability_current')
+    durability_current_value = None
+    if durability_raw not in (None, ''):
+        durability_current_value = parse_int(durability_raw, 0)
 
-        data = request.get_json(silent=True) or {}
-        lobby_id = parse_int(data.get('lobby_id'), 0)
-        template_id = parse_int(data.get('template_id'), 0)
-        target_user_id = parse_int(data.get('target_user_id') or data.get('to_user_id'), 0)
-        if not lobby_id or not template_id or not target_user_id:
-            log_return('missing_fields')
-            return jsonify({'ok': False, 'request_id': request_id, 'error': 'missing_fields'}), 400
-        is_master_user = is_master(user, lobby_id)
-        debug(
-            'GiveID permission check user_id=%s lobby_id=%s is_master=%s',
-            user.id,
-            lobby_id,
-            is_master_user,
-        )
-        if not is_master_user:
-            log_return('forbidden')
-            logger.warning('GiveID forbidden user_id=%s lobby_id=%s', user.id, lobby_id)
-            return jsonify({'ok': False, 'request_id': request_id, 'error': 'forbidden'}), 403
-        amount = parse_int(data.get('amount'), 1, minimum=1)
-        durability_current = data.get('durability_current')
-        durability_current_value = parse_int(durability_current, 0) if durability_current is not None else None
-        random_durability = str(data.get('random_durability') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
-        debug(
-            'GiveID request user_id=%s nickname=%s lobby_id=%s target_user_id=%s',
-            user.id,
-            user.nickname,
-            lobby_id,
-            target_user_id,
-        )
-        debug(
-            'GiveID payload template_id=%s amount=%s durability_current=%s random_durability=%s',
-            template_id,
-            amount,
-            durability_current_value,
-            random_durability,
-        )
+    def emit_step(message: str) -> None:
+        log_giveid_step(lobby_id, user.id, message)
 
-        definition = ItemDefinition.query.get(template_id)
-        debug('GiveID template lookup template_id=%s found=%s', template_id, bool(definition))
-        if not definition:
-            log_return('not_found')
-            logger.warning('GiveID failed: template %s not found', template_id)
-            return jsonify({'ok': False, 'request_id': request_id, 'error': 'not_found'}), 404
-        if durability_current_value is not None:
-            if has_durability(definition):
-                max_durability = max(definition.max_durability or 1, 1)
-                if durability_current_value < 0 or durability_current_value > max_durability:
-                    log_return('invalid_durability')
-                    logger.warning(
-                        'GiveID failed: durability %s out of range for template %s',
-                        durability_current_value,
-                        definition.id,
-                    )
-                    return jsonify({'ok': False, 'request_id': request_id, 'error': 'invalid_durability'}), 400
-            else:
-                durability_current_value = None
-        target_user = User.query.get(target_user_id)
-        debug('GiveID target lookup target_user_id=%s found=%s', target_user_id, bool(target_user))
-        if not target_user:
-            log_return('invalid_recipient')
-            logger.warning('GiveID failed: target user %s not found', target_user_id)
-            return jsonify({'ok': False, 'request_id': request_id, 'error': 'invalid_recipient'}), 400
-        target_membership = LobbyMember.query.filter_by(
-            lobby_id=lobby_id,
-            user_id=target_user_id,
-        ).first()
-        debug(
-            'GiveID membership check target_user_id=%s lobby_id=%s is_member=%s',
-            target_user_id,
-            lobby_id,
-            bool(target_membership),
+    emit_step(
+        'GiveID start req={req} master={master} target={target} def={definition} amount={amount} durability={durability}'.format(
+            req=request_id,
+            master=user.id,
+            target=target_user_id,
+            definition=definition_id,
+            amount=amount,
+            durability=durability_current_value,
         )
-        if not target_membership:
-            log_return('invalid_recipient')
-            logger.warning('GiveID failed: target user %s not in lobby %s', target_user_id, lobby_id)
-            return jsonify({'ok': False, 'request_id': request_id, 'error': 'invalid_recipient'}), 400
-        stackable = stackable_type(definition)
-        max_amount = normalized_max_amount(definition)
-        debug(
-            'GiveID template=%s stackable=%s max_amount=%s',
-            definition.id,
-            stackable,
-            max_amount,
+    )
+
+    if not lobby_id or not definition_id or not target_user_id:
+        emit_step(f'GiveID bad_request req={request_id} missing_fields')
+        return jsonify({
+            'ok': False,
+            'request_id': request_id,
+            'error': 'bad_request',
+            'details': 'missing_fields',
+        }), 400
+
+    is_master_user = is_master(user, lobby_id)
+    if not is_master_user:
+        emit_step(f'GiveID forbidden req={request_id} user={user.id}')
+        return jsonify({'ok': False, 'request_id': request_id, 'error': 'forbidden'}), 403
+    emit_step(f'GiveID permission ok req={request_id} master={user.id}')
+
+    definition = ItemDefinition.query.get(definition_id)
+    if not definition:
+        emit_step(f'GiveID bad_request req={request_id} template_not_found={definition_id}')
+        return jsonify({
+            'ok': False,
+            'request_id': request_id,
+            'error': 'bad_request',
+            'details': 'definition_not_found',
+        }), 400
+
+    max_durability = definition.max_durability
+    emit_step(
+        'Template loaded name={name} max_stack={max_stack} max_durability={max_durability}'.format(
+            name=definition.name,
+            max_stack=normalized_max_amount(definition),
+            max_durability=max_durability,
         )
-        stack_amounts = split_stack_amounts(definition, amount)
-        debug('GiveID stack splits: %s', stack_amounts)
-        created_instances = []
-        try:
-            with db.session.begin():
-                for index, stack_amount in enumerate(stack_amounts, start=1):
-                    temp_instance = PlacementPreview(
-                        owner_id=target_user_id,
-                        definition=definition,
-                    )
-                    placement = find_preferred_placement_with_logs(temp_instance, target_user_id)
-                    if not placement:
-                        logger.warning(
-                            'GiveID failed: no space for user %s template=%s stack=%s/%s amount=%s cloth=%s type=%s',
-                            target_user_id,
-                            definition.id,
-                            index,
-                            len(stack_amounts),
-                            stack_amount,
-                            definition.is_cloth,
-                            definition.item_type.name if definition.item_type else None,
-                        )
-                        raise ValueError('no_space')
-                    resolved_durability = resolve_durability_value(
-                        definition,
-                        durability_current_value,
-                        randomize=random_durability,
-                    )
-                    container_id, pos_x, pos_y, rotation = placement
-                    debug(
-                        'GiveID placement selected stack=%s/%s container=%s pos=%s,%s rotation=%s',
-                        index,
-                        len(stack_amounts),
-                        container_id,
-                        pos_x,
-                        pos_y,
-                        rotation,
-                    )
-                    new_instance = ItemInstance(
-                        owner_id=target_user_id,
-                        template_id=definition.id,
-                        container_i=container_id,
-                        pos_x=pos_x,
-                        pos_y=pos_y,
-                        rotated=rotation,
-                        str_current=resolved_durability,
+    )
+    if durability_current_value is not None:
+        if has_durability(definition):
+            max_value = max(definition.max_durability or 1, 1)
+            if durability_current_value < 0 or durability_current_value > max_value:
+                emit_step(
+                    f'GiveID bad_request req={request_id} durability_out_of_range={durability_current_value}'
+                )
+                return jsonify({
+                    'ok': False,
+                    'request_id': request_id,
+                    'error': 'bad_request',
+                    'details': 'invalid_durability',
+                }), 400
+        else:
+            durability_current_value = None
+
+    target_user = User.query.get(target_user_id)
+    if not target_user:
+        emit_step(f'GiveID bad_request req={request_id} target_missing={target_user_id}')
+        return jsonify({
+            'ok': False,
+            'request_id': request_id,
+            'error': 'bad_request',
+            'details': 'target_not_found',
+        }), 400
+
+    target_membership = LobbyMember.query.filter_by(
+        lobby_id=lobby_id,
+        user_id=target_user_id,
+    ).first()
+    if not target_membership:
+        emit_step(f'GiveID bad_request req={request_id} target_not_in_lobby={target_user_id}')
+        return jsonify({
+            'ok': False,
+            'request_id': request_id,
+            'error': 'bad_request',
+            'details': 'target_not_in_lobby',
+        }), 400
+
+    candidate_containers = preferred_container_ids(target_user_id)
+    emit_step(f'Target containers scanned: {candidate_containers}')
+
+    stack_amounts = split_stack_amounts(definition, amount)
+    created_instances: list[ItemInstance] = []
+    try:
+        with db.session.begin():
+            for stack_amount in stack_amounts:
+                temp_instance = PlacementPreview(
+                    owner_id=target_user_id,
+                    definition=definition,
+                )
+                placement = find_preferred_placement(temp_instance, target_user_id)
+                if not placement:
+                    emit_step('GiveID failed: no_space')
+                    raise ValueError('no_space')
+                resolved_durability = resolve_durability_value(definition, durability_current_value)
+                container_id, pos_x, pos_y, rotation = placement
+                new_instance = ItemInstance(
+                    owner_id=target_user_id,
+                    template_id=definition.id,
+                    container_i=container_id,
+                    pos_x=pos_x,
+                    pos_y=pos_y,
+                    rotated=rotation,
+                    str_current=resolved_durability,
+                    amount=stack_amount,
+                )
+                db.session.add(new_instance)
+                db.session.flush()
+                created_instances.append(new_instance)
+                emit_step(
+                    'Placed instance {instance} in {container} at ({x},{y}) amt={amount}'.format(
+                        instance=new_instance.id,
+                        container=container_id,
+                        x=pos_x,
+                        y=pos_y,
                         amount=stack_amount,
                     )
-                    db.session.add(new_instance)
-                    db.session.flush()
-                    created_instances.append(new_instance)
-                    debug(
-                        'GiveID instance created id=%s amount=%s container=%s pos=%s,%s',
-                        new_instance.id,
-                        stack_amount,
-                        container_id,
-                        pos_x,
-                        pos_y,
-                    )
-            debug('GiveID commit success created_count=%s', len(created_instances))
-        except ValueError:
-            db.session.rollback()
-            log_return('no_space')
-            return jsonify({'ok': False, 'request_id': request_id, 'error': 'no_space'}), 400
-        except SQLAlchemyError:
-            db.session.rollback()
-            log_return('db_error')
-            logger.exception('GiveID database error')
-            return jsonify({'ok': False, 'request_id': request_id, 'error': 'db_error'}), 500
-        issued_id = created_instances[0].id if created_instances else None
-        debug(
-            'GiveID created instance_ids=%s amounts=%s',
-            [instance.id for instance in created_instances],
-            [instance.amount for instance in created_instances],
-        )
-        return jsonify({
-            'ok': True,
-            'status': 'ok',
-            'request_id': request_id,
-            'created_count': len(created_instances),
-            'instance_id': issued_id,
-            'created': [
-                {'id': instance.id, 'amount': instance.amount, 'container_id': instance.container_i}
-                for instance in created_instances
-            ],
-        })
+                )
+    except ValueError:
+        db.session.rollback()
+        return jsonify({'ok': False, 'request_id': request_id, 'error': 'no_space'})
+    except SQLAlchemyError:
+        db.session.rollback()
+        emit_step(f'GiveID failed: db_error req={request_id}')
+        return jsonify({'ok': False, 'request_id': request_id, 'error': 'db_error'}), 500
     except Exception:
         db.session.rollback()
-        log_return('exception')
-        logger.exception('GiveID unexpected error')
+        emit_step(f'GiveID failed: server_error req={request_id}')
         return jsonify({'ok': False, 'request_id': request_id, 'error': 'server_error'}), 500
+
+    emit_step(f'GiveID success: created {len(created_instances)} instances')
+    emit_step(
+        f'Master issued {definition.name} x{amount} to {target_user.nickname}'
+    )
+    return jsonify({
+        'ok': True,
+        'request_id': request_id,
+        'created': [
+            {
+                'instance_id': instance.id,
+                'amount': instance.amount,
+                'container_id': instance.container_i,
+                'pos_x': instance.pos_x,
+                'pos_y': instance.pos_y,
+            }
+            for instance in created_instances
+        ],
+    })
+
+
+@app.route('/api/lobby/<int:lobby_id>/master/give-by-id', methods=['POST'])
+def give_item_by_id(lobby_id: int):
+    return _handle_give_by_id(lobby_id)
+
+
+@app.route('/api/master/issue_by_id', methods=['POST'])
+def issue_item_by_id():
+    data = request.get_json(silent=True) or {}
+    lobby_id = parse_int(data.get('lobby_id'), 0)
+    if not lobby_id:
+        return jsonify({'ok': False, 'request_id': str(uuid4()), 'error': 'bad_request'}), 400
+    return _handle_give_by_id(lobby_id)
 
 
 @app.route('/api/master/item_template/<int:template_id>/image', methods=['POST'])
