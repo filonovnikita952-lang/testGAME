@@ -713,6 +713,27 @@ def has_durability(definition: ItemDefinition) -> bool:
     return definition.max_durability is not None
 
 
+def serialize_item_definition(definition: ItemDefinition) -> dict:
+    return {
+        'id': definition.id,
+        'name': definition.name,
+        'description': definition.description,
+        'image': definition.image_path,
+        'type': definition.item_type.name if definition.item_type else '',
+        'quality': definition.quality,
+        'width': definition.w,
+        'height': definition.h,
+        'weight': definition.weight,
+        'max_durability': definition.max_durability,
+        'max_amount': normalized_max_amount(definition),
+        'is_cloth': bool(definition.is_cloth),
+        'bag_width': definition.bag_width,
+        'bag_height': definition.bag_height,
+        'fast_w': definition.fast_w,
+        'fast_h': definition.fast_h,
+    }
+
+
 def log_debug(message: str, *args) -> None:
     if inventory_logger.handlers:
         inventory_logger.debug(message, *args)
@@ -3214,24 +3235,7 @@ def get_item_template(template_id: int):
         return jsonify({'error': 'not_found'}), 404
     return jsonify({
         'ok': True,
-        'template': {
-            'id': definition.id,
-            'name': definition.name,
-            'description': definition.description,
-            'image': definition.image_path,
-            'type': definition.item_type.name if definition.item_type else '',
-            'quality': definition.quality,
-            'width': definition.w,
-            'height': definition.h,
-            'weight': definition.weight,
-            'max_durability': definition.max_durability,
-            'max_amount': normalized_max_amount(definition),
-            'is_cloth': bool(definition.is_cloth),
-            'bag_width': definition.bag_width,
-            'bag_height': definition.bag_height,
-            'fast_w': definition.fast_w,
-            'fast_h': definition.fast_h,
-        },
+        'template': serialize_item_definition(definition),
     })
 
 
@@ -3436,19 +3440,30 @@ def _handle_giveid_request(lobby_id: int, data: dict, user: User):
     except ValueError:
         log_step('Durability parse failed.', level='error', force=True)
         return jsonify({'ok': False, 'request_id': request_id, 'error': 'invalid_durability'}), 400
+    randomize_durability = random_durability and durability_current_value is None
 
     if definition.max_durability is None:
+        if durability_current_value is not None or random_durability:
+            log_step(
+                'Durability rejected: template has no durability.',
+                level='error',
+                force=True,
+            )
+            return jsonify({
+                'ok': False,
+                'request_id': request_id,
+                'error': 'durability_not_allowed',
+                'message': 'Cannot set durability for non-durable item.',
+            }), 400
         durability_current_value = None
         log_step('Durability resolved none (template has no durability).')
     else:
         max_durability = max(definition.max_durability or 1, 1)
-        if durability_current_value is None:
-            durability_current_value = max_durability
-        else:
+        if durability_current_value is not None:
             durability_current_value = min(max(durability_current_value, 0), max_durability)
         log_step(
             f'Durability resolved value={durability_current_value} max={max_durability} '
-            f'random={random_durability}',
+            f'random={randomize_durability}',
         )
 
     stack_amounts = split_stack_amounts(definition, amount)
@@ -3471,11 +3486,14 @@ def _handle_giveid_request(lobby_id: int, data: dict, user: User):
                         force=True,
                     )
                     raise ValueError('no_space')
-                resolved_durability = resolve_durability_value(
-                    definition,
-                    durability_current_value,
-                    randomize=random_durability,
-                )
+                if durability_current_value is None and not randomize_durability:
+                    resolved_durability = None
+                else:
+                    resolved_durability = resolve_durability_value(
+                        definition,
+                        durability_current_value,
+                        randomize=randomize_durability,
+                    )
                 log_step(
                     f'Durability applied stack={index}/{len(stack_amounts)} value={resolved_durability}',
                 )
