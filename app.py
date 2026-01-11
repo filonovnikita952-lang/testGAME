@@ -755,6 +755,27 @@ def giveid_chat_debug_enabled() -> bool:
     return os.environ.get(DEBUG_GIVEID_CHAT_ENV, '').strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
+def send_system_chat(lobby_id: Optional[int], message: str, *, user_id: Optional[int] = None) -> None:
+    if not lobby_id:
+        return
+    resolved_user_id = user_id or master_user_id(lobby_id)
+    if not resolved_user_id:
+        return
+    chat_session = db.create_scoped_session()
+    try:
+        chat_session.add(ChatMessage(
+            lobby_id=lobby_id,
+            user_id=resolved_user_id,
+            message=message,
+            is_system=True,
+        ))
+        chat_session.commit()
+    except SQLAlchemyError:
+        chat_session.rollback()
+    finally:
+        chat_session.remove()
+
+
 def log_giveid_step(
     lobby_id: Optional[int],
     user_id: Optional[int],
@@ -768,23 +789,8 @@ def log_giveid_step(
         return
     if not force and not giveid_chat_debug_enabled():
         return
-    resolved_user_id = user_id or master_user_id(lobby_id)
-    if not resolved_user_id:
-        return
-    chat_session = db.create_scoped_session()
-    try:
-        formatted_message = f'[GiveID][{request_id}] {message}' if request_id else f'[GiveID] {message}'
-        chat_session.add(ChatMessage(
-            lobby_id=lobby_id,
-            user_id=resolved_user_id,
-            message=formatted_message,
-            is_system=True,
-        ))
-        chat_session.commit()
-    except SQLAlchemyError:
-        chat_session.rollback()
-    finally:
-        chat_session.remove()
+    formatted_message = f'[GiveID][{request_id}] {message}' if request_id else f'[GiveID] {message}'
+    send_system_chat(lobby_id, formatted_message, user_id=user_id)
 
 
 def log_shop_debug(message: str, *args) -> None:
@@ -3349,7 +3355,7 @@ def _handle_giveid_request(lobby_id: int, data: dict, user: User):
     actor_id = user.id if user else None
 
     def log_step(text: str, *, level: str = 'info', force: bool = False) -> None:
-        log_giveid_step(lobby_id, actor_id, request_id, text, level=level, force=force)
+        log_giveid_step(lobby_id, actor_id, request_id, text, level=level, force=True)
 
     def parse_optional_int(raw_value: Optional[object]) -> Optional[int]:
         if raw_value is None or raw_value == '':
@@ -3366,28 +3372,28 @@ def _handle_giveid_request(lobby_id: int, data: dict, user: User):
         owner_id: int,
     ) -> Optional[tuple[str, int, int, int]]:
         candidate_containers = preferred_container_ids(owner_id)
-        log_step(f'Container scan start candidates={candidate_containers}')
-        rotations = [normalize_rotation_value(None)]
-        rotations.append(1 - rotations[0])
-        for container_id in candidate_containers:
-            size = container_size(container_id)
-            if not size:
-                log_step(f'Container {container_id} skipped reason=invalid_container')
-                continue
-            allowed, reason = is_container_allowed(instance, container_id, owner_id)
-            if not allowed:
-                log_step(f'Container {container_id} skipped reason={reason}')
-                continue
-            log_step(f'Container {container_id} testing size={size}')
-            for rotation in rotations:
-                position = find_first_fit(instance, container_id, rotation)
-                if position:
-                    log_step(
-                        f'Container {container_id} fit rotation={rotation} pos={position[0]},{position[1]}',
-                    )
-                    return container_id, position[0], position[1], rotation
-                log_step(f'Container {container_id} no_space rotation={rotation}')
-        return None
+        log_step(f'Container scan order={candidate_containers}')
+        placement = find_preferred_placement(instance, owner_id)
+        if placement:
+            container_id, pos_x, pos_y, rotation = placement
+            log_step(
+                f'Placement resolved container={container_id} pos={pos_x},{pos_y} rotation={rotation}',
+            )
+        else:
+            log_step('Placement resolved no_space')
+        return placement
+
+    def split_stack_amounts_by_definition(definition: ItemDefinition, total_amount: int) -> list[int]:
+        max_stack = definition.max_stack
+        if max_stack is None or max_stack <= 0:
+            max_stack = 1
+        remaining = max(total_amount, 1)
+        stacks: list[int] = []
+        while remaining > max_stack:
+            stacks.append(max_stack)
+            remaining -= max_stack
+        stacks.append(remaining)
+        return stacks
 
     log_step('Request received.')
     log_step(
@@ -3453,7 +3459,7 @@ def _handle_giveid_request(lobby_id: int, data: dict, user: User):
                 'ok': False,
                 'request_id': request_id,
                 'error': 'durability_not_allowed',
-                'message': 'Cannot set durability for non-durable item.',
+                'message': 'this item has no durability',
             }), 400
         durability_current_value = None
         log_step('Durability resolved none (template has no durability).')
@@ -3466,7 +3472,11 @@ def _handle_giveid_request(lobby_id: int, data: dict, user: User):
             f'random={randomize_durability}',
         )
 
-    stack_amounts = split_stack_amounts(definition, amount)
+    max_stack = definition.max_stack
+    if max_stack is None or max_stack <= 0:
+        max_stack = 1
+    log_step(f'Max stack resolved value={max_stack}')
+    stack_amounts = split_stack_amounts_by_definition(definition, amount)
     log_step(f'Stack plan computed count={len(stack_amounts)} splits={stack_amounts}')
 
     created_instances = []
