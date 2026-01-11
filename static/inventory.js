@@ -1481,6 +1481,10 @@
             const target = Number.parseInt(targetInput?.value || '0', 10);
             const amount = Number.parseInt(amountInput?.value || '1', 10);
             if (!definitionId || !target) return;
+            if (Number.isNaN(amount) || amount < 1) {
+                this.showIssueByIdError({ error: 'invalid_amount' });
+                return;
+            }
             const confirmed = window.confirm(`Видати шаблон #${definitionId} для користувача ${target}?`);
             if (!confirmed) return;
             this.trackAction(`issue-by-id:${definitionId}:${target}`);
@@ -1532,8 +1536,14 @@
                 message = 'Немає місця у інвентарі для цього предмета.';
             } else if (error === 'non_stackable_amount') {
                 message = 'Цей предмет не є стековим. Кількість має бути 1.';
+            } else if (error === 'invalid_amount') {
+                message = 'Кількість має бути 1 або більше.';
             } else if (error === 'invalid_durability') {
                 message = 'Некоректне значення durability.';
+            } else if (error === 'durability_not_allowed') {
+                message = 'Цей предмет не має durability. Очистіть значення.';
+            } else if (error === 'forbidden') {
+                message = 'Недостатньо прав для видачі предмета.';
             }
             window.alert(message);
         }
@@ -2268,6 +2278,10 @@
                 const randomDurability = form.querySelector('input[id^="issue_random_durability_"]')?.value || '';
                 if (!definitionId || !targetId) {
                     logIssueDebug('issue validation failed', { definitionId, targetId });
+                    return;
+                }
+                if (Number.isNaN(amount) || amount < 1) {
+                    controller.showIssueByIdError({ error: 'invalid_amount' });
                     return;
                 }
                 const confirmed = window.confirm(`Видати шаблон #${definitionId} для користувача ${targetId}?`);
