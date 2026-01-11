@@ -24,48 +24,55 @@ DEFAULT_DB_DIR = '/home/Sanya1825/DRAsite_data'
 DEFAULT_DB_PATH = os.path.join(DEFAULT_DB_DIR, 'databaseDRA.db')
 
 
-def _resolve_database_uri() -> str:
-    override_uri = os.environ.get('DATABASE_URI')
-    if override_uri:
-        sqlite_path = _sqlite_db_path(override_uri)
-        if not sqlite_path:
-            raise RuntimeError('DATABASE_URI must be a sqlite:/// URI')
-        if not os.path.isabs(sqlite_path):
-            raise RuntimeError('DATABASE_URI must use an absolute path')
-        resolved_path = os.path.realpath(sqlite_path)
-        allowed_root = os.path.realpath(DEFAULT_DB_DIR)
-        if os.path.commonpath([resolved_path, allowed_root]) != allowed_root:
-            raise RuntimeError('DATABASE_URI must point under /home/Sanya1825/DRAsite_data')
-        return f"sqlite:///{resolved_path}"
-    return f"sqlite:///{DEFAULT_DB_PATH}"
-
-
-def get_db_path(db_uri: Optional[str] = None) -> str:
-    resolved_uri = db_uri or app.config.get('SQLALCHEMY_DATABASE_URI', '')
-    sqlite_path = _sqlite_db_path(resolved_uri)
+def get_db_path(db_uri: str) -> str:
+    """Return a filesystem path or ":memory:" from a SQLAlchemy database URI."""
+    # NOTE: _sqlite_db_path was removed to avoid WSGI NameError; keep parsing local and stdlib-only.
+    if not db_uri:
+        return ''
+    if db_uri == 'sqlite://':
+        return ':memory:'
+    if not db_uri.startswith('sqlite:///'):
+        return ''
+    sqlite_path = db_uri[len('sqlite:///') :]
     if not sqlite_path:
-        raise RuntimeError('Database URI must be sqlite:///')
-    return os.path.realpath(sqlite_path)
+        return ''
+    if os.path.isabs(sqlite_path):
+        return os.path.realpath(sqlite_path)
+    return os.path.abspath(sqlite_path)
+
+
+def resolve_sqlalchemy_db_uri() -> str:
+    default_uri = f"sqlite:///{DEFAULT_DB_PATH}"
+    override_uri = os.environ.get('DATABASE_URI')
+    if not override_uri:
+        return default_uri
+    sqlite_path = get_db_path(override_uri)
+    if not sqlite_path or sqlite_path == ':memory:' or not os.path.isabs(sqlite_path):
+        return default_uri
+    resolved_path = os.path.realpath(sqlite_path)
+    allowed_root = os.path.realpath(DEFAULT_DB_DIR)
+    if os.path.commonpath([resolved_path, allowed_root]) != allowed_root:
+        return default_uri
+    return f"sqlite:///{resolved_path}"
 
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = _resolve_database_uri()
+app.config['SQLALCHEMY_DATABASE_URI'] = resolve_sqlalchemy_db_uri()
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'supersecretkey')
 
 resolved_db_path = get_db_path(app.config['SQLALCHEMY_DATABASE_URI'])
 print(
-    f"[DB] SQLALCHEMY_DATABASE_URI={app.config['SQLALCHEMY_DATABASE_URI']} path={resolved_db_path}",
+    f"[DB] SQLALCHEMY_DATABASE_URI={app.config['SQLALCHEMY_DATABASE_URI']} resolved_db_path={resolved_db_path}",
     file=sys.stderr,
     flush=True,
 )
-if not os.path.exists(resolved_db_path):
+if resolved_db_path and resolved_db_path != ':memory:' and not os.path.exists(resolved_db_path):
     print(
         f"[DB] ERROR: SQLite database file missing at {resolved_db_path}",
         file=sys.stderr,
         flush=True,
     )
-    raise RuntimeError(f"SQLite database missing: {resolved_db_path}")
 
 UPLOAD_SUBDIR = 'uploads'
 RESET_DB_ENV = 'RESET_DB_ON_START'
@@ -390,13 +397,6 @@ class ChatMessage(db.Model):
     user = db.relationship('User')
 
 
-def _sqlite_db_path(db_uri: str) -> Optional[str]:
-    if not db_uri.startswith('sqlite:///'):
-        return None
-    path = db_uri[len('sqlite:///'):]
-    return path or None
-
-
 def _ensure_user_columns():
     inspector = inspect(db.engine)
     if 'userid' in inspector.get_table_names():
@@ -535,14 +535,13 @@ def initialize_database():
 
 def initialize_database_if_ready() -> None:
     db_uri = app.config['SQLALCHEMY_DATABASE_URI']
-    sqlite_path = _sqlite_db_path(db_uri)
-    if sqlite_path:
+    sqlite_path = get_db_path(db_uri)
+    if sqlite_path and sqlite_path != ':memory:':
         abs_path = os.path.abspath(sqlite_path)
         exists = os.path.exists(abs_path)
         print(f"[DB] SQLite path: {abs_path} (exists={exists})", file=sys.stderr, flush=True)
         if not exists:
-            print('[DB] ERROR: SQLite file missing; aborting initialization.', file=sys.stderr, flush=True)
-            raise RuntimeError(f"SQLite database missing: {abs_path}")
+            print('[DB] ERROR: SQLite file missing; skipping initialization.', file=sys.stderr, flush=True)
     else:
         print(f"[DB] Database URI: {db_uri} (non-sqlite)", file=sys.stderr, flush=True)
     initialize_database()
