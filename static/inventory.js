@@ -129,6 +129,7 @@
             this.notesSaveButton = this.root.querySelector('[data-notes-save]');
             this.notesStatus = this.root.querySelector('[data-notes-status]');
             this.notesPayload = null;
+            this.notesSaveTimer = null;
             this.bagGridList = this.root.querySelector('[data-bag-grid-list]');
             this.fastSlotList = this.root.querySelector('[data-fast-slot-list]');
             this.fastSlotPanel = this.root.querySelector('[data-fast-slot-panel]');
@@ -351,6 +352,7 @@
                 this.notesInput.addEventListener('input', () => {
                     this.setNotesStatus('unsaved');
                     this.renderNotesPreview(this.notesInput.value);
+                    this.scheduleNotesSave();
                 });
             }
             if (this.notesRendered) {
@@ -360,6 +362,8 @@
                     if (target.classList.contains('is-disabled')) return;
                     const rollText = target.dataset.roll || '';
                     if (!rollText.trim()) return;
+                    event.preventDefault();
+                    event.stopPropagation();
                     this.submitNotesRoll(rollText);
                 });
             }
@@ -2184,6 +2188,10 @@
         async saveNotes() {
             if (!this.selectedPlayerId || !this.lobbyId || !this.notesInput) return;
             if (!this.canEditNotes()) return;
+            if (this.notesSaveTimer) {
+                clearTimeout(this.notesSaveTimer);
+                this.notesSaveTimer = null;
+            }
             this.setNotesStatus('saving');
             try {
                 const response = await fetch(
@@ -2211,6 +2219,17 @@
                 console.debug('[Notes] Save failed', error);
                 this.setNotesStatus('error');
             }
+        }
+
+        scheduleNotesSave() {
+            if (!this.canEditNotes()) return;
+            if (!this.notesInput) return;
+            if (this.notesSaveTimer) {
+                clearTimeout(this.notesSaveTimer);
+            }
+            this.notesSaveTimer = window.setTimeout(() => {
+                this.saveNotes();
+            }, 1200);
         }
 
         async saveFormulas() {

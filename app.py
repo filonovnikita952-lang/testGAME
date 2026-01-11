@@ -1540,17 +1540,15 @@ def parse_roll_text(roll_text: str, context: dict[str, float]) -> dict[str, obje
     }
 
 
-def format_roll_results(rolls: list[int]) -> str:
+def format_roll_results(rolls: list[int], faces: int) -> str:
     if not rolls:
         return '()'
-    min_value = min(rolls)
-    max_value = max(rolls)
     parts = []
     for value in rolls:
         classes = ['roll-result']
-        if value == min_value:
+        if value == 1:
             classes.append('roll-result--min')
-        if value == max_value:
+        elif value == faces:
             classes.append('roll-result--max')
         class_attr = ' '.join(classes)
         parts.append(f'<span class="{class_attr}">{value}</span>')
@@ -1562,6 +1560,7 @@ def build_roll_message(
     username: str,
     roll_text: str,
     rolls: list[int],
+    faces: int,
     modifier_literal: Optional[str],
     modifier_sign: Optional[str],
     modifier_value: Optional[int],
@@ -1570,7 +1569,7 @@ def build_roll_message(
     safe_roll_text = html.escape(roll_text)
     line_one = f'{safe_username} – {safe_roll_text}'
 
-    line_two = format_roll_results(rolls)
+    line_two = format_roll_results(rolls, faces)
     if modifier_literal:
         line_two = f'{line_two} {html.escape(modifier_literal)}'
 
@@ -1603,6 +1602,7 @@ def create_roll_chat_message(
         username=actor.nickname or 'User',
         roll_text=roll_text,
         rolls=rolls,
+        faces=parsed['faces'],
         modifier_literal=parsed['modifier_literal'],
         modifier_sign=parsed['modifier_sign'],
         modifier_value=parsed['modifier_value'],

@@ -1586,9 +1586,6 @@ textarea {
     color: #6df2a6;
 }
 
-.roll-result--min.roll-result--max {
-    color: #f4d06f;
-}
 
 .formula-row.is-error input {
     border-color: rgba(255, 138, 138, 0.8);
