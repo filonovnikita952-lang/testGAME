@@ -127,9 +127,11 @@
             this.notesRendered = this.root.querySelector('[data-notes-rendered]');
             this.notesActions = this.root.querySelector('[data-notes-actions]');
             this.notesSaveButton = this.root.querySelector('[data-notes-save]');
+            this.notesEditButton = this.root.querySelector('[data-notes-edit]');
             this.notesStatus = this.root.querySelector('[data-notes-status]');
             this.notesPayload = null;
             this.notesSaveTimer = null;
+            this.notesMode = 'view';
             this.bagGridList = this.root.querySelector('[data-bag-grid-list]');
             this.fastSlotList = this.root.querySelector('[data-fast-slot-list]');
             this.fastSlotPanel = this.root.querySelector('[data-fast-slot-panel]');
@@ -345,18 +347,23 @@
 
             if (this.notesSaveButton) {
                 this.notesSaveButton.addEventListener('click', () => {
-                    this.saveNotes();
+                    this.saveNotes({ switchToView: true });
+                });
+            }
+            if (this.notesEditButton) {
+                this.notesEditButton.addEventListener('click', () => {
+                    this.setNotesMode('edit');
                 });
             }
             if (this.notesInput) {
                 this.notesInput.addEventListener('input', () => {
                     this.setNotesStatus('unsaved');
-                    this.renderNotesPreview(this.notesInput.value);
                     this.scheduleNotesSave();
                 });
             }
             if (this.notesRendered) {
                 this.notesRendered.addEventListener('click', (event) => {
+                    if (this.notesMode !== 'view') return;
                     const target = event.target.closest('.note-roll');
                     if (!target || !(target instanceof HTMLElement)) return;
                     if (target.classList.contains('is-disabled')) return;
@@ -364,6 +371,7 @@
                     if (!rollText.trim()) return;
                     event.preventDefault();
                     event.stopPropagation();
+                    console.debug('[Notes] Roll click', rollText);
                     this.submitNotesRoll(rollText);
                 });
             }
@@ -1797,22 +1805,8 @@
             if (this.formulaTestButton) {
                 this.formulaTestButton.disabled = !this.permissions.is_master;
             }
-            if (this.notesInput) {
-                const canEditNotes = this.canEditNotes();
-                this.notesInput.disabled = !canEditNotes;
-                this.notesInput.classList.toggle('is-hidden', !canEditNotes);
-            }
-            if (this.notesSaveButton) {
-                const canEditNotes = this.canEditNotes();
-                this.notesSaveButton.disabled = !canEditNotes;
-                this.notesSaveButton.classList.toggle('is-hidden', !canEditNotes);
-            }
-            if (this.notesActions) {
-                this.notesActions.classList.toggle('is-hidden', !this.canEditNotes());
-            }
-            if (this.notesRendered) {
-                const notesText = this.notesInput?.value ?? this.notesPayload?.notes_text ?? '';
-                this.renderNotesPreview(notesText);
+            if (this.notesInput || this.notesRendered) {
+                this.updateNotesUI();
             }
         }
 
@@ -1834,7 +1828,7 @@
         }
 
         canRollNotes() {
-            return this.canEditNotes();
+            return this.canEditNotes() && this.notesMode === 'view';
         }
 
         setNotesStatus(state, updatedAt = null) {
@@ -1863,6 +1857,7 @@
         buildNotesTokens(text) {
             const tokens = [];
             if (!text) return tokens;
+            const rollPattern = /^\s*\d+d\d+(?:\s*[+-]\s*\d+)?\s*$/i;
             let index = 0;
             while (index < text.length) {
                 const start = text.indexOf('(', index);
@@ -1891,7 +1886,12 @@
                     break;
                 }
                 const rollText = text.slice(start + 1, end);
-                tokens.push({ type: 'roll', value: rollText });
+                if (rollPattern.test(rollText)) {
+                    const normalized = rollText.replace(/\s+/g, '');
+                    tokens.push({ type: 'roll', value: normalized });
+                } else {
+                    tokens.push({ type: 'text', value: text.slice(start, end + 1) });
+                }
                 index = end + 1;
             }
             return tokens;
@@ -1924,6 +1924,45 @@
             this.notesRendered.classList.remove('is-hidden');
         }
 
+        getNotesText() {
+            return this.notesInput?.value ?? this.notesPayload?.notes_text ?? '';
+        }
+
+        setNotesMode(mode) {
+            if (!mode || this.notesMode === mode) return;
+            this.notesMode = mode;
+            this.updateNotesUI();
+        }
+
+        updateNotesUI() {
+            const canEditNotes = this.canEditNotes();
+            const isEditing = this.notesMode === 'edit' && canEditNotes;
+            if (this.notesInput) {
+                this.notesInput.disabled = !canEditNotes;
+                this.notesInput.classList.toggle('is-hidden', !isEditing);
+            }
+            if (this.notesRendered) {
+                if (isEditing) {
+                    this.notesRendered.classList.add('is-hidden');
+                } else {
+                    const notesText = this.getNotesText();
+                    this.renderNotesPreview(notesText);
+                    this.notesRendered.classList.remove('is-hidden');
+                }
+            }
+            if (this.notesSaveButton) {
+                this.notesSaveButton.disabled = !canEditNotes;
+                this.notesSaveButton.classList.toggle('is-hidden', !isEditing);
+            }
+            if (this.notesEditButton) {
+                this.notesEditButton.disabled = !canEditNotes;
+                this.notesEditButton.classList.toggle('is-hidden', !canEditNotes || isEditing);
+            }
+            if (this.notesActions) {
+                this.notesActions.classList.toggle('is-hidden', !canEditNotes);
+            }
+        }
+
         async submitNotesRoll(rollText) {
             if (!this.lobbyId || !this.selectedPlayerId) return;
             if (!this.canRollNotes()) return;
@@ -1938,7 +1977,9 @@
                 });
                 if (!response.ok) {
                     console.debug('[Notes] Roll failed', response.status);
+                    return;
                 }
+                console.debug('[Notes] Roll sent', rollText);
             } catch (error) {
                 console.debug('[Notes] Roll failed', error);
             }
@@ -2169,7 +2210,8 @@
                 if (this.notesInput) {
                     this.notesInput.value = notesText;
                 }
-                this.renderNotesPreview(notesText);
+                this.notesMode = 'view';
+                this.updateNotesUI();
                 if (this.canEditNotes()) {
                     if (data?.updated_at) {
                         const updatedAt = new Date(data.updated_at).toLocaleString();
@@ -2180,12 +2222,13 @@
                 } else {
                     this.setNotesStatus('');
                 }
+                console.debug('[Notes] Load success', { lobbyId: this.lobbyId, userId: this.selectedPlayerId });
             } catch (error) {
                 console.debug('[Notes] Load failed', error);
             }
         }
 
-        async saveNotes() {
+        async saveNotes({ switchToView = false } = {}) {
             if (!this.selectedPlayerId || !this.lobbyId || !this.notesInput) return;
             if (!this.canEditNotes()) return;
             if (this.notesSaveTimer) {
@@ -2209,12 +2252,21 @@
                     return;
                 }
                 const data = await response.json().catch(() => ({}));
+                this.notesPayload = {
+                    ...(this.notesPayload || {}),
+                    notes_text: this.notesInput.value,
+                    updated_at: data?.updated_at || this.notesPayload?.updated_at || null,
+                };
                 if (data?.updated_at) {
                     const updatedAt = new Date(data.updated_at).toLocaleString();
                     this.setNotesStatus('saved', updatedAt);
                 } else {
                     this.setNotesStatus('saved');
                 }
+                if (switchToView) {
+                    this.setNotesMode('view');
+                }
+                console.debug('[Notes] Save success', { lobbyId: this.lobbyId, userId: this.selectedPlayerId });
             } catch (error) {
                 console.debug('[Notes] Save failed', error);
                 this.setNotesStatus('error');

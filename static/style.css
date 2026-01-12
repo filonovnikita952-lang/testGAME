@@ -1569,6 +1569,12 @@ textarea {
     gap: 12px;
 }
 
+.notes-panel__buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .notes-panel__status {
     font-size: 0.85rem;
     color: rgba(255, 255, 255, 0.65);
