@@ -1488,6 +1488,10 @@ class StatFormulaError(ValueError):
     pass
 
 
+MAX_POW_ABS_INPUT = 1_000_000.0
+MAX_POW_ABS_RESULT = 1_000_000_000.0
+
+
 def validate_stat_formula(expression: str, allowed_names: set[str]) -> ast.Expression:
     try:
         tree = ast.parse(expression, mode='eval')
@@ -1523,17 +1527,21 @@ def validate_stat_formula(expression: str, allowed_names: set[str]) -> ast.Expre
             if not isinstance(node.func, ast.Name):
                 raise StatFormulaError('Only simple function names are allowed.')
             func_name = node.func.id
-            if func_name not in {'round', 'floor', 'ceil', 'min', 'max', 'clamp'}:
+            if func_name not in {'round', 'floor', 'ceil', 'min', 'max', 'clamp', 'sqrt', 'pow'}:
                 raise StatFormulaError(f'Unsupported function: {func_name}')
             arg_count = len(node.args)
             if func_name == 'round' and arg_count not in {1, 2}:
                 raise StatFormulaError('round() expects 1 or 2 arguments.')
             if func_name in {'floor', 'ceil'} and arg_count != 1:
                 raise StatFormulaError(f'{func_name}() expects 1 argument.')
+            if func_name == 'sqrt' and arg_count != 1:
+                raise StatFormulaError('sqrt() expects 1 argument.')
             if func_name in {'min', 'max'} and arg_count < 1:
                 raise StatFormulaError(f'{func_name}() expects at least 1 argument.')
             if func_name == 'clamp' and arg_count != 3:
                 raise StatFormulaError('clamp() expects 3 arguments.')
+            if func_name == 'pow' and arg_count != 2:
+                raise StatFormulaError('pow() expects 2 arguments.')
             for arg in node.args:
                 validate_node(arg)
             return
@@ -1573,6 +1581,8 @@ def evaluate_stat_formula(expression: str, context: dict[str, float]) -> float:
         if isinstance(node, ast.Call):
             func_name = node.func.id
             args = [eval_node(arg) for arg in node.args]
+            if any(not isinstance(arg, (int, float)) for arg in args):
+                raise StatFormulaError('Only numeric arguments are allowed.')
             if func_name == 'round':
                 if len(args) == 1:
                     return float(round(args[0]))
@@ -1585,6 +1595,11 @@ def evaluate_stat_formula(expression: str, context: dict[str, float]) -> float:
                 return float(math.floor(args[0]))
             if func_name == 'ceil':
                 return float(math.ceil(args[0]))
+            if func_name == 'sqrt':
+                value = float(args[0])
+                if value < 0:
+                    raise StatFormulaError('sqrt() expects a non-negative value.')
+                return float(math.sqrt(value))
             if func_name == 'min':
                 return float(min(args))
             if func_name == 'max':
@@ -1592,6 +1607,17 @@ def evaluate_stat_formula(expression: str, context: dict[str, float]) -> float:
             if func_name == 'clamp':
                 value, lo, hi = args
                 return float(min(max(value, lo), hi))
+            if func_name == 'pow':
+                base, exponent = (max(min(float(arg), MAX_POW_ABS_INPUT), -MAX_POW_ABS_INPUT) for arg in args)
+                try:
+                    result = math.pow(base, exponent)
+                except (OverflowError, ValueError) as exc:
+                    raise StatFormulaError('pow() failed to compute.') from exc
+                if not math.isfinite(result):
+                    raise StatFormulaError('pow() produced non-finite value.')
+                if abs(result) > MAX_POW_ABS_RESULT:
+                    return math.copysign(MAX_POW_ABS_RESULT, result)
+                return float(result)
         raise StatFormulaError('Disallowed expression.')
 
     return eval_node(tree)
@@ -1621,7 +1647,11 @@ def _resolve_roll_value(value_text: str, context: dict[str, float]) -> int:
         expression = value_text[1:-1].strip()
         if not expression:
             raise RollValidationError('Empty formula.')
-        value = evaluate_stat_formula(expression, context)
+        try:
+            value = evaluate_stat_formula(expression, context)
+        except StatFormulaError as exc:
+            app.logger.warning('Roll formula error formula="%s" error="%s"', expression, exc)
+            raise
     else:
         if not value_text.isdigit():
             raise RollValidationError('Invalid literal.')
