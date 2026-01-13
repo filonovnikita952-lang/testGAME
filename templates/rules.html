@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+
+{% block title %}Rules & Mechanics{% endblock %}
+{% block header_title %}Правила та механіки{% endblock %}
+{% block page_class %}page--rules{% endblock %}
+
+{% block content %}
+<section class="rules-header">
+    <div class="rules-header__title">
+        <h2>Rules &amp; Mechanics</h2>
+        <p class="muted">Глобальна база знань DRA про правила та механіки.</p>
+    </div>
+    <div class="rules-header__controls">
+        <label class="rules-search" for="rules-search">
+            <span class="rules-search__icon" aria-hidden="true">🔎</span>
+            <input type="search" id="rules-search" placeholder="Search rules..." autocomplete="off">
+        </label>
+        {% if is_admin %}
+            <button type="button" class="button rules-new-button" id="rules-new-button">+ New Card</button>
+        {% endif %}
+    </div>
+</section>
+
+{% if is_admin %}
+<section class="rules-new-card is-hidden" id="rules-new-card">
+    <div class="rules-new-card__header">
+        <h3>Нова картка</h3>
+        <p class="muted">Обовʼязково оберіть візуальний стиль картки.</p>
+    </div>
+    <form class="rules-form" id="rules-new-form">
+        <label class="rules-form__field">
+            <span>Title</span>
+            <input type="text" name="title" required>
+        </label>
+        <label class="rules-form__field">
+            <span>Short description</span>
+            <input type="text" name="short_desc" required>
+        </label>
+        <label class="rules-form__field">
+            <span>Full text</span>
+            <textarea name="body" rows="5" required></textarea>
+        </label>
+        <label class="rules-form__field">
+            <span>Style</span>
+            <select name="style" required>
+                <option value="terminal">Terminal</option>
+                <option value="parchment">Parchment</option>
+                <option value="stone">Stone</option>
+            </select>
+        </label>
+        <div class="rules-form__actions">
+            <button type="submit" class="button">Create</button>
+            <button type="button" class="button ghost" id="rules-new-cancel">Cancel</button>
+        </div>
+    </form>
+</section>
+{% endif %}
+
+<section class="rules-list" id="rules-list" aria-live="polite"></section>
+
+<script>
+    window.RULES_DATA = {{ rules_cards | tojson }};
+    window.RULES_IS_ADMIN = {{ 'true' if is_admin else 'false' }};
+</script>
+<script src="{{ url_for('static', filename='rules.js') }}" defer></script>
+{% endblock %}
