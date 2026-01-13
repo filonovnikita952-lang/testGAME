@@ -471,13 +471,34 @@ class RuleCard(db.Model):
     __tablename__ = 'rule_card'
 
     id = db.Column(db.Integer, primary_key=True)
+    category_id = db.Column(db.Integer, db.ForeignKey('rule_category.id'), nullable=True)
     title = db.Column(db.String(120), nullable=False)
     short_desc = db.Column(db.String(255), nullable=False)
     body = db.Column(db.Text, nullable=False)
     style = db.Column(db.String(20), nullable=False)
+    sort_order = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(
         db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+
+class RuleCategory(db.Model):
+    __tablename__ = 'rule_category'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False, unique=True)
+    sort_order = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    cards = db.relationship(
+        'RuleCard',
+        backref='category',
+        cascade='all, delete-orphan',
+        order_by='RuleCard.sort_order.asc()',
     )
 
 def _sqlite_db_path(db_uri: str) -> Optional[str]:
@@ -676,6 +697,71 @@ def _ensure_character_stats_columns():
             db.session.commit()
 
 
+def _ensure_rule_schema():
+    inspector = inspect(db.engine)
+    table_names = inspector.get_table_names()
+    if 'rule_category' in table_names:
+        columns = {column['name'] for column in inspector.get_columns('rule_category')}
+        if 'sort_order' not in columns:
+            db.session.execute(text('ALTER TABLE rule_category ADD COLUMN sort_order INTEGER'))
+            db.session.commit()
+        if 'created_at' not in columns:
+            db.session.execute(text('ALTER TABLE rule_category ADD COLUMN created_at DATETIME'))
+            db.session.commit()
+        if 'updated_at' not in columns:
+            db.session.execute(text('ALTER TABLE rule_category ADD COLUMN updated_at DATETIME'))
+            db.session.commit()
+    if 'rule_card' in table_names:
+        columns = {column['name'] for column in inspector.get_columns('rule_card')}
+        if 'category_id' not in columns:
+            db.session.execute(text('ALTER TABLE rule_card ADD COLUMN category_id INTEGER'))
+            db.session.commit()
+        if 'sort_order' not in columns:
+            db.session.execute(text('ALTER TABLE rule_card ADD COLUMN sort_order INTEGER'))
+            db.session.commit()
+
+    default_category = RuleCategory.query.order_by(RuleCategory.sort_order.asc()).first()
+    if not default_category:
+        default_category = RuleCategory(name='Загальні правила', sort_order=1)
+        db.session.add(default_category)
+        db.session.commit()
+
+    categories = RuleCategory.query.order_by(RuleCategory.sort_order.asc(), RuleCategory.id.asc()).all()
+    for index, category in enumerate(categories, start=1):
+        if category.sort_order != index:
+            category.sort_order = index
+    db.session.commit()
+
+    cards_missing_category = RuleCard.query.filter(RuleCard.category_id.is_(None)).order_by(
+        RuleCard.created_at.asc(),
+        RuleCard.id.asc(),
+    ).all()
+    if cards_missing_category:
+        next_order = (
+            db.session.query(func.max(RuleCard.sort_order))
+            .filter(RuleCard.category_id == default_category.id)
+            .scalar()
+        )
+        next_order = (next_order or 0) + 1
+        for card in cards_missing_category:
+            card.category_id = default_category.id
+            card.sort_order = next_order
+            next_order += 1
+        db.session.commit()
+
+    for category in RuleCategory.query.all():
+        cards = RuleCard.query.filter_by(category_id=category.id).order_by(
+            RuleCard.sort_order.asc(),
+            RuleCard.id.asc(),
+        ).all()
+        next_order = 1
+        for card in cards:
+            if card.sort_order != next_order:
+                card.sort_order = next_order
+            next_order += 1
+    db.session.commit()
+
+
 def ensure_attribute_formula() -> AttributeFormula:
     formula = AttributeFormula.query.first()
     if not formula:
@@ -691,6 +777,7 @@ def initialize_database():
     _ensure_item_type_columns()
     _ensure_item_definition_columns()
     _ensure_character_stats_columns()
+    _ensure_rule_schema()
     ensure_attribute_formula()
 
 
@@ -849,12 +936,24 @@ def parse_optional_int(value: Optional[object]) -> Optional[int]:
 def serialize_rule_card(card: RuleCard) -> dict[str, object]:
     return {
         'id': card.id,
+        'category_id': card.category_id,
         'title': card.title,
         'short_desc': card.short_desc,
         'body': card.body,
         'style': card.style,
+        'sort_order': card.sort_order,
         'created_at': card.created_at.isoformat() if card.created_at else None,
         'updated_at': card.updated_at.isoformat() if card.updated_at else None,
+    }
+
+
+def serialize_rule_category(category: RuleCategory) -> dict[str, object]:
+    return {
+        'id': category.id,
+        'name': category.name,
+        'sort_order': category.sort_order,
+        'created_at': category.created_at.isoformat() if category.created_at else None,
+        'updated_at': category.updated_at.isoformat() if category.updated_at else None,
     }
 
 
@@ -2488,12 +2587,25 @@ def news():
 @app.route('/rules')
 def rules_page():
     user = current_user()
-    cards = RuleCard.query.order_by(RuleCard.created_at.desc()).all()
+    categories = RuleCategory.query.order_by(RuleCategory.sort_order.asc(), RuleCategory.id.asc()).all()
+    cards = RuleCard.query.order_by(RuleCard.sort_order.asc(), RuleCard.id.asc()).all()
+    cards_by_category: dict[int, list[dict[str, object]]] = {category.id: [] for category in categories}
+    for card in cards:
+        if card.category_id in cards_by_category:
+            cards_by_category[card.category_id].append(serialize_rule_card(card))
     return render_template(
         'rules.html',
         user=user,
         is_admin=bool(user and user.is_admin),
-        rules_cards=[serialize_rule_card(card) for card in cards],
+        rules_payload={
+            'categories': [
+                {
+                    **serialize_rule_category(category),
+                    'cards': cards_by_category.get(category.id, []),
+                }
+                for category in categories
+            ],
+        },
     )
 
 
@@ -2585,7 +2697,7 @@ def lobby_page():
 
 @app.route('/api/rules')
 def rules_api_list():
-    cards = RuleCard.query.order_by(RuleCard.created_at.desc()).all()
+    cards = RuleCard.query.order_by(RuleCard.sort_order.asc(), RuleCard.id.asc()).all()
     return jsonify([serialize_rule_card(card) for card in cards])
 
 
@@ -2595,6 +2707,10 @@ def rules_api_create():
     if not user.is_admin:
         return jsonify({'error': 'forbidden'}), 403
     payload = request.get_json(silent=True) or {}
+    try:
+        category_id = parse_optional_int(payload.get('category_id'))
+    except ValueError:
+        return jsonify({'error': 'invalid_category'}), 400
     title = (payload.get('title') or '').strip()
     short_desc = (payload.get('short_desc') or '').strip()
     body = (payload.get('body') or '').strip()
@@ -2603,7 +2719,24 @@ def rules_api_create():
         return jsonify({'error': 'missing_fields'}), 400
     if style not in RULE_CARD_STYLES:
         return jsonify({'error': 'invalid_style'}), 400
-    card = RuleCard(title=title, short_desc=short_desc, body=body, style=style)
+    if category_id is None:
+        return jsonify({'error': 'invalid_category'}), 400
+    category = RuleCategory.query.get(category_id)
+    if not category:
+        return jsonify({'error': 'invalid_category'}), 400
+    next_order = (
+        db.session.query(func.max(RuleCard.sort_order))
+        .filter(RuleCard.category_id == category_id)
+        .scalar()
+    )
+    card = RuleCard(
+        title=title,
+        short_desc=short_desc,
+        body=body,
+        style=style,
+        category_id=category_id,
+        sort_order=(next_order or 0) + 1,
+    )
     db.session.add(card)
     db.session.commit()
     return jsonify(serialize_rule_card(card)), 201
@@ -2637,11 +2770,35 @@ def rules_api_update(card_id: int):
         if style not in RULE_CARD_STYLES:
             return jsonify({'error': 'invalid_style'}), 400
         updates['style'] = style
+    if 'category_id' in payload:
+        try:
+            category_id = parse_optional_int(payload.get('category_id'))
+        except ValueError:
+            return jsonify({'error': 'invalid_category'}), 400
+        if category_id is None or not RuleCategory.query.get(category_id):
+            return jsonify({'error': 'invalid_category'}), 400
+        updates['category_id'] = category_id
     if not updates:
         return jsonify({'error': 'no_updates'}), 400
+    previous_category_id = card.category_id
     for key, value in updates.items():
         setattr(card, key, value)
+    if 'category_id' in updates and updates['category_id'] != previous_category_id:
+        next_order = (
+            db.session.query(func.max(RuleCard.sort_order))
+            .filter(RuleCard.category_id == updates['category_id'])
+            .scalar()
+        )
+        card.sort_order = (next_order or 0) + 1
     db.session.commit()
+    if previous_category_id and previous_category_id != card.category_id:
+        cards = RuleCard.query.filter_by(category_id=previous_category_id).order_by(
+            RuleCard.sort_order.asc(),
+            RuleCard.id.asc(),
+        ).all()
+        for position, item in enumerate(cards, start=1):
+            item.sort_order = position
+        db.session.commit()
     return jsonify(serialize_rule_card(card))
 
 
@@ -2651,9 +2808,130 @@ def rules_api_delete(card_id: int):
     if not user.is_admin:
         return jsonify({'error': 'forbidden'}), 403
     card = RuleCard.query.get_or_404(card_id)
+    category_id = card.category_id
     db.session.delete(card)
     db.session.commit()
+    if category_id:
+        cards = RuleCard.query.filter_by(category_id=category_id).order_by(
+            RuleCard.sort_order.asc(),
+            RuleCard.id.asc(),
+        ).all()
+        for position, item in enumerate(cards, start=1):
+            item.sort_order = position
+        db.session.commit()
     return jsonify({'status': 'deleted'})
+
+
+@app.route('/api/rules/categories')
+def rules_category_list():
+    categories = RuleCategory.query.order_by(RuleCategory.sort_order.asc(), RuleCategory.id.asc()).all()
+    return jsonify([serialize_rule_category(category) for category in categories])
+
+
+@app.route('/api/rules/categories', methods=['POST'])
+def rules_category_create():
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'invalid_name'}), 400
+    if RuleCategory.query.filter(func.lower(RuleCategory.name) == name.lower()).first():
+        return jsonify({'error': 'duplicate'}), 400
+    next_order = db.session.query(func.max(RuleCategory.sort_order)).scalar()
+    category = RuleCategory(name=name, sort_order=(next_order or 0) + 1)
+    db.session.add(category)
+    db.session.commit()
+    return jsonify(serialize_rule_category(category)), 201
+
+
+@app.route('/api/rules/categories/<int:category_id>', methods=['PATCH'])
+def rules_category_update(category_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    category = RuleCategory.query.get_or_404(category_id)
+    payload = request.get_json(silent=True) or {}
+    name = payload.get('name')
+    if name is not None:
+        name = str(name).strip()
+        if not name:
+            return jsonify({'error': 'invalid_name'}), 400
+        duplicate = RuleCategory.query.filter(
+            func.lower(RuleCategory.name) == name.lower(),
+            RuleCategory.id != category.id,
+        ).first()
+        if duplicate:
+            return jsonify({'error': 'duplicate'}), 400
+        category.name = name
+    db.session.commit()
+    return jsonify(serialize_rule_category(category))
+
+
+@app.route('/api/rules/categories/<int:category_id>', methods=['DELETE'])
+def rules_category_delete(category_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    if RuleCategory.query.count() <= 1:
+        return jsonify({'error': 'last_category'}), 400
+    category = RuleCategory.query.get_or_404(category_id)
+    db.session.delete(category)
+    db.session.commit()
+    return jsonify({'status': 'deleted'})
+
+
+@app.route('/api/rules/categories/<int:category_id>/move', methods=['POST'])
+def rules_category_move(category_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    payload = request.get_json(silent=True) or {}
+    direction = (payload.get('direction') or '').strip().lower()
+    if direction not in {'up', 'down'}:
+        return jsonify({'error': 'invalid_direction'}), 400
+    categories = RuleCategory.query.order_by(RuleCategory.sort_order.asc(), RuleCategory.id.asc()).all()
+    index_lookup = {category.id: index for index, category in enumerate(categories)}
+    if category_id not in index_lookup:
+        return jsonify({'error': 'not_found'}), 404
+    index = index_lookup[category_id]
+    swap_with = index - 1 if direction == 'up' else index + 1
+    if swap_with < 0 or swap_with >= len(categories):
+        return jsonify({'error': 'out_of_range'}), 400
+    categories[index], categories[swap_with] = categories[swap_with], categories[index]
+    for position, category in enumerate(categories, start=1):
+        category.sort_order = position
+    db.session.commit()
+    return jsonify([serialize_rule_category(category) for category in categories])
+
+
+@app.route('/api/rules/<int:card_id>/move', methods=['POST'])
+def rules_card_move(card_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    card = RuleCard.query.get_or_404(card_id)
+    payload = request.get_json(silent=True) or {}
+    direction = (payload.get('direction') or '').strip().lower()
+    if direction not in {'up', 'down'}:
+        return jsonify({'error': 'invalid_direction'}), 400
+    cards = RuleCard.query.filter_by(category_id=card.category_id).order_by(
+        RuleCard.sort_order.asc(),
+        RuleCard.id.asc(),
+    ).all()
+    index_lookup = {item.id: index for index, item in enumerate(cards)}
+    index = index_lookup.get(card_id)
+    if index is None:
+        return jsonify({'error': 'not_found'}), 404
+    swap_with = index - 1 if direction == 'up' else index + 1
+    if swap_with < 0 or swap_with >= len(cards):
+        return jsonify({'error': 'out_of_range'}), 400
+    cards[index], cards[swap_with] = cards[swap_with], cards[index]
+    for position, item in enumerate(cards, start=1):
+        item.sort_order = position
+    db.session.commit()
+    return jsonify([serialize_rule_card(item) for item in cards])
 
 
 @app.route('/api/inventory/<int:user_id>')
