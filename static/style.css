@@ -3384,6 +3384,11 @@ body.skill-check-lock {
     font-size: 0.95rem;
 }
 
+.rules-form__hint {
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
 .rules-form__actions {
     grid-column: 1 / -1;
     display: flex;
@@ -3534,6 +3539,30 @@ body.skill-check-lock {
     color: var(--accent);
     text-decoration: underline;
     margin: 0 2px;
+}
+
+.txt-red {
+    color: var(--danger);
+}
+
+.txt-green {
+    color: var(--success);
+}
+
+.txt-blue {
+    color: var(--accent);
+}
+
+.txt-orange {
+    color: var(--warning);
+}
+
+.txt-purple {
+    color: #b99bff;
+}
+
+.txt-gray {
+    color: var(--muted);
 }
 
 .rules-highlight {

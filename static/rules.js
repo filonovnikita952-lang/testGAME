@@ -47,6 +47,7 @@
             .replace(/'/g, '&#39;');
 
     const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const allowedColors = new Set(['red', 'green', 'blue', 'orange', 'purple', 'gray']);
 
     const tokenizeQuery = (value) =>
         String(value)
@@ -100,31 +101,104 @@
         return null;
     };
 
-    const renderMarkdownLinks = (text, tokens, enableHighlight) => {
+    const applyHighlight = (escapedText, tokens) => {
+        if (!tokens?.length) {
+            return escapedText;
+        }
+        let result = escapedText;
+        tokens.forEach((token) => {
+            const regex = new RegExp(escapeRegExp(token), 'gi');
+            result = result.replace(regex, (match) => `<mark class="rules-highlight">${match}</mark>`);
+        });
+        return result;
+    };
+
+    const applyInlineFormatting = (text, tokens, enableHighlight) => {
+        let result = escapeHtml(text);
+        if (enableHighlight) {
+            result = applyHighlight(result, tokens);
+        }
+        result = result.replace(
+            /\{color:(red|green|blue|orange|purple|gray)\}([\s\S]*?)\{\/color\}/g,
+            (match, color, content) => {
+                if (!allowedColors.has(color)) {
+                    return match;
+                }
+                return `<span class="txt-${color}">${content}</span>`;
+            }
+        );
+        result = result.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
+        result = result.replace(/\*([\s\S]+?)\*/g, '<em>$1</em>');
+        return result;
+    };
+
+    const buildInternalHref = (target) => {
+        const url = new URL(window.location.href);
+        if (target.categoryId) {
+            url.searchParams.set('category', target.categoryId);
+        } else {
+            url.searchParams.delete('category');
+        }
+        if (target.cardId) {
+            url.searchParams.set('card', target.cardId);
+        } else {
+            url.searchParams.delete('card');
+        }
+        if (target.hash) {
+            url.hash = target.hash;
+        }
+        return url.toString();
+    };
+
+    const getSafeLink = (rawUrl) => {
+        const trimmed = String(rawUrl || '').trim();
+        if (!trimmed) {
+            return null;
+        }
+        const internalTarget = findInternalTarget(trimmed);
+        if (internalTarget) {
+            return { href: buildInternalHref(internalTarget), internalTarget };
+        }
+        let url;
+        try {
+            url = new URL(trimmed, window.location.origin);
+        } catch (error) {
+            return null;
+        }
+        if (!['http:', 'https:'].includes(url.protocol)) {
+            return null;
+        }
+        return { href: url.toString(), internalTarget: null };
+    };
+
+    const formatRulesText = (text, tokens, enableHighlight) => {
         const pattern = /\[([^\]]+)]\(([^)]+)\)/g;
         let result = '';
         let lastIndex = 0;
         let match;
-        while ((match = pattern.exec(text))) {
-            const before = text.slice(lastIndex, match.index);
-            result += enableHighlight ? highlightText(before, tokens) : escapeHtml(before);
+        const source = String(text || '');
+        while ((match = pattern.exec(source))) {
+            const before = source.slice(lastIndex, match.index);
+            result += applyInlineFormatting(before, tokens, enableHighlight);
             const label = match[1];
             const rawUrl = match[2];
-            const safeUrl = escapeHtml(rawUrl);
-            const internalTarget = findInternalTarget(rawUrl);
-            const dataAttrs = internalTarget
-                ? ` data-card-id="${internalTarget.cardId || ''}" data-category-id="${
-                      internalTarget.categoryId || ''
-                  }"`
-                : '';
-            result += `<a href="${safeUrl}" class="rules-link"${dataAttrs}>`;
-            result += enableHighlight ? highlightText(label, tokens) : escapeHtml(label);
-            result += '</a>';
+            const linkInfo = getSafeLink(rawUrl);
+            if (!linkInfo) {
+                result += applyInlineFormatting(match[0], tokens, enableHighlight);
+            } else {
+                const internalTarget = linkInfo.internalTarget;
+                const dataAttrs = internalTarget
+                    ? ` data-card-id="${internalTarget.cardId || ''}" data-category-id="${
+                          internalTarget.categoryId || ''
+                      }"`
+                    : '';
+                result += `<a href="${escapeHtml(linkInfo.href)}" class="rules-link"${dataAttrs} target="_blank" rel="noopener noreferrer">`;
+                result += applyInlineFormatting(label, tokens, enableHighlight);
+                result += '</a>';
+            }
             lastIndex = pattern.lastIndex;
         }
-        result += enableHighlight
-            ? highlightText(text.slice(lastIndex), tokens)
-            : escapeHtml(text.slice(lastIndex));
+        result += applyInlineFormatting(source.slice(lastIndex), tokens, enableHighlight);
         return result;
     };
 
@@ -292,11 +366,7 @@
                 shortInput.dataset.field = 'short_desc';
                 shortDesc.appendChild(shortInput);
             } else {
-                shortDesc.innerHTML = renderMarkdownLinks(
-                    card.short_desc,
-                    state.highlightTokens,
-                    highlightEnabled
-                );
+                shortDesc.innerHTML = formatRulesText(card.short_desc, state.highlightTokens, highlightEnabled);
             }
             const indexTag = document.createElement('span');
             indexTag.className = 'rules-card__index';
@@ -407,7 +477,7 @@
                 body.appendChild(editGrid);
                 body.appendChild(bodyInput);
             } else {
-                body.innerHTML = renderMarkdownLinks(card.body, state.highlightTokens, highlightEnabled);
+                body.innerHTML = formatRulesText(card.body, state.highlightTokens, highlightEnabled);
             }
             cardEl.appendChild(body);
             cardsEl.appendChild(cardEl);
