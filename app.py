@@ -59,6 +59,7 @@ DEBUG_WEAPON_AMMO_ENV = 'DEBUG_WEAPON_AMMO'
 INVENTORY_LOG_FILE = 'inventory_debug.log'
 ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 ALLOWED_IMAGE_MIME_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
+RULE_CARD_STYLES = {'terminal', 'parchment', 'stone'}
 MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024
 MAX_ITEM_IMAGE_BYTES = 5 * 1024 * 1024
 MAIN_GRID_WIDTH = 5
@@ -466,6 +467,19 @@ class ChatMessage(db.Model):
     user = db.relationship('User')
 
 
+class RuleCard(db.Model):
+    __tablename__ = 'rule_card'
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(120), nullable=False)
+    short_desc = db.Column(db.String(255), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    style = db.Column(db.String(20), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
 def _sqlite_db_path(db_uri: str) -> Optional[str]:
     if not db_uri.startswith('sqlite:///'):
         return None
@@ -830,6 +844,18 @@ def parse_optional_int(value: Optional[object]) -> Optional[int]:
         return int(value)
     except (TypeError, ValueError):
         raise ValueError('invalid')
+
+
+def serialize_rule_card(card: RuleCard) -> dict[str, object]:
+    return {
+        'id': card.id,
+        'title': card.title,
+        'short_desc': card.short_desc,
+        'body': card.body,
+        'style': card.style,
+        'created_at': card.created_at.isoformat() if card.created_at else None,
+        'updated_at': card.updated_at.isoformat() if card.updated_at else None,
+    }
 
 
 def get_or_create_item_type(
@@ -2459,6 +2485,18 @@ def news():
     return render_template('News.html', user=current_user())
 
 
+@app.route('/rules')
+def rules_page():
+    user = current_user()
+    cards = RuleCard.query.order_by(RuleCard.created_at.desc()).all()
+    return render_template(
+        'rules.html',
+        user=user,
+        is_admin=bool(user and user.is_admin),
+        rules_cards=[serialize_rule_card(card) for card in cards],
+    )
+
+
 @app.route('/Lobby', methods=['GET', 'POST'])
 def lobby_page():
     user = require_user()
@@ -2543,6 +2581,79 @@ def lobby_page():
         inventory_payloads=inventory_payloads,
         transfer_players=transfer_players,
     )
+
+
+@app.route('/api/rules')
+def rules_api_list():
+    cards = RuleCard.query.order_by(RuleCard.created_at.desc()).all()
+    return jsonify([serialize_rule_card(card) for card in cards])
+
+
+@app.route('/api/rules', methods=['POST'])
+def rules_api_create():
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    payload = request.get_json(silent=True) or {}
+    title = (payload.get('title') or '').strip()
+    short_desc = (payload.get('short_desc') or '').strip()
+    body = (payload.get('body') or '').strip()
+    style = (payload.get('style') or '').strip().lower()
+    if not title or not short_desc or not body:
+        return jsonify({'error': 'missing_fields'}), 400
+    if style not in RULE_CARD_STYLES:
+        return jsonify({'error': 'invalid_style'}), 400
+    card = RuleCard(title=title, short_desc=short_desc, body=body, style=style)
+    db.session.add(card)
+    db.session.commit()
+    return jsonify(serialize_rule_card(card)), 201
+
+
+@app.route('/api/rules/<int:card_id>', methods=['PATCH'])
+def rules_api_update(card_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    card = RuleCard.query.get_or_404(card_id)
+    payload = request.get_json(silent=True) or {}
+    updates: dict[str, str] = {}
+    if 'title' in payload:
+        title = (payload.get('title') or '').strip()
+        if not title:
+            return jsonify({'error': 'invalid_title'}), 400
+        updates['title'] = title
+    if 'short_desc' in payload:
+        short_desc = (payload.get('short_desc') or '').strip()
+        if not short_desc:
+            return jsonify({'error': 'invalid_short_desc'}), 400
+        updates['short_desc'] = short_desc
+    if 'body' in payload:
+        body = (payload.get('body') or '').strip()
+        if not body:
+            return jsonify({'error': 'invalid_body'}), 400
+        updates['body'] = body
+    if 'style' in payload:
+        style = (payload.get('style') or '').strip().lower()
+        if style not in RULE_CARD_STYLES:
+            return jsonify({'error': 'invalid_style'}), 400
+        updates['style'] = style
+    if not updates:
+        return jsonify({'error': 'no_updates'}), 400
+    for key, value in updates.items():
+        setattr(card, key, value)
+    db.session.commit()
+    return jsonify(serialize_rule_card(card))
+
+
+@app.route('/api/rules/<int:card_id>', methods=['DELETE'])
+def rules_api_delete(card_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    card = RuleCard.query.get_or_404(card_id)
+    db.session.delete(card)
+    db.session.commit()
+    return jsonify({'status': 'deleted'})
 
 
 @app.route('/api/inventory/<int:user_id>')
