@@ -3107,6 +3107,15 @@ def admin_skills_page():
     return render_template('admin_skills.html', user=user)
 
 
+@app.route('/admin_skills')
+def admin_skills_legacy_redirect():
+    user = require_user()
+    if not user.is_admin:
+        flash('Доступ лише для адміністратора.', 'danger')
+        return redirect(url_for('index'))
+    return redirect(url_for('admin_skills_page'))
+
+
 @app.route('/admin/skills/seed', methods=['POST'])
 def admin_skills_seed():
     user = require_user()
