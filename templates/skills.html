@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+
+{% block title %}Прокачка | DRA{% endblock %}
+{% block header_title %}Прокачка{% endblock %}
+{% block page_class %}page--skills{% endblock %}
+
+{% block content %}
+<section class="skills-shell">
+    <header class="skills-header">
+        <div>
+            <p class="skills-eyebrow">DRA Skill Tree</p>
+            <h1>Прокачка персонажа</h1>
+            <p class="muted">Вмикайте навички послідовно в кожній гілці. Для активації наступного рівня потрібно мати активні всі попередні.</p>
+        </div>
+    </header>
+
+    <section class="skills-panel">
+        <div class="skills-tabs" data-skill-tabs></div>
+        <div class="skills-layout">
+            <aside class="skills-subclasses" data-skill-subclasses></aside>
+            <section class="skills-grid" data-skill-grid></section>
+        </div>
+        <p class="skills-hint" data-skill-hint></p>
+    </section>
+
+    <div class="skill-tooltip" id="skill-tooltip" role="tooltip" aria-hidden="true"></div>
+</section>
+
+<script>
+    window.SKILL_PROFILE_ID = {{ user.id }};
+</script>
+<script src="{{ url_for('static', filename='skills.js') }}" defer></script>
+{% endblock %}
