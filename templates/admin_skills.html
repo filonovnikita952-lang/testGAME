@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block title %}Адмін | Навички{% endblock %}
+{% block header_title %}Адмін: Навички{% endblock %}
+{% block page_class %}page--admin-skills{% endblock %}
+
+{% block content %}
+<section class="skills-shell">
+    <header class="skills-header">
+        <div>
+            <p class="skills-eyebrow">Skill Tree Admin</p>
+            <h1>Редактор прокачки</h1>
+            <p class="muted">Створюйте класи, підкласи, гілки та навички. Зміни зберігаються в базі даних.</p>
+        </div>
+        <div class="skills-header__actions">
+            <button class="button" type="button" data-seed-skills>Seed default structure</button>
+        </div>
+    </header>
+
+    <section class="admin-skills" data-admin-skills-root>
+        <div class="admin-skills__toolbar">
+            <button class="button ghost" type="button" data-add-category>+ Додати клас</button>
+        </div>
+        <div class="admin-skills__content" data-admin-skills-content>
+            <p class="muted">Завантаження...</p>
+        </div>
+    </section>
+</section>
+
+<script src="{{ url_for('static', filename='admin_skills.js') }}" defer></script>
+{% endblock %}

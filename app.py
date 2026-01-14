@@ -56,6 +56,7 @@ SHOP_DEBUG_ENV = 'DEBUG_SHOP'
 DEBUG_GIVEID_ENV = 'DEBUG_GIVEID'
 DEBUG_GIVEID_CHAT_ENV = 'DEBUG_GIVEID_CHAT'
 DEBUG_WEAPON_AMMO_ENV = 'DEBUG_WEAPON_AMMO'
+DEBUG_SKILLS_ENV = 'DEBUG_SKILLS'
 INVENTORY_LOG_FILE = 'inventory_debug.log'
 ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 ALLOWED_IMAGE_MIME_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
@@ -81,6 +82,7 @@ CHARACTER_CLASSES = {
     '???',
 }
 SKILL_CHECK_TIME_LIMIT = 30
+SKILL_LEVEL_ORDER = ['BR', '0', '1', '2', '3', '4', '5', '6', '7']
 
 ROLL_INVALID_MESSAGE = 'Невірний кидок'
 CHARACTER_STAT_FORMULA_KEYS = {
@@ -500,6 +502,108 @@ class RuleCategory(db.Model):
         cascade='all, delete-orphan',
         order_by='RuleCard.sort_order.asc()',
     )
+
+
+class SkillCategory(db.Model):
+    __tablename__ = 'skill_category'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    sort_order = db.Column(db.Integer, nullable=True)
+
+    subclasses = db.relationship(
+        'SkillSubclass',
+        back_populates='category',
+        cascade='all, delete-orphan',
+        order_by='SkillSubclass.sort_order.asc()',
+    )
+
+
+class SkillSubclass(db.Model):
+    __tablename__ = 'skill_subclass'
+
+    id = db.Column(db.Integer, primary_key=True)
+    category_id = db.Column(db.Integer, db.ForeignKey('skill_category.id'), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    sort_order = db.Column(db.Integer, nullable=True)
+
+    category = db.relationship('SkillCategory', back_populates='subclasses')
+    branches = db.relationship(
+        'SkillBranch',
+        back_populates='subclass',
+        cascade='all, delete-orphan',
+        order_by='SkillBranch.sort_order.asc()',
+    )
+
+
+class SkillBranch(db.Model):
+    __tablename__ = 'skill_branch'
+
+    id = db.Column(db.Integer, primary_key=True)
+    subclass_id = db.Column(db.Integer, db.ForeignKey('skill_subclass.id'), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    sort_order = db.Column(db.Integer, nullable=True)
+    branch_index = db.Column(db.Integer, nullable=False)
+
+    subclass = db.relationship('SkillSubclass', back_populates='branches')
+    skills = db.relationship(
+        'SkillDefinition',
+        back_populates='branch',
+        cascade='all, delete-orphan',
+    )
+
+
+class SkillDefinition(db.Model):
+    __tablename__ = 'skill_definition'
+    __table_args__ = (
+        db.UniqueConstraint('branch_id', 'level_key', name='uq_skill_branch_level'),
+        db.CheckConstraint("ability_type IN ('Passive', 'Active')", name='ck_skill_ability_type'),
+        db.CheckConstraint("distance_type IN ('SELF', 'INT_METERS')", name='ck_skill_distance_type'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    branch_id = db.Column(db.Integer, db.ForeignKey('skill_branch.id'), nullable=False)
+    level_key = db.Column(db.String(2), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    cost_int = db.Column(db.Integer, nullable=True)
+    ability_type = db.Column(db.String(10), nullable=False, default='Passive')
+    distance_type = db.Column(db.String(12), nullable=False, default='SELF')
+    distance_int = db.Column(db.Integer, nullable=True)
+    components = db.Column(db.Text, nullable=True)
+    cast_time_seconds = db.Column(db.Integer, nullable=True)
+    duration_seconds = db.Column(db.Integer, nullable=True)
+    description = db.Column(db.Text, nullable=False, default='')
+    is_enabled = db.Column(db.Boolean, default=True)
+
+    branch = db.relationship('SkillBranch', back_populates='skills')
+    requirements = db.relationship(
+        'SkillRequirement',
+        back_populates='skill',
+        cascade='all, delete-orphan',
+    )
+
+
+class SkillRequirement(db.Model):
+    __tablename__ = 'skill_requirement'
+
+    id = db.Column(db.Integer, primary_key=True)
+    skill_id = db.Column(db.Integer, db.ForeignKey('skill_definition.id'), nullable=False)
+    req_type = db.Column(db.String(40), nullable=False, default='text')
+    req_value = db.Column(db.Text, nullable=False)
+
+    skill = db.relationship('SkillDefinition', back_populates='requirements')
+
+
+class ProfileSkillState(db.Model):
+    __tablename__ = 'profile_skill_state'
+    __table_args__ = (
+        db.UniqueConstraint('profile_id', 'skill_id', name='uq_profile_skill_state'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    profile_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False)
+    skill_id = db.Column(db.Integer, db.ForeignKey('skill_definition.id'), nullable=False)
+    is_active = db.Column(db.Boolean, default=False, nullable=False)
 
 def _sqlite_db_path(db_uri: str) -> Optional[str]:
     if not db_uri.startswith('sqlite:///'):
@@ -933,6 +1037,40 @@ def parse_optional_int(value: Optional[object]) -> Optional[int]:
         raise ValueError('invalid')
 
 
+def parse_bool(value: Optional[object], default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {'1', 'true', 'yes', 'y', 'on'}:
+            return True
+        if normalized in {'0', 'false', 'no', 'n', 'off'}:
+            return False
+    return default
+
+
+def skill_level_index(level_key: str) -> int:
+    try:
+        return SKILL_LEVEL_ORDER.index(level_key)
+    except ValueError:
+        return -1
+
+
+def max_branches_for_subclass(subclass: SkillSubclass) -> int:
+    category = subclass.category
+    if category and category.sort_order == 5 and subclass.sort_order == 1:
+        return 2
+    return 3
+
+
+def is_skill_debug_enabled() -> bool:
+    return os.environ.get(DEBUG_SKILLS_ENV, '').lower() in {'1', 'true', 'yes', 'on'}
+
+
 def serialize_rule_card(card: RuleCard) -> dict[str, object]:
     return {
         'id': card.id,
@@ -945,6 +1083,119 @@ def serialize_rule_card(card: RuleCard) -> dict[str, object]:
         'created_at': card.created_at.isoformat() if card.created_at else None,
         'updated_at': card.updated_at.isoformat() if card.updated_at else None,
     }
+
+
+def serialize_skill_requirement(requirement: SkillRequirement) -> dict[str, object]:
+    return {
+        'id': requirement.id,
+        'req_type': requirement.req_type,
+        'req_value': requirement.req_value,
+    }
+
+
+def serialize_skill_definition(skill: SkillDefinition) -> dict[str, object]:
+    return {
+        'id': skill.id,
+        'branch_id': skill.branch_id,
+        'level_key': skill.level_key,
+        'name': skill.name,
+        'cost_int': skill.cost_int,
+        'ability_type': skill.ability_type,
+        'distance_type': skill.distance_type,
+        'distance_int': skill.distance_int,
+        'components': skill.components,
+        'cast_time_seconds': skill.cast_time_seconds,
+        'duration_seconds': skill.duration_seconds,
+        'description': skill.description,
+        'is_enabled': bool(skill.is_enabled),
+        'requirements': [serialize_skill_requirement(req) for req in skill.requirements],
+    }
+
+
+def build_skill_tree_payload() -> dict[str, object]:
+    categories = SkillCategory.query.order_by(SkillCategory.sort_order.asc(), SkillCategory.id.asc()).all()
+    payload_categories: list[dict[str, object]] = []
+    for category in categories:
+        subclasses_payload: list[dict[str, object]] = []
+        subclasses = SkillSubclass.query.filter_by(category_id=category.id).order_by(
+            SkillSubclass.sort_order.asc(),
+            SkillSubclass.id.asc(),
+        ).all()
+        for subclass in subclasses:
+            branches_payload: list[dict[str, object]] = []
+            branches = SkillBranch.query.filter_by(subclass_id=subclass.id).order_by(
+                SkillBranch.sort_order.asc(),
+                SkillBranch.branch_index.asc(),
+                SkillBranch.id.asc(),
+            ).all()
+            for branch in branches:
+                skills = SkillDefinition.query.filter_by(branch_id=branch.id).all()
+                skills_by_level = {skill.level_key: skill for skill in skills}
+                ordered_nodes: list[dict[str, object]] = []
+                for level_key in SKILL_LEVEL_ORDER:
+                    skill = skills_by_level.get(level_key)
+                    if skill:
+                        ordered_nodes.append(serialize_skill_definition(skill))
+                    else:
+                        ordered_nodes.append({
+                            'id': None,
+                            'branch_id': branch.id,
+                            'level_key': level_key,
+                            'name': 'Порожньо',
+                            'cost_int': None,
+                            'ability_type': 'Passive',
+                            'distance_type': 'SELF',
+                            'distance_int': None,
+                            'components': None,
+                            'cast_time_seconds': None,
+                            'duration_seconds': None,
+                            'description': '',
+                            'is_enabled': False,
+                            'requirements': [],
+                        })
+                branches_payload.append({
+                    'id': branch.id,
+                    'subclass_id': branch.subclass_id,
+                    'name': branch.name,
+                    'sort_order': branch.sort_order,
+                    'branch_index': branch.branch_index,
+                    'skills': ordered_nodes,
+                })
+            subclasses_payload.append({
+                'id': subclass.id,
+                'category_id': subclass.category_id,
+                'name': subclass.name,
+                'sort_order': subclass.sort_order,
+                'max_branches': max_branches_for_subclass(subclass),
+                'branches': branches_payload,
+            })
+        payload_categories.append({
+            'id': category.id,
+            'name': category.name,
+            'sort_order': category.sort_order,
+            'subclasses': subclasses_payload,
+        })
+    return {'categories': payload_categories}
+
+
+def ensure_profile_skill_state(profile_id: int) -> None:
+    skill_ids = [row[0] for row in db.session.query(SkillDefinition.id).all()]
+    if not skill_ids:
+        return
+    existing_skill_ids = {
+        row[0]
+        for row in db.session.query(ProfileSkillState.skill_id)
+        .filter(ProfileSkillState.profile_id == profile_id)
+        .all()
+    }
+    missing = [
+        ProfileSkillState(profile_id=profile_id, skill_id=skill_id, is_active=False)
+        for skill_id in skill_ids
+        if skill_id not in existing_skill_ids
+    ]
+    if missing:
+        db.session.bulk_save_objects(missing)
+        db.session.commit()
 
 
 def serialize_rule_category(category: RuleCategory) -> dict[str, object]:
@@ -2723,6 +2974,647 @@ def lobby_page():
         inventory_payloads=inventory_payloads,
         transfer_players=transfer_players,
     )
+
+
+@app.route('/skills')
+def skills_page():
+    user = require_user()
+    return render_template('skills.html', user=user)
+
+
+@app.route('/api/skills/tree')
+def skills_tree():
+    require_user()
+    return jsonify(build_skill_tree_payload())
+
+
+@app.route('/api/skills/state')
+def skills_state():
+    user = require_user()
+    profile_id = parse_int(request.args.get('profile_id'), 0)
+    if not profile_id:
+        return jsonify({'error': 'missing_profile'}), 400
+    if profile_id != user.id and not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    if not User.query.get(profile_id):
+        return jsonify({'error': 'profile_not_found'}), 404
+    ensure_profile_skill_state(profile_id)
+    active_skill_ids = [
+        row[0]
+        for row in db.session.query(ProfileSkillState.skill_id)
+        .filter_by(profile_id=profile_id, is_active=True)
+        .all()
+    ]
+    return jsonify({'profile_id': profile_id, 'active_skill_ids': active_skill_ids})
+
+
+@app.route('/api/skills/toggle', methods=['POST'])
+def skills_toggle():
+    user = require_user()
+    payload = request.get_json(silent=True) or {}
+    profile_id = parse_int(payload.get('profile_id'), 0)
+    if not profile_id:
+        return jsonify({'error': 'missing_profile'}), 400
+    if profile_id != user.id and not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    if not User.query.get(profile_id):
+        return jsonify({'error': 'profile_not_found'}), 404
+    try:
+        skill_id = parse_optional_int(payload.get('skill_id'))
+    except ValueError:
+        return jsonify({'error': 'invalid_skill'}), 400
+    if not skill_id:
+        return jsonify({'error': 'invalid_skill'}), 400
+    requested_active = parse_bool(payload.get('is_active'), default=False)
+    skill = SkillDefinition.query.get(skill_id)
+    if not skill:
+        return jsonify({'error': 'not_found'}), 404
+    if not skill.is_enabled:
+        return jsonify({'error': 'disabled'}), 400
+    branch_skills = SkillDefinition.query.filter_by(branch_id=skill.branch_id).all()
+    branch_skill_ids = [branch_skill.id for branch_skill in branch_skills]
+    skills_by_level = {branch_skill.level_key: branch_skill for branch_skill in branch_skills}
+    if skill.level_key not in SKILL_LEVEL_ORDER:
+        return jsonify({'error': 'invalid_level'}), 400
+    current_index = SKILL_LEVEL_ORDER.index(skill.level_key)
+    if requested_active:
+        for level_key in SKILL_LEVEL_ORDER[:current_index]:
+            previous_skill = skills_by_level.get(level_key)
+            if not previous_skill:
+                return jsonify({'error': 'locked'}), 400
+            state = ProfileSkillState.query.filter_by(
+                profile_id=profile_id,
+                skill_id=previous_skill.id,
+            ).first()
+            if not state or not state.is_active:
+                return jsonify({'error': 'locked'}), 400
+        state = ProfileSkillState.query.filter_by(profile_id=profile_id, skill_id=skill.id).first()
+        if not state:
+            state = ProfileSkillState(profile_id=profile_id, skill_id=skill.id, is_active=True)
+            db.session.add(state)
+        else:
+            state.is_active = True
+    else:
+        for level_key in SKILL_LEVEL_ORDER[current_index:]:
+            target_skill = skills_by_level.get(level_key)
+            if not target_skill:
+                continue
+            state = ProfileSkillState.query.filter_by(
+                profile_id=profile_id,
+                skill_id=target_skill.id,
+            ).first()
+            if not state:
+                state = ProfileSkillState(
+                    profile_id=profile_id,
+                    skill_id=target_skill.id,
+                    is_active=False,
+                )
+                db.session.add(state)
+            else:
+                state.is_active = False
+    db.session.commit()
+    active_skill_ids = [
+        row[0]
+        for row in db.session.query(ProfileSkillState.skill_id)
+        .filter(
+            ProfileSkillState.profile_id == profile_id,
+            ProfileSkillState.skill_id.in_(branch_skill_ids),
+            ProfileSkillState.is_active.is_(True),
+        )
+        .all()
+    ]
+    if is_skill_debug_enabled():
+        app.logger.info(
+            'Skill toggle profile=%s skill=%s active=%s',
+            profile_id,
+            skill_id,
+            requested_active,
+        )
+    return jsonify({
+        'status': 'ok',
+        'branch_id': skill.branch_id,
+        'branch_skill_ids': branch_skill_ids,
+        'active_skill_ids': active_skill_ids,
+    })
+
+
+@app.route('/admin/skills')
+def admin_skills_page():
+    user = require_user()
+    if not user.is_admin:
+        flash('Доступ лише для адміністратора.', 'danger')
+        return redirect(url_for('index'))
+    return render_template('admin_skills.html', user=user)
+
+
+@app.route('/admin/skills/seed', methods=['POST'])
+def admin_skills_seed():
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    for category_index in range(1, 6):
+        category = SkillCategory.query.filter_by(sort_order=category_index).first()
+        if not category:
+            category = SkillCategory(name=f'Клас {category_index}', sort_order=category_index)
+            db.session.add(category)
+            db.session.flush()
+        for subclass_index in range(1, 4):
+            subclass = SkillSubclass.query.filter_by(
+                category_id=category.id,
+                sort_order=subclass_index,
+            ).first()
+            if not subclass:
+                subclass = SkillSubclass(
+                    category_id=category.id,
+                    name=f'Підклас {subclass_index}',
+                    sort_order=subclass_index,
+                )
+                db.session.add(subclass)
+                db.session.flush()
+            branch_limit = 2 if category_index == 5 and subclass_index == 1 else 3
+            for branch_index in range(branch_limit):
+                branch = SkillBranch.query.filter_by(
+                    subclass_id=subclass.id,
+                    branch_index=branch_index,
+                ).first()
+                if not branch:
+                    branch = SkillBranch(
+                        subclass_id=subclass.id,
+                        name=f'Гілка {branch_index + 1}',
+                        sort_order=branch_index + 1,
+                        branch_index=branch_index,
+                    )
+                    db.session.add(branch)
+                    db.session.flush()
+                for level_key in SKILL_LEVEL_ORDER:
+                    existing_skill = SkillDefinition.query.filter_by(
+                        branch_id=branch.id,
+                        level_key=level_key,
+                    ).first()
+                    if not existing_skill:
+                        db.session.add(SkillDefinition(
+                            branch_id=branch.id,
+                            level_key=level_key,
+                            name=f'Навичка {level_key}',
+                            cost_int=None,
+                            ability_type='Passive',
+                            distance_type='SELF',
+                            distance_int=None,
+                            components=None,
+                            cast_time_seconds=None,
+                            duration_seconds=None,
+                            description='',
+                            is_enabled=True,
+                        ))
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/admin/skills/categories', methods=['POST'])
+def admin_skill_category_create():
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'invalid_name'}), 400
+    next_order = db.session.query(func.max(SkillCategory.sort_order)).scalar()
+    category = SkillCategory(name=name, sort_order=(next_order or 0) + 1)
+    db.session.add(category)
+    db.session.commit()
+    return jsonify(build_skill_tree_payload()), 201
+
+
+@app.route('/admin/skills/categories/<int:category_id>', methods=['PATCH'])
+def admin_skill_category_update(category_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    category = SkillCategory.query.get_or_404(category_id)
+    payload = request.get_json(silent=True) or {}
+    name = payload.get('name')
+    if name is not None:
+        name = str(name).strip()
+        if not name:
+            return jsonify({'error': 'invalid_name'}), 400
+        category.name = name
+    db.session.commit()
+    return jsonify(build_skill_tree_payload())
+
+
+@app.route('/admin/skills/categories/<int:category_id>', methods=['DELETE'])
+def admin_skill_category_delete(category_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    category = SkillCategory.query.get_or_404(category_id)
+    db.session.delete(category)
+    db.session.commit()
+    return jsonify({'status': 'deleted'})
+
+
+@app.route('/admin/skills/categories/<int:category_id>/move', methods=['POST'])
+def admin_skill_category_move(category_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    payload = request.get_json(silent=True) or {}
+    direction = (payload.get('direction') or '').strip().lower()
+    if direction not in {'up', 'down'}:
+        return jsonify({'error': 'invalid_direction'}), 400
+    categories = SkillCategory.query.order_by(SkillCategory.sort_order.asc(), SkillCategory.id.asc()).all()
+    index_lookup = {category.id: index for index, category in enumerate(categories)}
+    if category_id not in index_lookup:
+        return jsonify({'error': 'not_found'}), 404
+    index = index_lookup[category_id]
+    swap_with = index - 1 if direction == 'up' else index + 1
+    if swap_with < 0 or swap_with >= len(categories):
+        return jsonify({'error': 'out_of_range'}), 400
+    categories[index], categories[swap_with] = categories[swap_with], categories[index]
+    for position, category in enumerate(categories, start=1):
+        category.sort_order = position
+    db.session.commit()
+    return jsonify(build_skill_tree_payload())
+
+
+@app.route('/admin/skills/subclasses', methods=['POST'])
+def admin_skill_subclass_create():
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    payload = request.get_json(silent=True) or {}
+    try:
+        category_id = parse_optional_int(payload.get('category_id'))
+    except ValueError:
+        return jsonify({'error': 'invalid_category'}), 400
+    if not category_id:
+        return jsonify({'error': 'invalid_category'}), 400
+    category = SkillCategory.query.get(category_id)
+    if not category:
+        return jsonify({'error': 'invalid_category'}), 400
+    name = (payload.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'invalid_name'}), 400
+    next_order = (
+        db.session.query(func.max(SkillSubclass.sort_order))
+        .filter(SkillSubclass.category_id == category_id)
+        .scalar()
+    )
+    subclass = SkillSubclass(
+        category_id=category_id,
+        name=name,
+        sort_order=(next_order or 0) + 1,
+    )
+    db.session.add(subclass)
+    db.session.commit()
+    return jsonify(build_skill_tree_payload()), 201
+
+
+@app.route('/admin/skills/subclasses/<int:subclass_id>', methods=['PATCH'])
+def admin_skill_subclass_update(subclass_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    subclass = SkillSubclass.query.get_or_404(subclass_id)
+    payload = request.get_json(silent=True) or {}
+    name = payload.get('name')
+    if name is not None:
+        name = str(name).strip()
+        if not name:
+            return jsonify({'error': 'invalid_name'}), 400
+        subclass.name = name
+    db.session.commit()
+    return jsonify(build_skill_tree_payload())
+
+
+@app.route('/admin/skills/subclasses/<int:subclass_id>', methods=['DELETE'])
+def admin_skill_subclass_delete(subclass_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    subclass = SkillSubclass.query.get_or_404(subclass_id)
+    db.session.delete(subclass)
+    db.session.commit()
+    return jsonify({'status': 'deleted'})
+
+
+@app.route('/admin/skills/subclasses/<int:subclass_id>/move', methods=['POST'])
+def admin_skill_subclass_move(subclass_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    payload = request.get_json(silent=True) or {}
+    direction = (payload.get('direction') or '').strip().lower()
+    if direction not in {'up', 'down'}:
+        return jsonify({'error': 'invalid_direction'}), 400
+    subclass = SkillSubclass.query.get_or_404(subclass_id)
+    subclasses = SkillSubclass.query.filter_by(category_id=subclass.category_id).order_by(
+        SkillSubclass.sort_order.asc(),
+        SkillSubclass.id.asc(),
+    ).all()
+    index_lookup = {item.id: index for index, item in enumerate(subclasses)}
+    index = index_lookup.get(subclass_id)
+    if index is None:
+        return jsonify({'error': 'not_found'}), 404
+    swap_with = index - 1 if direction == 'up' else index + 1
+    if swap_with < 0 or swap_with >= len(subclasses):
+        return jsonify({'error': 'out_of_range'}), 400
+    subclasses[index], subclasses[swap_with] = subclasses[swap_with], subclasses[index]
+    for position, item in enumerate(subclasses, start=1):
+        item.sort_order = position
+    db.session.commit()
+    return jsonify(build_skill_tree_payload())
+
+
+@app.route('/admin/skills/branches', methods=['POST'])
+def admin_skill_branch_create():
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    payload = request.get_json(silent=True) or {}
+    try:
+        subclass_id = parse_optional_int(payload.get('subclass_id'))
+    except ValueError:
+        return jsonify({'error': 'invalid_subclass'}), 400
+    if not subclass_id:
+        return jsonify({'error': 'invalid_subclass'}), 400
+    subclass = SkillSubclass.query.get(subclass_id)
+    if not subclass:
+        return jsonify({'error': 'invalid_subclass'}), 400
+    max_branches = max_branches_for_subclass(subclass)
+    existing = SkillBranch.query.filter_by(subclass_id=subclass_id).order_by(
+        SkillBranch.branch_index.asc()
+    ).all()
+    if len(existing) >= max_branches:
+        return jsonify({'error': 'branch_limit'}), 400
+    name = (payload.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'invalid_name'}), 400
+    try:
+        branch_index = parse_optional_int(payload.get('branch_index'))
+    except ValueError:
+        return jsonify({'error': 'invalid_branch_index'}), 400
+    if branch_index is None:
+        used = {branch.branch_index for branch in existing}
+        for candidate in range(max_branches):
+            if candidate not in used:
+                branch_index = candidate
+                break
+    if branch_index is None or branch_index < 0 or branch_index >= max_branches:
+        return jsonify({'error': 'invalid_branch_index'}), 400
+    if any(branch.branch_index == branch_index for branch in existing):
+        return jsonify({'error': 'duplicate_branch_index'}), 400
+    next_order = (
+        db.session.query(func.max(SkillBranch.sort_order))
+        .filter(SkillBranch.subclass_id == subclass_id)
+        .scalar()
+    )
+    branch = SkillBranch(
+        subclass_id=subclass_id,
+        name=name,
+        sort_order=(next_order or 0) + 1,
+        branch_index=branch_index,
+    )
+    db.session.add(branch)
+    db.session.commit()
+    return jsonify(build_skill_tree_payload()), 201
+
+
+@app.route('/admin/skills/branches/<int:branch_id>', methods=['PATCH'])
+def admin_skill_branch_update(branch_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    branch = SkillBranch.query.get_or_404(branch_id)
+    payload = request.get_json(silent=True) or {}
+    name = payload.get('name')
+    if name is not None:
+        name = str(name).strip()
+        if not name:
+            return jsonify({'error': 'invalid_name'}), 400
+        branch.name = name
+    if 'branch_index' in payload:
+        try:
+            branch_index = parse_optional_int(payload.get('branch_index'))
+        except ValueError:
+            return jsonify({'error': 'invalid_branch_index'}), 400
+        if branch_index is None:
+            return jsonify({'error': 'invalid_branch_index'}), 400
+        subclass = branch.subclass
+        max_branches = max_branches_for_subclass(subclass)
+        if branch_index < 0 or branch_index >= max_branches:
+            return jsonify({'error': 'invalid_branch_index'}), 400
+        duplicate = SkillBranch.query.filter(
+            SkillBranch.subclass_id == branch.subclass_id,
+            SkillBranch.branch_index == branch_index,
+            SkillBranch.id != branch.id,
+        ).first()
+        if duplicate:
+            return jsonify({'error': 'duplicate_branch_index'}), 400
+        branch.branch_index = branch_index
+    db.session.commit()
+    return jsonify(build_skill_tree_payload())
+
+
+@app.route('/admin/skills/branches/<int:branch_id>', methods=['DELETE'])
+def admin_skill_branch_delete(branch_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    branch = SkillBranch.query.get_or_404(branch_id)
+    db.session.delete(branch)
+    db.session.commit()
+    return jsonify({'status': 'deleted'})
+
+
+@app.route('/admin/skills/branches/<int:branch_id>/move', methods=['POST'])
+def admin_skill_branch_move(branch_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    payload = request.get_json(silent=True) or {}
+    direction = (payload.get('direction') or '').strip().lower()
+    if direction not in {'up', 'down'}:
+        return jsonify({'error': 'invalid_direction'}), 400
+    branch = SkillBranch.query.get_or_404(branch_id)
+    branches = SkillBranch.query.filter_by(subclass_id=branch.subclass_id).order_by(
+        SkillBranch.sort_order.asc(),
+        SkillBranch.id.asc(),
+    ).all()
+    index_lookup = {item.id: index for index, item in enumerate(branches)}
+    index = index_lookup.get(branch_id)
+    if index is None:
+        return jsonify({'error': 'not_found'}), 404
+    swap_with = index - 1 if direction == 'up' else index + 1
+    if swap_with < 0 or swap_with >= len(branches):
+        return jsonify({'error': 'out_of_range'}), 400
+    branches[index], branches[swap_with] = branches[swap_with], branches[index]
+    for position, item in enumerate(branches, start=1):
+        item.sort_order = position
+    db.session.commit()
+    return jsonify(build_skill_tree_payload())
+
+
+@app.route('/admin/skills/skills', methods=['POST'])
+def admin_skill_definition_create():
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    payload = request.get_json(silent=True) or {}
+    try:
+        branch_id = parse_optional_int(payload.get('branch_id'))
+    except ValueError:
+        return jsonify({'error': 'invalid_branch'}), 400
+    if not branch_id:
+        return jsonify({'error': 'invalid_branch'}), 400
+    branch = SkillBranch.query.get(branch_id)
+    if not branch:
+        return jsonify({'error': 'invalid_branch'}), 400
+    level_key = (payload.get('level_key') or '').strip().upper()
+    if level_key not in SKILL_LEVEL_ORDER:
+        return jsonify({'error': 'invalid_level'}), 400
+    if SkillDefinition.query.filter_by(branch_id=branch_id, level_key=level_key).first():
+        return jsonify({'error': 'duplicate_level'}), 400
+    name = (payload.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'invalid_name'}), 400
+    ability_type = (payload.get('ability_type') or 'Passive').strip()
+    if ability_type not in {'Passive', 'Active'}:
+        return jsonify({'error': 'invalid_type'}), 400
+    distance_type = (payload.get('distance_type') or 'SELF').strip()
+    if distance_type not in {'SELF', 'INT_METERS'}:
+        return jsonify({'error': 'invalid_distance_type'}), 400
+    try:
+        cost_int = parse_optional_int(payload.get('cost_int'))
+    except ValueError:
+        return jsonify({'error': 'invalid_cost'}), 400
+    try:
+        distance_int = parse_optional_int(payload.get('distance_int'))
+    except ValueError:
+        return jsonify({'error': 'invalid_distance'}), 400
+    try:
+        cast_time_seconds = parse_optional_int(payload.get('cast_time_seconds'))
+    except ValueError:
+        return jsonify({'error': 'invalid_cast_time'}), 400
+    try:
+        duration_seconds = parse_optional_int(payload.get('duration_seconds'))
+    except ValueError:
+        return jsonify({'error': 'invalid_duration'}), 400
+    components = payload.get('components')
+    if components is not None:
+        components = str(components).strip() or None
+    description = str(payload.get('description') or '')
+    is_enabled = parse_bool(payload.get('is_enabled'), default=True)
+    skill = SkillDefinition(
+        branch_id=branch_id,
+        level_key=level_key,
+        name=name,
+        cost_int=cost_int,
+        ability_type=ability_type,
+        distance_type=distance_type,
+        distance_int=distance_int,
+        components=components,
+        cast_time_seconds=cast_time_seconds,
+        duration_seconds=duration_seconds,
+        description=description,
+        is_enabled=is_enabled,
+    )
+    db.session.add(skill)
+    db.session.flush()
+    requirements = payload.get('requirements') or []
+    if isinstance(requirements, list):
+        for req_value in requirements:
+            req_value = str(req_value).strip()
+            if req_value:
+                db.session.add(SkillRequirement(skill_id=skill.id, req_type='text', req_value=req_value))
+    db.session.commit()
+    return jsonify(build_skill_tree_payload()), 201
+
+
+@app.route('/admin/skills/skills/<int:skill_id>', methods=['PATCH'])
+def admin_skill_definition_update(skill_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    skill = SkillDefinition.query.get_or_404(skill_id)
+    payload = request.get_json(silent=True) or {}
+    if 'level_key' in payload:
+        level_key = (payload.get('level_key') or '').strip().upper()
+        if level_key not in SKILL_LEVEL_ORDER:
+            return jsonify({'error': 'invalid_level'}), 400
+        duplicate = SkillDefinition.query.filter(
+            SkillDefinition.branch_id == skill.branch_id,
+            SkillDefinition.level_key == level_key,
+            SkillDefinition.id != skill.id,
+        ).first()
+        if duplicate:
+            return jsonify({'error': 'duplicate_level'}), 400
+        skill.level_key = level_key
+    if 'name' in payload:
+        name = str(payload.get('name') or '').strip()
+        if not name:
+            return jsonify({'error': 'invalid_name'}), 400
+        skill.name = name
+    if 'cost_int' in payload:
+        try:
+            skill.cost_int = parse_optional_int(payload.get('cost_int'))
+        except ValueError:
+            return jsonify({'error': 'invalid_cost'}), 400
+    if 'ability_type' in payload:
+        ability_type = (payload.get('ability_type') or '').strip()
+        if ability_type not in {'Passive', 'Active'}:
+            return jsonify({'error': 'invalid_type'}), 400
+        skill.ability_type = ability_type
+    if 'distance_type' in payload:
+        distance_type = (payload.get('distance_type') or '').strip()
+        if distance_type not in {'SELF', 'INT_METERS'}:
+            return jsonify({'error': 'invalid_distance_type'}), 400
+        skill.distance_type = distance_type
+    if 'distance_int' in payload:
+        try:
+            skill.distance_int = parse_optional_int(payload.get('distance_int'))
+        except ValueError:
+            return jsonify({'error': 'invalid_distance'}), 400
+    if 'components' in payload:
+        components = payload.get('components')
+        skill.components = str(components).strip() if components not in (None, '') else None
+    if 'cast_time_seconds' in payload:
+        try:
+            skill.cast_time_seconds = parse_optional_int(payload.get('cast_time_seconds'))
+        except ValueError:
+            return jsonify({'error': 'invalid_cast_time'}), 400
+    if 'duration_seconds' in payload:
+        try:
+            skill.duration_seconds = parse_optional_int(payload.get('duration_seconds'))
+        except ValueError:
+            return jsonify({'error': 'invalid_duration'}), 400
+    if 'description' in payload:
+        skill.description = str(payload.get('description') or '')
+    if 'is_enabled' in payload:
+        skill.is_enabled = parse_bool(payload.get('is_enabled'), default=True)
+    if 'requirements' in payload:
+        SkillRequirement.query.filter_by(skill_id=skill.id).delete()
+        requirements = payload.get('requirements') or []
+        if isinstance(requirements, list):
+            for req_value in requirements:
+                req_value = str(req_value).strip()
+                if req_value:
+                    db.session.add(SkillRequirement(skill_id=skill.id, req_type='text', req_value=req_value))
+    db.session.commit()
+    return jsonify(build_skill_tree_payload())
+
+
+@app.route('/admin/skills/skills/<int:skill_id>', methods=['DELETE'])
+def admin_skill_definition_delete(skill_id: int):
+    user = require_user()
+    if not user.is_admin:
+        return jsonify({'error': 'forbidden'}), 403
+    skill = SkillDefinition.query.get_or_404(skill_id)
+    ProfileSkillState.query.filter_by(skill_id=skill.id).delete()
+    db.session.delete(skill)
+    db.session.commit()
+    return jsonify({'status': 'deleted'})
 
 
 @app.route('/api/rules')
