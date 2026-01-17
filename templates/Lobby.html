@@ -414,13 +414,15 @@
                                                     <span class="panel-title">Характеристики</span>
                                                     <span class="panel-tag">STATS</span>
                                                 </div>
-                                                <div class="attributes-formula" data-attribute-formula>
-                                                    <label for="attribute-formula-{{ membership.lobby.id }}">Формула модифікатора</label>
-                                                    <div class="attributes-formula__controls">
-                                                        <input type="text" id="attribute-formula-{{ membership.lobby.id }}" data-attribute-formula-input>
-                                                        <button type="button" class="button ghost" data-attribute-formula-save>Зберегти</button>
+                                                {% if is_master_user %}
+                                                    <div class="attributes-formula" data-attribute-formula>
+                                                        <label for="attribute-formula-{{ membership.lobby.id }}">Формула модифікатора</label>
+                                                        <div class="attributes-formula__controls">
+                                                            <input type="text" id="attribute-formula-{{ membership.lobby.id }}" data-attribute-formula-input>
+                                                            <button type="button" class="button ghost" data-attribute-formula-save>Зберегти</button>
+                                                        </div>
                                                     </div>
-                                                </div>
+                                                {% endif %}
                                                 <div class="attributes-grid">
                                                     <div class="attribute-row" data-attribute-row data-attribute-key="str">
                                                         <span class="attribute-label">STR</span>
