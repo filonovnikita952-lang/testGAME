@@ -64,7 +64,7 @@
                                             aria-label="Toggle lobby info"
                                         >▾</button>
                                     </div>
-                                    <div class="lobby-info__content" id="lobby-info-body-{{ membership.lobby.id }}" data-panel-body>
+                                    <div class="lobby-info__content panel-body" id="lobby-info-body-{{ membership.lobby.id }}" data-panel-body>
                                         <div class="lobby-info__meta">
                                             <div>
                                                 <span class="lobby-info__label">Лобі</span>
@@ -151,7 +151,13 @@
                                         {% endif %}
                                     {% endfor %}
                                 </div>
-                                <div class="lobby-chat dra-card" data-lobby-chat data-lobby-id="{{ membership.lobby.id }}" data-collapsible-panel>
+                                <div
+                                    class="lobby-chat dra-card"
+                                    data-lobby-chat
+                                    data-lobby-id="{{ membership.lobby.id }}"
+                                    data-is-master="{{ 'true' if is_master_user else 'false' }}"
+                                    data-collapsible-panel="lobby-chat-{{ membership.lobby.id }}"
+                                >
                                     <div class="panel-header">
                                         <span class="panel-title">Чат лобі</span>
                                         <div class="panel-header__actions">

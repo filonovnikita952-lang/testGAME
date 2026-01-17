@@ -65,6 +65,7 @@
         constructor(root) {
             this.root = root;
             this.lobbyId = root.dataset.lobbyId;
+            this.isMaster = root.dataset.isMaster === 'true';
             this.messages = root.querySelector('[data-chat-messages]');
             this.form = root.querySelector('[data-chat-form]');
             this.input = root.querySelector('[data-chat-input]');
@@ -75,6 +76,7 @@
             this.bind();
             this.refresh();
             this.startPolling();
+            this.bindShopStatus();
         }
 
         bind() {
@@ -86,6 +88,44 @@
                 event.preventDefault();
                 this.submitMessage();
             });
+            this.messages?.addEventListener('click', (event) => {
+                const button = event.target?.closest('[data-shop-chat-action]');
+                if (!button) return;
+                if (!(button instanceof HTMLElement)) return;
+                event.preventDefault();
+                this.handleShopChatAction(button);
+            });
+        }
+
+        bindShopStatus() {
+            document.addEventListener('shop-status', (event) => {
+                const lobbyId = event.detail?.lobbyId;
+                if (!lobbyId || String(lobbyId) !== String(this.lobbyId)) return;
+                this.updateShopControls(Boolean(event.detail?.active));
+            });
+        }
+
+        getShopController() {
+            if (!this.lobbyId) return null;
+            return window.LOBBY_INVENTORY_CONTROLLERS?.[this.lobbyId] || null;
+        }
+
+        async handleShopChatAction(button) {
+            const action = button.dataset.shopChatAction;
+            if (!action) return;
+            if (action === 'open') {
+                const controller = this.getShopController();
+                if (controller?.refreshShopStatus) {
+                    await controller.refreshShopStatus();
+                }
+                controller?.openShopOverlay?.();
+                return;
+            }
+            if (action === 'close') {
+                if (!this.isMaster) return;
+                const controller = this.getShopController();
+                await controller?.stopShop?.();
+            }
         }
 
         startPolling() {
@@ -154,12 +194,23 @@
                 </div>
                 <p class="lobby-chat__text">${message.message}</p>
             `;
+            if (!this.isMaster) {
+                wrapper.querySelectorAll('[data-shop-master-only]').forEach((button) => button.remove());
+            }
             this.messages.appendChild(wrapper);
         }
 
         scrollToBottom() {
             if (!this.messages) return;
             this.messages.scrollTop = this.messages.scrollHeight;
+        }
+
+        updateShopControls(isActive) {
+            if (!this.messages) return;
+            this.messages.querySelectorAll('[data-shop-chat-controls]').forEach((controls) => {
+                if (!(controls instanceof HTMLElement)) return;
+                controls.style.display = isActive ? '' : 'none';
+            });
         }
     }
 
@@ -221,8 +272,8 @@
         document.querySelectorAll('[data-collapsible-panel]').forEach((panel) => {
             const toggle = panel.querySelector('[data-panel-toggle]');
             const body = panel.querySelector('[data-panel-body]');
-            const lobbyId = panel.dataset.lobbyId || 'default';
-            const storageKey = `dra_lobby_chat_collapsed_${lobbyId}`;
+            const panelKey = panel.dataset.collapsiblePanel || panel.dataset.lobbyId || 'default';
+            const storageKey = `dra_panel_collapsed_${panelKey}`;
             const setCollapsed = (collapsed) => {
                 panel.classList.toggle('is-collapsed', collapsed);
                 toggle?.setAttribute('aria-expanded', String(!collapsed));

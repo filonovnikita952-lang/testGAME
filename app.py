@@ -3945,6 +3945,18 @@ def lobby_shop_start(lobby_id: int):
         owner_id=user.id,
         container_id=container_id,
     )
+    container_label = html.escape(container_def.get('label') or 'Магазин')
+    shop_message = (
+        f'Магазин відкрито: {container_label}. '
+        '<span class="shop-chat-controls" data-shop-chat-controls>'
+        '<button type="button" class="button ghost shop-chat-button" '
+        'data-shop-chat-action="open">Увійти в магазин</button>'
+        '<button type="button" class="button ghost shop-chat-button" '
+        'data-shop-chat-action="close" data-shop-master-only="true">❌</button>'
+        '</span>'
+    )
+    create_chat_message(lobby_id, user.id, shop_message, is_system=True)
+    db.session.commit()
     log_shop_debug('Shop started lobby=%s owner=%s container=%s', lobby_id, user.id, container_id)
     return jsonify({'ok': True})
 
@@ -3958,6 +3970,8 @@ def lobby_shop_stop(lobby_id: int):
     if not membership:
         return jsonify({'error': 'forbidden'}), 403
     if ACTIVE_SHOPS.pop(lobby_id, None):
+        create_chat_message(lobby_id, user.id, 'Магазин закрито.', is_system=True)
+        db.session.commit()
         log_shop_debug('Shop stopped lobby=%s user=%s', lobby_id, user.id)
     return jsonify({'ok': True})
 
