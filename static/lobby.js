@@ -194,8 +194,57 @@
         });
     };
 
+    const setupSkillsLink = () => {
+        document.querySelectorAll('[data-skills-link]').forEach((link) => {
+            const openSkills = () => {
+                const win = window.open('/skills', '_blank', 'noopener');
+                if (win) {
+                    win.opener = null;
+                }
+            };
+
+            link.addEventListener('click', (event) => {
+                event.preventDefault();
+                openSkills();
+            });
+
+            link.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    openSkills();
+                }
+            });
+        });
+    };
+
+    const setupCollapsiblePanels = () => {
+        document.querySelectorAll('[data-collapsible-panel]').forEach((panel) => {
+            const toggle = panel.querySelector('[data-panel-toggle]');
+            const body = panel.querySelector('[data-panel-body]');
+            const lobbyId = panel.dataset.lobbyId || 'default';
+            const storageKey = `dra_lobby_chat_collapsed_${lobbyId}`;
+            const setCollapsed = (collapsed) => {
+                panel.classList.toggle('is-collapsed', collapsed);
+                toggle?.setAttribute('aria-expanded', String(!collapsed));
+                toggle?.setAttribute('aria-pressed', String(collapsed));
+                toggle && (toggle.textContent = collapsed ? '▸' : '▾');
+                body?.setAttribute('aria-hidden', String(collapsed));
+                localStorage.setItem(storageKey, collapsed ? '1' : '0');
+            };
+            const stored = localStorage.getItem(storageKey);
+            setCollapsed(stored === '1');
+
+            toggle?.addEventListener('click', () => {
+                const isCollapsed = panel.classList.contains('is-collapsed');
+                setCollapsed(!isCollapsed);
+            });
+        });
+    };
+
     document.addEventListener('DOMContentLoaded', () => {
         setupSuitToolbars();
+        setupSkillsLink();
+        setupCollapsiblePanels();
     });
 
     class SkillCheckController {

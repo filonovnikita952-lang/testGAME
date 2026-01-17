@@ -45,22 +45,11 @@
         {% for membership in member_lobbies %}
             {% set is_master_user = membership.role == 'master' or membership.lobby.admin_id == user.id %}
             <section class="lobby-room">
-                <header class="lobby-room__header">
-                    <div class="lobby-room__title">
-                        <p class="lobby-room__eyebrow">Ваше лобі</p>
-                        <h2>{{ membership.lobby.name }}</h2>
-                    </div>
-                    <div class="lobby-room__actions">
-                        <a class="button" href="{{ url_for('skills_page') }}" target="_blank" rel="noopener">Прокачка</a>
-                    </div>
-                </header>
-
                 <div class="lobby-room__surface workspace">
                     <div class="lobby-room__grid lobby-room__grid--four">
                         <aside class="lobby-column lobby-column--info lobby-roster">
                             <div class="lobby-roster__header">
                                 <h3>Склад команди</h3>
-                                <p class="muted">Натисніть на учасника, щоб побачити деталі.</p>
                             </div>
                             <div class="lobby-column__scroll">
                                 <div class="lobby-info dra-card">
@@ -149,18 +138,29 @@
                                         {% endif %}
                                     {% endfor %}
                                 </div>
-                                <div class="lobby-chat dra-card" data-lobby-chat data-lobby-id="{{ membership.lobby.id }}">
+                                <div class="lobby-chat dra-card" data-lobby-chat data-lobby-id="{{ membership.lobby.id }}" data-collapsible-panel>
                                     <div class="panel-header">
                                         <span class="panel-title">Чат лобі</span>
-                                        <span class="panel-tag">LIVE</span>
+                                        <div class="panel-header__actions">
+                                            <span class="panel-tag">LIVE</span>
+                                            <button
+                                                class="panel-toggle-button"
+                                                type="button"
+                                                data-panel-toggle
+                                                aria-expanded="true"
+                                                aria-controls="lobby-chat-body-{{ membership.lobby.id }}"
+                                            >▾</button>
+                                        </div>
                                     </div>
-                                    <div class="lobby-chat__messages" data-chat-messages>
-                                        <p class="muted">Чат поки порожній. Напишіть перше повідомлення!</p>
+                                    <div class="panel-body" id="lobby-chat-body-{{ membership.lobby.id }}" data-panel-body>
+                                        <div class="lobby-chat__messages" data-chat-messages>
+                                            <p class="muted">Чат поки порожній. Напишіть перше повідомлення!</p>
+                                        </div>
+                                        <form class="form lobby-chat__form" data-chat-form>
+                                            <input type="text" placeholder="Ваше повідомлення" data-chat-input>
+                                            <button type="submit" class="button ghost" data-chat-send>Надіслати</button>
+                                        </form>
                                     </div>
-                                    <form class="form lobby-chat__form" data-chat-form>
-                                        <input type="text" placeholder="Ваше повідомлення" data-chat-input>
-                                        <button type="submit" class="button ghost" data-chat-send>Надіслати</button>
-                                    </form>
                                 </div>
                             </div>
                         </aside>
@@ -207,7 +207,14 @@
                                                 </div>
                                                 <div>
                                                     <span class="lobby-info__label">Клас</span>
-                                                    <strong data-character-class-text>???</strong>
+                                                    <strong
+                                                        class="character-class-link"
+                                                        data-character-class-text
+                                                        data-skills-link
+                                                        role="link"
+                                                        tabindex="0"
+                                                        aria-label="Відкрити прокачку"
+                                                    >???</strong>
                                                     <select class="is-hidden" data-character-class-select>
                                                         <option value="control">control</option>
                                                         <option value="creation">creation</option>
@@ -274,11 +281,6 @@
                                                             <div class="stat-bar__fill" data-stat-fill="hungry"></div>
                                                         </div>
                                                         <input type="range" min="0" max="100" value="0" class="stat-bar__input" data-stat-input="hungry">
-                                                    </div>
-                                                    <div class="stat-field stat-field--inline">
-                                                        <span>Armor Class</span>
-                                                        <strong data-stat-value="ac">0</strong>
-                                                        <input type="number" min="0" class="stat-field__input" data-stat-input="armor_class">
                                                     </div>
                                                 </div>
                                             </div>
@@ -845,16 +847,7 @@
                                                     {% endif %}
                                                 </div>
                                             </div>
-                                            <div class="inventory-actions" data-inventory-actions>
-                                                <button class="button ghost" type="button" data-action="auto-pack">Auto-pack</button>
-                                                <button class="button" type="button" data-action="rotate-item">Rotate (R)</button>
-                                                <button class="button ghost shop-toggle is-hidden" type="button" data-shop-open>Go to Shop</button>
-                                                {% if is_master_user %}
-                                                    <button class="button ghost shop-toggle is-hidden" type="button" data-shop-stop>Close Shop</button>
-                                                {% endif %}
-                                            </div>
                                             <div class="tetris-grid" data-container-id="inv_main" aria-label="Рюкзак"></div>
-                                            <p class="muted inventory-hint">Перетягуйте предмети, натискайте R для повороту та ПКМ для контекстного меню.</p>
                                         </div>
                                         <div class="inventory-subgrids">
                                             <div class="inventory-grid-panel dra-card">
@@ -957,8 +950,6 @@
                                     </div>
                                     <div class="inventory-panel panel-secondary lobby-panel dra-card">
                                         <div class="character-storage">
-                                            <h4 class="inventory-section__title">Ready Weapon</h4>
-                                            <div class="tetris-grid tetris-grid--compact" data-container-id="slot_weapon_main"></div>
                                             <div class="suit-toolbar" data-suit-toolbar>
                                                 <button type="button" class="button ghost suit-button" data-suit-button aria-pressed="true" aria-disabled="false">♠️</button>
                                                 <button type="button" class="button ghost suit-button" data-suit-button aria-pressed="true" aria-disabled="false">♣️</button>
