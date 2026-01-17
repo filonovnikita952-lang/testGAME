@@ -1329,10 +1329,25 @@ textarea {
     font-size: 0.8rem;
 }
 
+.lobby-info__role {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.lobby-info__role .panel-toggle {
+    margin-left: auto;
+}
+
 .lobby-info__meta strong {
     display: block;
     font-size: 0.9rem;
     letter-spacing: 0.02em;
+}
+
+.lobby-info__role strong {
+    display: inline-flex;
 }
 
 .lobby-info__label {

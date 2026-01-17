@@ -135,7 +135,10 @@
             this.bagGridList = this.root.querySelector('[data-bag-grid-list]');
             this.fastSlotList = this.root.querySelector('[data-fast-slot-list]');
             this.fastSlotPanel = this.root.querySelector('[data-fast-slot-panel]');
-            this.masterToggle = this.root.querySelector('[data-master-toggle]');
+            const lobbyRoom = this.root.closest('.lobby-room');
+            this.masterToggle = lobbyRoom
+                ? lobbyRoom.querySelector(`[data-master-toggle][data-lobby-id="${this.lobbyId}"]`)
+                : this.root.querySelector('[data-master-toggle]');
             this.masterMode = 'view';
             this.gridElements = Array.from(this.root.querySelectorAll('.tetris-grid'));
             this.characterClassText = this.root.querySelector('[data-character-class-text]');
