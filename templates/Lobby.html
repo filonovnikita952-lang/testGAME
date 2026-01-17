@@ -45,22 +45,11 @@
         {% for membership in member_lobbies %}
             {% set is_master_user = membership.role == 'master' or membership.lobby.admin_id == user.id %}
             <section class="lobby-room">
-                <header class="lobby-room__header">
-                    <div class="lobby-room__title">
-                        <p class="lobby-room__eyebrow">Ваше лобі</p>
-                        <h2>{{ membership.lobby.name }}</h2>
-                    </div>
-                    <div class="lobby-room__actions">
-                        <a class="button" href="{{ url_for('skills_page') }}" target="_blank" rel="noopener">Прокачка</a>
-                    </div>
-                </header>
-
                 <div class="lobby-room__surface workspace">
                     <div class="lobby-room__grid lobby-room__grid--four">
                         <aside class="lobby-column lobby-column--info lobby-roster">
                             <div class="lobby-roster__header">
                                 <h3>Склад команди</h3>
-                                <p class="muted">Натисніть на учасника, щоб побачити деталі.</p>
                             </div>
                             <div class="lobby-column__scroll">
                                 <div class="lobby-info dra-card">
@@ -207,7 +196,13 @@
                                                 </div>
                                                 <div>
                                                     <span class="lobby-info__label">Клас</span>
-                                                    <strong data-character-class-text>???</strong>
+                                                    <strong
+                                                        data-character-class-text
+                                                        class="character-skill-link"
+                                                        role="link"
+                                                        tabindex="0"
+                                                        data-skills-link
+                                                    >???</strong>
                                                     <select class="is-hidden" data-character-class-select>
                                                         <option value="control">control</option>
                                                         <option value="creation">creation</option>
@@ -274,11 +269,6 @@
                                                             <div class="stat-bar__fill" data-stat-fill="hungry"></div>
                                                         </div>
                                                         <input type="range" min="0" max="100" value="0" class="stat-bar__input" data-stat-input="hungry">
-                                                    </div>
-                                                    <div class="stat-field stat-field--inline">
-                                                        <span>Armor Class</span>
-                                                        <strong data-stat-value="ac">0</strong>
-                                                        <input type="number" min="0" class="stat-field__input" data-stat-input="armor_class">
                                                     </div>
                                                 </div>
                                             </div>
@@ -835,26 +825,17 @@
                             <section class="lobby-column lobby-column--inventory">
                                 <div class="lobby-column__scroll lobby-inventory-scroll">
                                     <section class="lobby-inventory__inventory">
-                                        <div class="inventory-grid-panel panel-main dra-card">
-                                            <div class="panel-header">
-                                                <span class="panel-title">Inventory</span>
-                                                <div class="panel-header__actions">
-                                                    <span class="panel-tag" data-weight-display>0 / 5</span>
+                                            <div class="inventory-grid-panel panel-main dra-card">
+                                                <div class="panel-header">
+                                                    <span class="panel-title">Inventory</span>
+                                                    <div class="panel-header__actions">
+                                                        <span class="panel-tag" data-weight-display>0 / 5</span>
                                                     {% if is_master_user %}
                                                         <button class="button ghost shop-button" type="button" data-shop-start data-container-id="inv_main" title="Open Shop">🛒</button>
                                                     {% endif %}
                                                 </div>
                                             </div>
-                                            <div class="inventory-actions" data-inventory-actions>
-                                                <button class="button ghost" type="button" data-action="auto-pack">Auto-pack</button>
-                                                <button class="button" type="button" data-action="rotate-item">Rotate (R)</button>
-                                                <button class="button ghost shop-toggle is-hidden" type="button" data-shop-open>Go to Shop</button>
-                                                {% if is_master_user %}
-                                                    <button class="button ghost shop-toggle is-hidden" type="button" data-shop-stop>Close Shop</button>
-                                                {% endif %}
-                                            </div>
                                             <div class="tetris-grid" data-container-id="inv_main" aria-label="Рюкзак"></div>
-                                            <p class="muted inventory-hint">Перетягуйте предмети, натискайте R для повороту та ПКМ для контекстного меню.</p>
                                         </div>
                                         <div class="inventory-subgrids">
                                             <div class="inventory-grid-panel dra-card">
@@ -868,32 +849,42 @@
                                     </section>
                                 </div>
                                 <div class="lobby-inventory-detail">
-                                    <div class="inventory-panel panel-secondary lobby-panel dra-card">
+                                    <div class="inventory-panel panel-secondary lobby-panel dra-card" data-collapsible-panel="item-detail">
                                         <div class="panel-header">
                                             <span class="panel-title">Деталі предмета</span>
+                                            <button
+                                                type="button"
+                                                class="panel-toggle-button"
+                                                data-panel-toggle
+                                                aria-expanded="true"
+                                                aria-controls="item-detail-body"
+                                                aria-label="Toggle item details"
+                                            >▾</button>
                                         </div>
-                                        <div class="item-detail">
-                                            <img src="/static/images/default_avatar.png" alt="Item" class="item-detail__image" data-item-detail-image>
-                                            <div class="item-detail__content">
-                                                <strong class="item-detail__name" data-item-detail-name>Оберіть предмет</strong>
-                                                <p class="muted item-detail__description" data-item-detail-description></p>
-                                                <div class="item-detail__meta" data-item-detail-meta>
-                                                    <span class="item-detail__meta-item is-hidden" data-item-detail-ammo></span>
+                                        <div class="panel-body" id="item-detail-body" data-panel-body>
+                                            <div class="item-detail">
+                                                <img src="/static/images/default_avatar.png" alt="Item" class="item-detail__image" data-item-detail-image>
+                                                <div class="item-detail__content">
+                                                    <strong class="item-detail__name" data-item-detail-name>Оберіть предмет</strong>
+                                                    <p class="muted item-detail__description" data-item-detail-description></p>
+                                                    <div class="item-detail__meta" data-item-detail-meta>
+                                                        <span class="item-detail__meta-item is-hidden" data-item-detail-ammo></span>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                        <div class="item-detail__actions is-hidden" data-item-detail-actions>
-                                            <button class="button ghost" type="button" data-detail-action="rotate">Rotate (R)</button>
-                                            <button class="button ghost" type="button" data-detail-action="use">Use</button>
-                                            <div class="item-detail__field" data-detail-split>
-                                                <label for="detail-split-amount">Split</label>
-                                                <input type="number" id="detail-split-amount" min="1" data-detail-split-amount>
-                                                <button class="button ghost" type="button" data-detail-action="split">Split</button>
-                                            </div>
-                                            <div class="item-detail__field" data-detail-durability data-master-only="true">
-                                                <label for="detail-durability">Durability</label>
-                                                <input type="number" id="detail-durability" min="0" data-detail-durability-input>
-                                                <button class="button ghost" type="button" data-detail-action="set-durability">Set</button>
+                                            <div class="item-detail__actions is-hidden" data-item-detail-actions>
+                                                <button class="button ghost" type="button" data-detail-action="rotate">Rotate (R)</button>
+                                                <button class="button ghost" type="button" data-detail-action="use">Use</button>
+                                                <div class="item-detail__field" data-detail-split>
+                                                    <label for="detail-split-amount">Split</label>
+                                                    <input type="number" id="detail-split-amount" min="1" data-detail-split-amount>
+                                                    <button class="button ghost" type="button" data-detail-action="split">Split</button>
+                                                </div>
+                                                <div class="item-detail__field" data-detail-durability data-master-only="true">
+                                                    <label for="detail-durability">Durability</label>
+                                                    <input type="number" id="detail-durability" min="0" data-detail-durability-input>
+                                                    <button class="button ghost" type="button" data-detail-action="set-durability">Set</button>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -957,8 +948,6 @@
                                     </div>
                                     <div class="inventory-panel panel-secondary lobby-panel dra-card">
                                         <div class="character-storage">
-                                            <h4 class="inventory-section__title">Ready Weapon</h4>
-                                            <div class="tetris-grid tetris-grid--compact" data-container-id="slot_weapon_main"></div>
                                             <div class="suit-toolbar" data-suit-toolbar>
                                                 <button type="button" class="button ghost suit-button" data-suit-button aria-pressed="true" aria-disabled="false">♠️</button>
                                                 <button type="button" class="button ghost suit-button" data-suit-button aria-pressed="true" aria-disabled="false">♣️</button>
