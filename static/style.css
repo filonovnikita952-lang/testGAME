@@ -74,7 +74,6 @@ a {
     background: rgba(11, 13, 22, 0.85);
     border-bottom: 1px solid var(--border);
     padding: 2px 1vw;
-    min-height: 64px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -90,21 +89,21 @@ a {
 
 .brand__title {
     margin: 0;
-    font-size: 1.4rem;
+    font-size: 1.1rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
 }
 
 .brand__tag {
-    margin: 0 0 6px;
-    font-size: 0.75rem;
+    margin: 0 0 2px;
+    font-size: 0.6rem;
     color: var(--muted);
     letter-spacing: 0.2em;
     text-transform: uppercase;
 }
 
 .logo {
-    width: 72px;
+    width: 80px;
     height: auto;
 }
 
@@ -119,7 +118,7 @@ a {
 .navigation a {
     font-size: 0.95rem;
     letter-spacing: 0.05em;
-    padding: 8px 12px;
+    padding: 6px 10px;
     border-radius: 999px;
     transition: background 0.3s ease, color 0.3s ease, transform 0.3s ease;
 }
@@ -133,7 +132,7 @@ a {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 6px 14px;
+    padding: 4px 10px;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--border);
@@ -231,7 +230,7 @@ a {
     outline-offset: 2px;
 }
 
-.page--lobby .is-collapsed [data-panel-body] {
+.page--lobby .lobby-panel.is-collapsed .panel-body {
     display: none;
 }
 
@@ -2394,12 +2393,50 @@ textarea {
     gap: 8px;
 }
 
+.panel-toggle-button {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: inherit;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 999px;
+    cursor: pointer;
+    line-height: 1;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.panel-toggle-button:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.panel-toggle-button:focus-visible {
+    outline: 2px solid rgba(109, 211, 255, 0.6);
+    outline-offset: 2px;
+}
+
+.is-collapsed .panel-body {
+    display: none;
+}
+
 .panel-title {
     font-weight: 600;
 }
 
 .panel-tag {
     opacity: 0.6;
+}
+
+.character-class-link {
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+}
+
+.character-class-link:focus-visible {
+    outline: 2px solid rgba(109, 211, 255, 0.6);
+    outline-offset: 2px;
+    border-radius: 6px;
 }
 
 .shop-button {

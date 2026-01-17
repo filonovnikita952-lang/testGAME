@@ -195,62 +195,48 @@
     };
 
     const setupSkillsLink = () => {
-        const skillsLink = document.querySelector('[data-skills-link]');
-        if (!skillsLink) return;
+        document.querySelectorAll('[data-skills-link]').forEach((link) => {
+            const openSkills = () => {
+                const win = window.open('/skills', '_blank', 'noopener');
+                if (win) {
+                    win.opener = null;
+                }
+            };
 
-        const openSkills = () => {
-            const newTab = window.open('/skills', '_blank', 'noopener');
-            if (newTab) {
-                newTab.opener = null;
-            }
-        };
-
-        skillsLink.addEventListener('click', (event) => {
-            event.preventDefault();
-            openSkills();
-        });
-
-        skillsLink.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
+            link.addEventListener('click', (event) => {
                 event.preventDefault();
                 openSkills();
-            }
-        });
-    };
+            });
 
-    const removeProfileLink = () => {
-        const navigation = document.querySelector('.navigation');
-        if (!navigation) return;
-        const profileLink = navigation.querySelector('a[href*="profile"]');
-        if (!profileLink) return;
-        if (!profileLink.closest('.user-chip')) {
-            profileLink.remove();
-        }
+            link.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    openSkills();
+                }
+            });
+        });
     };
 
     const setupCollapsiblePanels = () => {
         document.querySelectorAll('[data-collapsible-panel]').forEach((panel) => {
-            const key = panel.dataset.collapsiblePanel;
-            const toggleButton = panel.querySelector('[data-panel-toggle]');
-            const panelBody = panel.querySelector('[data-panel-body]');
-            if (!key || !toggleButton || !panelBody) return;
-
-            const storageKey = `dra_lobby_panel_${key}_collapsed`;
-
-            const applyState = (collapsed) => {
+            const toggle = panel.querySelector('[data-panel-toggle]');
+            const body = panel.querySelector('[data-panel-body]');
+            const lobbyId = panel.dataset.lobbyId || 'default';
+            const storageKey = `dra_lobby_chat_collapsed_${lobbyId}`;
+            const setCollapsed = (collapsed) => {
                 panel.classList.toggle('is-collapsed', collapsed);
-                toggleButton.setAttribute('aria-expanded', String(!collapsed));
-                toggleButton.textContent = collapsed ? '▸' : '▾';
-                panelBody.hidden = collapsed;
+                toggle?.setAttribute('aria-expanded', String(!collapsed));
+                toggle?.setAttribute('aria-pressed', String(collapsed));
+                toggle && (toggle.textContent = collapsed ? '▸' : '▾');
+                body?.setAttribute('aria-hidden', String(collapsed));
+                localStorage.setItem(storageKey, collapsed ? '1' : '0');
             };
-
             const stored = localStorage.getItem(storageKey);
-            applyState(stored === 'true');
+            setCollapsed(stored === '1');
 
-            toggleButton.addEventListener('click', () => {
-                const nextState = !panel.classList.contains('is-collapsed');
-                applyState(nextState);
-                localStorage.setItem(storageKey, String(nextState));
+            toggle?.addEventListener('click', () => {
+                const isCollapsed = panel.classList.contains('is-collapsed');
+                setCollapsed(!isCollapsed);
             });
         });
     };
@@ -258,7 +244,6 @@
     document.addEventListener('DOMContentLoaded', () => {
         setupSuitToolbars();
         setupSkillsLink();
-        removeProfileLink();
         setupCollapsiblePanels();
     });
 
