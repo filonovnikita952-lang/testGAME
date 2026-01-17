@@ -2152,12 +2152,20 @@ def _safe_eval_expression(expression: str, *, stat_value: int) -> float:
             if not isinstance(node.func, ast.Name):
                 raise FormulaError('invalid_call')
             func_name = node.func.id
-            if func_name not in {'min', 'max'}:
+            if func_name not in {'min', 'max', 'floor', 'sqrt'}:
                 raise FormulaError('invalid_call')
             args = [eval_node(arg) for arg in node.args]
-            if not args:
+            if func_name in {'min', 'max'}:
+                if not args:
+                    raise FormulaError('invalid_call')
+                return min(args) if func_name == 'min' else max(args)
+            if len(args) != 1:
                 raise FormulaError('invalid_call')
-            return min(args) if func_name == 'min' else max(args)
+            if func_name == 'floor':
+                return math.floor(args[0])
+            if args[0] < 0:
+                raise FormulaError('invalid_call')
+            return math.sqrt(args[0])
         raise FormulaError('invalid_expression')
 
     return eval_node(tree)
