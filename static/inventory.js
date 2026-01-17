@@ -431,6 +431,7 @@
                 if (this.shopOverlay?.classList.contains('is-open')) {
                     this.closeShopOverlay();
                 }
+                this.notifyShopStatus(false);
                 return;
             }
             this.shopActive = true;
@@ -443,6 +444,7 @@
             if (this.shopOverlay?.classList.contains('is-open')) {
                 this.renderShopGrid();
             }
+            this.notifyShopStatus(true);
         }
 
         updateShopButtons(isActive) {
@@ -464,6 +466,16 @@
             this.shopOverlay.setAttribute('aria-hidden', 'true');
             this.shopDetailItemId = null;
             this.updateShopDetails(null);
+        }
+
+        notifyShopStatus(isActive) {
+            if (!this.lobbyId) return;
+            document.dispatchEvent(new CustomEvent('shop-status', {
+                detail: {
+                    lobbyId: this.lobbyId,
+                    active: isActive,
+                },
+            }));
         }
 
         async confirmShopStop() {
@@ -2510,6 +2522,10 @@
     inventoryRoots.forEach((root) => {
         const controller = new LobbyInventory(root);
         const lobbyId = root.dataset.lobbyId;
+        if (lobbyId) {
+            window.LOBBY_INVENTORY_CONTROLLERS = window.LOBBY_INVENTORY_CONTROLLERS || {};
+            window.LOBBY_INVENTORY_CONTROLLERS[lobbyId] = controller;
+        }
 
         const setAdminTab = (tabId) => {
             const tabButtons = root.querySelectorAll('[data-admin-tab]');

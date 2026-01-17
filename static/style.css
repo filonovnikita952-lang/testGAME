@@ -234,6 +234,10 @@ a {
     display: none;
 }
 
+.is-collapsed [data-panel-body] {
+    display: none;
+}
+
 .page--lobby + .footer {
     display: none;
 }
