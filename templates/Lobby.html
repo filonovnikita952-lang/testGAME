@@ -52,41 +52,54 @@
                                 <h3>Склад команди</h3>
                             </div>
                             <div class="lobby-column__scroll">
-                                <div class="lobby-info dra-card">
-                                    <div class="lobby-info__meta">
-                                        <div>
-                                            <span class="lobby-info__label">Лобі</span>
-                                            <strong>{{ membership.lobby.name }}</strong>
-                                        </div>
-                                        <div>
-                                            <span class="lobby-info__label">Ключ</span>
-                                            <strong>{{ membership.lobby.access_key }}</strong>
-                                        </div>
-                                        <div>
-                                            <span class="lobby-info__label">Роль</span>
-                                            <strong>{{ role_labels.get(membership.role, membership.role) }}</strong>
-                                        </div>
-                                        <div>
-                                            <span class="lobby-info__label">Учасників</span>
-                                            <strong>{{ membership.lobby.members | length }}</strong>
-                                        </div>
+                                <div class="lobby-info dra-card" data-collapsible-panel="lobby-info-{{ membership.lobby.id }}">
+                                    <div class="lobby-info__header">
+                                        <span class="lobby-info__title">Лобі</span>
+                                        <button
+                                            type="button"
+                                            class="panel-toggle-button"
+                                            data-panel-toggle
+                                            aria-expanded="true"
+                                            aria-controls="lobby-info-body-{{ membership.lobby.id }}"
+                                            aria-label="Toggle lobby info"
+                                        >▾</button>
                                     </div>
-                                    <div class="lobby-info__actions">
-                                        {% if membership.lobby.admin_id == user.id %}
-                                            <span class="badge">Адмін</span>
-                                            <form method="post">
-                                                <input type="hidden" name="action" value="delete_lobby">
-                                                <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
-                                                <button type="submit" class="button danger">Видалити лобі</button>
-                                            </form>
-                                            <button type="button" class="button ghost" disabled title="Адмін не може вийти з лобі">Вийти</button>
-                                        {% else %}
-                                            <form method="post">
-                                                <input type="hidden" name="action" value="leave">
-                                                <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
-                                                <button type="submit" class="button ghost">Вийти</button>
-                                            </form>
-                                        {% endif %}
+                                    <div class="lobby-info__content" id="lobby-info-body-{{ membership.lobby.id }}" data-panel-body>
+                                        <div class="lobby-info__meta">
+                                            <div>
+                                                <span class="lobby-info__label">Лобі</span>
+                                                <strong>{{ membership.lobby.name }}</strong>
+                                            </div>
+                                            <div>
+                                                <span class="lobby-info__label">Ключ</span>
+                                                <strong>{{ membership.lobby.access_key }}</strong>
+                                            </div>
+                                            <div>
+                                                <span class="lobby-info__label">Роль</span>
+                                                <strong>{{ role_labels.get(membership.role, membership.role) }}</strong>
+                                            </div>
+                                            <div>
+                                                <span class="lobby-info__label">Учасників</span>
+                                                <strong>{{ membership.lobby.members | length }}</strong>
+                                            </div>
+                                        </div>
+                                        <div class="lobby-info__actions">
+                                            {% if membership.lobby.admin_id == user.id %}
+                                                <span class="badge">Адмін</span>
+                                                <form method="post">
+                                                    <input type="hidden" name="action" value="delete_lobby">
+                                                    <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
+                                                    <button type="submit" class="button danger">Видалити лобі</button>
+                                                </form>
+                                                <button type="button" class="button ghost" disabled title="Адмін не може вийти з лобі">Вийти</button>
+                                            {% else %}
+                                                <form method="post">
+                                                    <input type="hidden" name="action" value="leave">
+                                                    <input type="hidden" name="lobby_id" value="{{ membership.lobby.id }}">
+                                                    <button type="submit" class="button ghost">Вийти</button>
+                                                </form>
+                                            {% endif %}
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="lobby-roster__list" data-lobby-id="{{ membership.lobby.id }}">

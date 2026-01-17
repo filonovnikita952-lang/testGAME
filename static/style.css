@@ -1299,6 +1299,26 @@ textarea {
     gap: 12px;
 }
 
+.lobby-info__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.lobby-info__title {
+    font-weight: 600;
+}
+
+.lobby-info__content {
+    display: grid;
+    gap: 12px;
+}
+
 .lobby-info__meta {
     display: grid;
     gap: 6px;
