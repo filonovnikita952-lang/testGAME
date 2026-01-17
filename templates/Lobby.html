@@ -76,7 +76,15 @@
                                             </div>
                                             <div>
                                                 <span class="lobby-info__label">Роль</span>
-                                                <strong>{{ role_labels.get(membership.role, membership.role) }}</strong>
+                                                <div class="lobby-info__role">
+                                                    <strong>{{ role_labels.get(membership.role, membership.role) }}</strong>
+                                                    {% if is_master_user %}
+                                                        <div class="panel-toggle" data-master-toggle data-lobby-id="{{ membership.lobby.id }}">
+                                                            <button type="button" class="button ghost is-active" data-master-mode="view">👓 View as player</button>
+                                                            <button type="button" class="button ghost" data-master-mode="control">🕶️ Master control</button>
+                                                        </div>
+                                                    {% endif %}
+                                                </div>
                                             </div>
                                             <div>
                                                 <span class="lobby-info__label">Учасників</span>
@@ -257,12 +265,6 @@
                                                 </div>
                                             </div>
                                             <div class="inventory-panel panel-secondary lobby-panel dra-card">
-                                                {% if is_master_user %}
-                                                    <div class="panel-toggle" data-master-toggle>
-                                                        <button type="button" class="button ghost is-active" data-master-mode="view">View as player</button>
-                                                        <button type="button" class="button ghost" data-master-mode="control">Master control</button>
-                                                    </div>
-                                                {% endif %}
                                                 <div class="character-frame">
                                                     {% if user.userImage %}
                                                         <img src="{{ url_for('static', filename=static_path(user.userImage)) }}" alt="Персонаж" class="character-frame__image">
