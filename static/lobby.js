@@ -194,8 +194,72 @@
         });
     };
 
+    const setupSkillsLink = () => {
+        const skillsLink = document.querySelector('[data-skills-link]');
+        if (!skillsLink) return;
+
+        const openSkills = () => {
+            const newTab = window.open('/skills', '_blank', 'noopener');
+            if (newTab) {
+                newTab.opener = null;
+            }
+        };
+
+        skillsLink.addEventListener('click', (event) => {
+            event.preventDefault();
+            openSkills();
+        });
+
+        skillsLink.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openSkills();
+            }
+        });
+    };
+
+    const removeProfileLink = () => {
+        const navigation = document.querySelector('.navigation');
+        if (!navigation) return;
+        const profileLink = navigation.querySelector('a[href*="profile"]');
+        if (!profileLink) return;
+        if (!profileLink.closest('.user-chip')) {
+            profileLink.remove();
+        }
+    };
+
+    const setupCollapsiblePanels = () => {
+        document.querySelectorAll('[data-collapsible-panel]').forEach((panel) => {
+            const key = panel.dataset.collapsiblePanel;
+            const toggleButton = panel.querySelector('[data-panel-toggle]');
+            const panelBody = panel.querySelector('[data-panel-body]');
+            if (!key || !toggleButton || !panelBody) return;
+
+            const storageKey = `dra_lobby_panel_${key}_collapsed`;
+
+            const applyState = (collapsed) => {
+                panel.classList.toggle('is-collapsed', collapsed);
+                toggleButton.setAttribute('aria-expanded', String(!collapsed));
+                toggleButton.textContent = collapsed ? '▸' : '▾';
+                panelBody.hidden = collapsed;
+            };
+
+            const stored = localStorage.getItem(storageKey);
+            applyState(stored === 'true');
+
+            toggleButton.addEventListener('click', () => {
+                const nextState = !panel.classList.contains('is-collapsed');
+                applyState(nextState);
+                localStorage.setItem(storageKey, String(nextState));
+            });
+        });
+    };
+
     document.addEventListener('DOMContentLoaded', () => {
         setupSuitToolbars();
+        setupSkillsLink();
+        removeProfileLink();
+        setupCollapsiblePanels();
     });
 
     class SkillCheckController {
