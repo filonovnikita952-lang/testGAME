@@ -30,7 +30,6 @@
             {% if user.is_admin %}
                 <a href="{{ url_for('admin_skills_page') }}">Адмін: Навички</a>
             {% endif %}
-            <a href="{{ url_for('profile') }}">Профіль</a>
             <div class="user-chip">
                 <span>{{ user.nickname }}</span>
                 <a href="{{ url_for('profile') }}">
