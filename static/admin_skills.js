@@ -4,6 +4,8 @@ const addCategoryButton = document.querySelector('[data-add-category]');
 const seedButton = document.querySelector('[data-seed-skills]');
 
 let adminTree = null;
+const expandedCategories = new Set();
+const expandedSubclasses = new Set();
 
 async function requestJson(url, options = {}) {
     const response = await fetch(url, {
@@ -40,7 +42,11 @@ function renderAdminTree() {
         return;
     }
     const categoriesHtml = adminTree.categories.map((category) => {
+        const categoryId = String(category.id);
+        const isCategoryExpanded = expandedCategories.has(categoryId);
         const subclassesHtml = category.subclasses.map((subclass) => {
+            const subclassId = String(subclass.id);
+            const isSubclassExpanded = expandedSubclasses.has(subclassId);
             const branchesHtml = subclass.branches.map((branch) => {
                 const nodesHtml = branch.skills.map((skill) => {
                     const disabledClass = skill.id ? '' : 'is-missing';
@@ -123,9 +129,10 @@ function renderAdminTree() {
             }).join('');
 
             return `
-                <div class="admin-skill-subclass" data-subclass-id="${subclass.id}">
+                <div class="admin-skill-subclass ${isSubclassExpanded ? '' : 'is-collapsed'}" data-subclass-id="${subclass.id}">
                     <div class="admin-skill-row">
                         <input type="text" data-field="subclass-name" value="${subclass.name}">
+                        <button class="button ghost" type="button" data-action="toggle-subclass">${isSubclassExpanded ? 'Hide' : 'Show'}</button>
                         <button class="button ghost" type="button" data-action="save-subclass">Зберегти</button>
                         <button class="button ghost" type="button" data-action="move-subclass" data-direction="up">↑</button>
                         <button class="button ghost" type="button" data-action="move-subclass" data-direction="down">↓</button>
@@ -140,9 +147,10 @@ function renderAdminTree() {
         }).join('');
 
         return `
-            <section class="admin-skill-category" data-category-id="${category.id}">
+            <section class="admin-skill-category ${isCategoryExpanded ? '' : 'is-collapsed'}" data-category-id="${category.id}">
                 <div class="admin-skill-row admin-skill-row--category">
                     <input type="text" data-field="category-name" value="${category.name}">
+                    <button class="button ghost" type="button" data-action="toggle-category">${isCategoryExpanded ? 'Hide' : 'Show'}</button>
                     <button class="button ghost" type="button" data-action="save-category">Зберегти</button>
                     <button class="button ghost" type="button" data-action="move-category" data-direction="up">↑</button>
                     <button class="button ghost" type="button" data-action="move-category" data-direction="down">↓</button>
@@ -345,6 +353,34 @@ async function handleCategoryDelete(button) {
     await refreshTree();
 }
 
+function handleCategoryToggle(button) {
+    const categoryEl = button.closest('.admin-skill-category');
+    if (!categoryEl) {
+        return;
+    }
+    const categoryId = categoryEl.dataset.categoryId;
+    if (expandedCategories.has(categoryId)) {
+        expandedCategories.delete(categoryId);
+    } else {
+        expandedCategories.add(categoryId);
+    }
+    renderAdminTree();
+}
+
+function handleSubclassToggle(button) {
+    const subclassEl = button.closest('.admin-skill-subclass');
+    if (!subclassEl) {
+        return;
+    }
+    const subclassId = subclassEl.dataset.subclassId;
+    if (expandedSubclasses.has(subclassId)) {
+        expandedSubclasses.delete(subclassId);
+    } else {
+        expandedSubclasses.add(subclassId);
+    }
+    renderAdminTree();
+}
+
 async function handleSubclassDelete(button) {
     const subclassEl = button.closest('.admin-skill-subclass');
     if (!subclassEl) {
@@ -444,8 +480,14 @@ if (adminRoot && adminContent) {
                 case 'save-category':
                     await handleCategorySave(button);
                     break;
+                case 'toggle-category':
+                    handleCategoryToggle(button);
+                    break;
                 case 'save-subclass':
                     await handleSubclassSave(button);
+                    break;
+                case 'toggle-subclass':
+                    handleSubclassToggle(button);
                     break;
                 case 'save-branch':
                     await handleBranchSave(button);
