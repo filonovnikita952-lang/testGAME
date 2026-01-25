@@ -240,7 +240,6 @@
                                                         tabindex="0"
                                                         aria-label="Відкрити прокачку"
                                                     >Клас</span>
-                                                    <strong data-character-class-text>???</strong>
                                                     {% if is_master_user %}
                                                         <select data-character-class-select>
                                                             <option value="control">control</option>
@@ -254,7 +253,22 @@
                                                 </div>
                                                 <div>
                                                     <span class="lobby-info__label">RACE</span>
-                                                    <input type="text" data-character-race-input>
+                                                    <div class="race-control" data-character-race>
+                                                        <span class="race-control__text" data-character-race-text>—</span>
+                                                        <button
+                                                            class="race-control__edit"
+                                                            type="button"
+                                                            aria-label="Edit race"
+                                                            data-character-race-edit
+                                                        >✎</button>
+                                                        <input
+                                                            type="text"
+                                                            maxlength="20"
+                                                            data-character-race-input
+                                                            class="race-control__input"
+                                                            aria-label="Race"
+                                                        >
+                                                    </div>
                                                 </div>
                                                 <div>
                                                     <span class="lobby-info__label">Майст</span>
@@ -263,7 +277,20 @@
                                                 <div>
                                                     <span class="lobby-info__label">KI</span>
                                                     <strong data-stat-value="ki">0/0</strong>
-                                                    <input type="number" min="0" max="100" data-ki-current-input>
+                                                    <div class="ki-controls" data-ki-controls>
+                                                        <button
+                                                            class="ki-controls__button"
+                                                            type="button"
+                                                            aria-label="Decrease KI"
+                                                            data-ki-adjust="down"
+                                                        >▾</button>
+                                                        <button
+                                                            class="ki-controls__button"
+                                                            type="button"
+                                                            aria-label="Increase KI"
+                                                            data-ki-adjust="up"
+                                                        >▴</button>
+                                                    </div>
                                                 </div>
                                                 <div>
                                                     <span class="lobby-info__label">Speed</span>
