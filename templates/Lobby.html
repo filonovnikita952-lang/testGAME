@@ -233,15 +233,14 @@
                                                     <strong data-player-name>{{ user.nickname or 'KING' }}</strong>
                                                 </div>
                                                 <div>
-                                                    <span class="lobby-info__label">Клас</span>
-                                                    <strong
-                                                        class="character-class-link{% if is_master_user %} is-hidden{% endif %}"
-                                                        data-character-class-text
+                                                    <span
+                                                        class="lobby-info__label character-skill-link"
                                                         data-skills-link
                                                         role="link"
                                                         tabindex="0"
                                                         aria-label="Відкрити прокачку"
-                                                    >???</strong>
+                                                    >Клас</span>
+                                                    <strong data-character-class-text>???</strong>
                                                     {% if is_master_user %}
                                                         <select data-character-class-select>
                                                             <option value="control">control</option>
@@ -255,23 +254,20 @@
                                                 </div>
                                                 <div>
                                                     <span class="lobby-info__label">RACE</span>
-                                                    <strong data-character-race-text>—</strong>
+                                                    <input type="text" data-character-race-input>
+                                                </div>
+                                                <div>
+                                                    <span class="lobby-info__label">Майст</span>
+                                                    <input type="number" min="2" max="7" data-character-mastery-input>
                                                 </div>
                                                 <div>
                                                     <span class="lobby-info__label">KI</span>
                                                     <strong data-stat-value="ki">0/0</strong>
+                                                    <input type="number" min="0" max="100" data-ki-current-input>
                                                 </div>
                                                 <div>
                                                     <span class="lobby-info__label">Speed</span>
                                                     <strong data-stat-value="speed">0</strong>
-                                                </div>
-                                                <div>
-                                                    <span class="lobby-info__label">Armor Class</span>
-                                                    <strong data-stat-value="ac">0</strong>
-                                                </div>
-                                                <div>
-                                                    <span class="lobby-info__label">Mana</span>
-                                                    <strong data-stat-value="mana">0/0</strong>
                                                 </div>
                                                 <div>
                                                     <span class="lobby-info__label">Hunger</span>
@@ -285,48 +281,6 @@
                                                     {% else %}
                                                         <img src="/static/images/default_avatar.png" alt="Персонаж" class="character-frame__image">
                                                     {% endif %}
-                                                </div>
-                                                <div class="character-stats" data-character-stats>
-                                                    <div class="stat-bar" data-stat="hp">
-                                                        <div class="stat-bar__header">
-                                                            <span>HP</span>
-                                                            <span data-stat-value="hp">0/0</span>
-                                                        </div>
-                                                        <div class="stat-bar__track">
-                                                            <div class="stat-bar__fill" data-stat-fill="hp"></div>
-                                                        </div>
-                                                        <input type="range" min="0" max="0" value="0" class="stat-bar__input" data-stat-input="hp_current">
-                                                    </div>
-                                                    <div class="stat-bar" data-stat="mana">
-                                                        <div class="stat-bar__header">
-                                                            <span>Mana</span>
-                                                            <span data-stat-value="mana">0/0</span>
-                                                        </div>
-                                                        <div class="stat-bar__track">
-                                                            <div class="stat-bar__fill" data-stat-fill="mana"></div>
-                                                        </div>
-                                                        <input type="range" min="0" max="0" value="0" class="stat-bar__input" data-stat-input="mana_current">
-                                                    </div>
-                                                    <div class="stat-bar" data-stat="ki">
-                                                        <div class="stat-bar__header">
-                                                            <span>KI</span>
-                                                            <span data-stat-value="ki">0/0</span>
-                                                        </div>
-                                                        <div class="stat-bar__track">
-                                                            <div class="stat-bar__fill" data-stat-fill="ki"></div>
-                                                        </div>
-                                                        <input type="range" min="0" max="0" value="0" class="stat-bar__input" data-stat-input="ki_current">
-                                                    </div>
-                                                    <div class="stat-bar" data-stat="hungry">
-                                                        <div class="stat-bar__header">
-                                                            <span>Hungry</span>
-                                                            <span data-stat-value="hungry">0/100</span>
-                                                        </div>
-                                                        <div class="stat-bar__track">
-                                                            <div class="stat-bar__fill" data-stat-fill="hungry"></div>
-                                                        </div>
-                                                        <input type="range" min="0" max="100" value="0" class="stat-bar__input" data-stat-input="hungry">
-                                                    </div>
                                                 </div>
                                             </div>
                                         </section>
@@ -449,16 +403,6 @@
                                                         </div>
                                                     </div>
                                                 {% endif %}
-                                                <div class="attributes-extra">
-                                                    <label class="attributes-extra__field">
-                                                        <span>RACE</span>
-                                                        <input type="text" data-character-race-input>
-                                                    </label>
-                                                    <label class="attributes-extra__field">
-                                                        <span>Майст</span>
-                                                        <input type="number" min="2" max="7" data-character-mastery-input>
-                                                    </label>
-                                                </div>
                                                 <div class="attributes-grid">
                                                     <div class="attribute-row" data-attribute-row data-attribute-key="str">
                                                         <span class="attribute-label">STR</span>

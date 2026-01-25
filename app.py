@@ -90,7 +90,7 @@ CLASS_MOD_KI = {
 }
 MASTERY_MIN = 2
 MASTERY_MAX = 7
-DEFAULT_MASTERY = 7
+DEFAULT_MASTERY = 2
 SKILL_CHECK_TIME_LIMIT = 30
 SKILL_LEVEL_ORDER = ['BR', '0', '1', '2', '3', '4', '5', '6', '7']
 
@@ -825,7 +825,7 @@ def _ensure_character_attributes_columns():
             db.session.execute(text('ALTER TABLE character_attributes ADD COLUMN race VARCHAR(40)'))
             db.session.commit()
         if 'mastery' not in columns:
-            db.session.execute(text('ALTER TABLE character_attributes ADD COLUMN mastery INTEGER DEFAULT 7'))
+            db.session.execute(text('ALTER TABLE character_attributes ADD COLUMN mastery INTEGER DEFAULT 2'))
             db.session.commit()
 
 
@@ -2237,10 +2237,10 @@ def compute_character_derived_stats(
     modifiers = compute_attribute_modifiers(attributes, formula)
     class_mod = CLASS_MOD_KI.get(user.character_class or '???', 0)
     mastery = max(MASTERY_MIN, min(attributes.mastery or DEFAULT_MASTERY, MASTERY_MAX))
-    ki_base = mastery * modifiers.get('wis', 0) * class_mod
+    ki_base = mastery * (2 + modifiers.get('wis', 0)) * class_mod
     ki_max = max(1, math.floor(ki_base))
-    ki_current = stats.ki_current if stats.ki_current is not None else ki_max
-    ki_current = min(max(ki_current, 0), ki_max)
+    ki_current = stats.ki_current if stats.ki_current is not None else min(ki_max, 100)
+    ki_current = min(max(ki_current, 0), ki_max, 100)
     speed = (modifiers.get('dex', 0) + 3) * 2
     return {
         'ki_max': ki_max,
@@ -2643,7 +2643,7 @@ def build_inventory_payload(
     attributes = ensure_character_attributes(user.id)
     derived_stats = compute_character_derived_stats(user, stats, attributes)
     if stats.ki_current != derived_stats['ki_current']:
-        stats.ki_current = derived_stats['ki_current']
+        stats.ki_current = min(derived_stats['ki_current'], 100)
         db.session.commit()
     strength_modifier = (stats.strength - 10) // 2
     capacity = max(5, 5 + 5 * strength_modifier)
@@ -4969,7 +4969,7 @@ def update_character_stats():
     hungry = parse_int(data.get('hungry'), stats.hungry or 0, minimum=0)
     stats.hp_current = min(hp_current, hp_max)
     stats.mana_current = min(mana_current, mana_max)
-    stats.ki_current = min(ki_current, derived_stats['ki_max'])
+    stats.ki_current = min(ki_current, derived_stats['ki_max'], 100)
     stats.armor_class = armor_class
     stats.hungry = min(max(hungry, 0), 100)
     db.session.commit()
@@ -5300,7 +5300,7 @@ def set_character_class():
     attributes = ensure_character_attributes(target_user_id)
     derived_stats = compute_character_derived_stats(target_user, stats, attributes)
     if stats.ki_current != derived_stats['ki_current']:
-        stats.ki_current = derived_stats['ki_current']
+        stats.ki_current = min(derived_stats['ki_current'], 100)
         db.session.commit()
     return jsonify({'ok': True, 'character_class': target_user.character_class})
 
@@ -5332,7 +5332,8 @@ def update_character_profile(lobby_id: int, user_id: int):
     data = request.get_json(silent=True) or {}
     race = data.get('race')
     mastery = data.get('mastery')
-    if race is None and mastery is None:
+    ki_current = data.get('ki_current')
+    if race is None and mastery is None and ki_current is None:
         return jsonify({'ok': False, 'error': 'invalid_payload'}), 400
     attributes = ensure_character_attributes(user_id)
     if race is not None:
@@ -5346,9 +5347,13 @@ def update_character_profile(lobby_id: int, user_id: int):
         return jsonify({'ok': False, 'error': 'not_found'}), 404
     stats = ensure_character_stats(user_id)
     derived_stats = compute_character_derived_stats(target_user, stats, attributes)
-    if stats.ki_current != derived_stats['ki_current']:
-        stats.ki_current = derived_stats['ki_current']
-        db.session.commit()
+    if ki_current is not None:
+        ki_value = parse_int(ki_current, stats.ki_current or derived_stats['ki_max'], minimum=0)
+        ki_limit = min(derived_stats['ki_max'], 100)
+        stats.ki_current = min(ki_value, ki_limit)
+    elif stats.ki_current != derived_stats['ki_current']:
+        stats.ki_current = min(derived_stats['ki_current'], 100)
+    db.session.commit()
     return jsonify({
         'ok': True,
         'attributes': build_attributes_payload(user_id, user, lobby_id),
@@ -5407,7 +5412,7 @@ def update_character_attributes():
     target_user = User.query.get(target_user_id)
     derived_stats = compute_character_derived_stats(target_user, stats, attributes)
     if stats.ki_current != derived_stats['ki_current']:
-        stats.ki_current = derived_stats['ki_current']
+        stats.ki_current = min(derived_stats['ki_current'], 100)
         db.session.commit()
     return jsonify({
         'ok': True,
