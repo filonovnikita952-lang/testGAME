@@ -1577,7 +1577,7 @@ def build_weight_payload(user_id: int, *, log_context: str = 'inventory') -> dic
     current_weight = compute_inventory_weight(instances, user_id=user_id, log_context=log_context)
     stats = ensure_character_stats(user_id)
     strength_modifier = (stats.strength - 10) // 2
-    capacity = max(5, 5 + 5 * strength_modifier)
+    capacity = max(3, (strength_modifier + 2) * 5)
     log_debug(
         'Inventory weight (%s) user=%s instances=%s current=%.2f capacity=%s',
         log_context,

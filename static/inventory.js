@@ -89,6 +89,9 @@
             this.transferItemData = null;
             this.inventoryActions = this.root.querySelector('[data-inventory-actions]');
             this.weightDisplay = this.root.querySelector('[data-weight-display]');
+            this.weightBar = this.root.querySelector('[data-weight-bar]');
+            this.weightFill = this.root.querySelector('[data-weight-fill]');
+            this.weightValues = this.root.querySelector('[data-weight-values]');
             this.playerName = this.root.querySelector('[data-player-name]');
             this.playerRole = this.root.querySelector('[data-player-role]');
             this.detailImage = this.root.querySelector('[data-item-detail-image]');
@@ -2621,8 +2624,29 @@
         }
 
         updateWeightDisplay(weight) {
-            if (!this.weightDisplay || !weight) return;
-            this.weightDisplay.textContent = `${weight.current} / ${weight.capacity}`;
+            if (!weight) return;
+            if (this.weightDisplay) {
+                this.weightDisplay.textContent = `${weight.current} / ${weight.capacity}`;
+            }
+            if (!this.weightFill || !this.weightValues) return;
+            const comfort = Number(weight.capacity) || 0;
+            const maxWeight = comfort * 3;
+            const currentValue = Number(weight.current) || 0;
+            const pctMax = maxWeight > 0 ? (currentValue / maxWeight) * 100 : 0;
+            const pctComfort = comfort > 0 ? (currentValue / comfort) * 100 : 0;
+            const fillClasses = ['is-green', 'is-yellow', 'is-red'];
+            this.weightFill.classList.remove(...fillClasses);
+            let colorClass = 'is-green';
+            if (pctComfort > 200) {
+                colorClass = 'is-red';
+            } else if (pctComfort > 100) {
+                colorClass = 'is-yellow';
+            }
+            this.weightFill.classList.add(colorClass);
+            this.weightFill.style.width = `${Math.min(Math.max(pctMax, 0), 100)}%`;
+            const currentDisplay = Number.isFinite(currentValue) ? currentValue.toFixed(2) : '0';
+            const maxDisplay = Number.isFinite(maxWeight) ? maxWeight.toFixed(2) : '0';
+            this.weightValues.textContent = `${currentDisplay} / ${maxDisplay}`;
         }
 
         async updateCharacterClass() {

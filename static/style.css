@@ -2155,6 +2155,30 @@ textarea {
     justify-self: end;
 }
 
+.inventory-weight {
+    display: grid;
+    grid-template-columns: minmax(90px, 1.2fr) minmax(140px, 2fr) minmax(80px, 1fr);
+    align-items: center;
+    gap: 12px;
+    padding: 6px 8px;
+    margin-top: 8px;
+    border-radius: 8px;
+    background: rgba(10, 12, 20, 0.6);
+    font-size: 0.85rem;
+}
+
+.inventory-weight__label {
+    font-weight: 600;
+}
+
+.inventory-weight__bar {
+    min-width: 120px;
+}
+
+.inventory-weight__values {
+    justify-self: end;
+}
+
 .health-row__input {
     width: 64px;
     background: rgba(8, 9, 14, 0.6);
