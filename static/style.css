@@ -1168,6 +1168,14 @@ textarea {
     gap: 12px;
 }
 
+.admin-skill-category.is-collapsed > .admin-skill-subclasses {
+    display: none;
+}
+
+.admin-skill-subclass.is-collapsed > .admin-skill-branches {
+    display: none;
+}
+
 .admin-skill-row {
     display: flex;
     flex-wrap: wrap;
