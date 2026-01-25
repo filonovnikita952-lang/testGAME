@@ -2911,9 +2911,9 @@
             const beltFields = form.querySelector('[data-belt-fields]');
             const typeValue = typeSelect?.value || 'other';
             const clothToggleTypes = new Set(['backpack', 'shirt', 'pants', 'armor']);
-            const isCloth = clothToggle?.checked || typeValue === 'cloth' || typeValue === 'belt';
-            const shouldShowClothFields = isCloth || clothToggleTypes.has(typeValue);
             const isBelt = typeValue === 'belt';
+            const isCloth = !isBelt && (clothToggle?.checked || typeValue === 'cloth');
+            const shouldShowClothFields = isCloth || clothToggleTypes.has(typeValue);
             clothFields?.classList.toggle('is-hidden', !shouldShowClothFields);
             beltFields?.classList.toggle('is-hidden', !isBelt);
             clothFields?.querySelectorAll(
@@ -3026,10 +3026,9 @@
                 const maxAmount = Number.parseInt(form.querySelector('input[id^="item_max_amount_"]')?.value || '1', 10);
                 const issueAmount = Number.parseInt(form.querySelector('input[id^="item_issue_amount_"]')?.value || '1', 10);
                 const typeValue = type || 'other';
-                const isCloth = form.querySelector('input[id^="item_is_cloth_"]')?.checked
-                    || typeValue === 'cloth'
-                    || typeValue === 'belt';
                 const isBelt = typeValue === 'belt';
+                const isCloth = !isBelt && (form.querySelector('input[id^="item_is_cloth_"]')?.checked
+                    || typeValue === 'cloth');
                 const bagWidth = Number.parseInt(form.querySelector('input[id^="item_bag_w_"]')?.value || '0', 10);
                 const bagHeight = Number.parseInt(form.querySelector('input[id^="item_bag_h_"]')?.value || '0', 10);
                 const fastWidth = Number.parseInt(form.querySelector('input[id^="item_fast_w_"]')?.value || '0', 10);
@@ -3585,8 +3584,8 @@
                     return;
                 }
                 const typeValue = typeSelect?.value || 'other';
-                const isCloth = Boolean(clothToggle?.checked) || typeValue === 'cloth' || typeValue === 'belt';
                 const isBelt = typeValue === 'belt';
+                const isCloth = !isBelt && (Boolean(clothToggle?.checked) || typeValue === 'cloth');
                 const bagWidthValue = parseNumber(bagWidthInput?.value || '0', 0);
                 const bagHeightValue = parseNumber(bagHeightInput?.value || '0', 0);
                 const fastWValue = parseNumber(fastWInput?.value || '0', 0);
