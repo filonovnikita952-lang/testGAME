@@ -2087,7 +2087,7 @@ textarea {
 
 .health-row {
     display: grid;
-    grid-template-columns: minmax(120px, 160px) minmax(180px, 1fr) minmax(120px, 160px);
+    grid-template-columns: minmax(90px, 1.2fr) minmax(140px, 2fr) minmax(80px, 1fr);
     align-items: center;
     gap: 12px;
     padding: 6px 8px;
@@ -2175,7 +2175,7 @@ textarea {
 .formula-row {
     display: grid;
     gap: 6px;
-    grid-template-columns: minmax(120px, 1fr) minmax(80px, 120px) minmax(220px, 2fr);
+    grid-template-columns: minmax(100px, 1fr) minmax(70px, 110px) minmax(160px, 2fr);
     align-items: center;
 }
 
