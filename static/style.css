@@ -1017,8 +1017,76 @@ textarea {
 
 .skills-layout {
     display: grid;
-    grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+    grid-template-columns: minmax(220px, 280px) minmax(160px, 220px) minmax(0, 1fr);
     gap: 16px;
+}
+
+.skills-detail {
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.skills-detail__eyebrow {
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.skills-detail__title {
+    font-size: 1.05rem;
+    margin: 0;
+}
+
+.skills-detail__status {
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+.skills-detail__list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+    margin: 0;
+}
+
+.skills-detail__list div {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.skills-detail__list dt {
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.skills-detail__list dd {
+    margin: 0;
+    text-align: right;
+}
+
+.skills-detail__requirements {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.skills-detail__requirements ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+}
+
+.skills-detail__description {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.8);
+    margin: 0;
 }
 
 .skills-subclasses {
