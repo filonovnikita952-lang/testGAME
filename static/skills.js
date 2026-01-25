@@ -183,7 +183,8 @@ function renderGrid() {
             }
             button.dataset.skillId = skill.id || '';
             button.dataset.levelKey = skill.level_key;
-            button.innerHTML = `<span class="skill-node__label">${skill.level_key}</span>`;
+            const label = skill.id && skill.name ? skill.name : skill.level_key;
+            button.innerHTML = `<span class="skill-node__label">${label}</span>`;
 
             button.addEventListener('mouseenter', (event) => {
                 showTooltip(event, skill);
