@@ -1018,19 +1018,19 @@
                                             <div class="inventory-grid-panel panel-main dra-card">
                                                 <div class="panel-header">
                                                     <span class="panel-title">Inventory</span>
-                                                    <div class="panel-header__actions">
+                                                    <div class="panel-header__actions panel-header__actions--inventory">
                                                         <span class="panel-tag" data-weight-display>0 / 5</span>
+                                                        <div class="inventory-weight inventory-weight--header" data-weight-bar>
+                                                            <span class="inventory-weight__label">Перегруз</span>
+                                                            <div class="health-bar inventory-weight__bar">
+                                                                <span class="health-bar__fill" data-weight-fill></span>
+                                                            </div>
+                                                            <span class="inventory-weight__values" data-weight-values>0 / 0</span>
+                                                        </div>
                                                     {% if is_master_user %}
                                                         <button class="button ghost shop-button" type="button" data-shop-start data-container-id="inv_main" title="Open Shop">🛒</button>
                                                     {% endif %}
                                                 </div>
-                                            </div>
-                                            <div class="inventory-weight" data-weight-bar>
-                                                <span class="inventory-weight__label">Перегруз</span>
-                                                <div class="health-bar inventory-weight__bar">
-                                                    <span class="health-bar__fill" data-weight-fill></span>
-                                                </div>
-                                                <span class="inventory-weight__values" data-weight-values>0 / 0</span>
                                             </div>
                                             <div class="tetris-grid" data-container-id="inv_main" aria-label="Рюкзак"></div>
                                         </div>

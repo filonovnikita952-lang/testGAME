@@ -2167,6 +2167,16 @@ textarea {
     font-size: 0.85rem;
 }
 
+.inventory-weight--header {
+    margin-top: 0;
+    padding: 4px 6px;
+    background: rgba(10, 12, 20, 0.4);
+    grid-template-columns: auto minmax(120px, 1.6fr) auto;
+    font-size: 0.7rem;
+    letter-spacing: normal;
+    text-transform: none;
+}
+
 .inventory-weight__label {
     font-weight: 600;
 }
@@ -2780,6 +2790,12 @@ textarea {
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+.panel-header__actions--inventory {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 6px;
 }
 
 .panel-toggle-button {
