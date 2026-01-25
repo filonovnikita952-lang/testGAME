@@ -68,6 +68,7 @@
 <script>
     window.CURRENT_USER_ID = {{ user.id if user else 'null' }};
 </script>
+<script src="{{ url_for('static', filename='theme.js') }}" defer></script>
 <script src="{{ url_for('static', filename='transfer_notifications.js') }}" defer></script>
 </body>
 </html>
