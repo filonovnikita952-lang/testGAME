@@ -94,10 +94,12 @@
             this.stats = null;
             this.attributes = null;
             this.statsValues = {
-                hp: this.root.querySelector('[data-stat-value="hp"]'),
-                mana: this.root.querySelector('[data-stat-value="mana"]'),
-                hungry: this.root.querySelector('[data-stat-value="hungry"]'),
-                ac: this.root.querySelector('[data-stat-value="ac"]'),
+                hp: Array.from(this.root.querySelectorAll('[data-stat-value="hp"]')),
+                mana: Array.from(this.root.querySelectorAll('[data-stat-value="mana"]')),
+                ki: Array.from(this.root.querySelectorAll('[data-stat-value="ki"]')),
+                speed: Array.from(this.root.querySelectorAll('[data-stat-value="speed"]')),
+                hungry: Array.from(this.root.querySelectorAll('[data-stat-value="hungry"]')),
+                ac: Array.from(this.root.querySelectorAll('[data-stat-value="ac"]')),
             };
             this.healthValues = {
                 hp_head: this.root.querySelector('[data-health-value="hp_head"]'),
@@ -111,6 +113,7 @@
             this.statsFills = {
                 hp: this.root.querySelector('[data-stat-fill="hp"]'),
                 mana: this.root.querySelector('[data-stat-fill="mana"]'),
+                ki: this.root.querySelector('[data-stat-fill="ki"]'),
                 hungry: this.root.querySelector('[data-stat-fill="hungry"]'),
             };
             this.statsInputs = Array.from(this.root.querySelectorAll('[data-stat-input]'));
@@ -143,6 +146,9 @@
             this.gridElements = Array.from(this.root.querySelectorAll('.tetris-grid'));
             this.characterClassText = this.root.querySelector('[data-character-class-text]');
             this.characterClassSelect = this.root.querySelector('[data-character-class-select]');
+            this.characterRaceText = this.root.querySelector('[data-character-race-text]');
+            this.characterRaceInput = this.root.querySelector('[data-character-race-input]');
+            this.characterMasteryInput = this.root.querySelector('[data-character-mastery-input]');
             this.attributeRows = Array.from(this.root.querySelectorAll('[data-attribute-row]'));
             this.attributeFormulaInput = this.root.querySelector('[data-attribute-formula-input]');
             this.attributeFormulaSave = this.root.querySelector('[data-attribute-formula-save]');
@@ -297,6 +303,18 @@
                 this.characterClassSelect.addEventListener('change', () => {
                     if (!this.canEditAttributes()) return;
                     this.updateCharacterClass();
+                });
+            }
+            if (this.characterRaceInput) {
+                this.characterRaceInput.addEventListener('change', () => {
+                    if (!this.canEditProfile()) return;
+                    this.saveCharacterProfile();
+                });
+            }
+            if (this.characterMasteryInput) {
+                this.characterMasteryInput.addEventListener('change', () => {
+                    if (!this.canEditProfile()) return;
+                    this.saveCharacterProfile();
                 });
             }
 
@@ -1788,6 +1806,12 @@
             if (this.characterClassSelect) {
                 this.characterClassSelect.disabled = !this.canEditAttributes();
             }
+            if (this.characterRaceInput) {
+                this.characterRaceInput.disabled = !this.canEditProfile();
+            }
+            if (this.characterMasteryInput) {
+                this.characterMasteryInput.disabled = !this.canEditProfile();
+            }
             this.attributeRows.forEach((row) => {
                 row.classList.toggle('is-readonly', !this.canEditAttributes());
                 const input = row.querySelector('[data-attribute-input]');
@@ -1826,6 +1850,10 @@
 
         canEditFormulas() {
             return this.permissions.is_master && this.masterMode === 'control';
+        }
+
+        canEditProfile() {
+            return this.permissions.is_master || String(this.currentUserId) === String(this.selectedPlayerId);
         }
 
         canEditNotes() {
@@ -2018,20 +2046,22 @@
             const hpMax = this.stats.hp_max ?? 0;
             const manaCurrent = this.stats.mana_current ?? 0;
             const manaMax = this.stats.mana_max ?? 0;
+            const kiCurrent = this.stats.ki_current ?? 0;
+            const kiMax = this.stats.ki_max ?? 0;
             const hungry = this.stats.hungry ?? 0;
             const ac = this.stats.armor_class ?? 0;
-            if (this.statsValues.hp) {
-                this.statsValues.hp.textContent = `${hpCurrent}/${hpMax}`;
-            }
-            if (this.statsValues.mana) {
-                this.statsValues.mana.textContent = `${manaCurrent}/${manaMax}`;
-            }
-            if (this.statsValues.hungry) {
-                this.statsValues.hungry.textContent = `${hungry}/100`;
-            }
-            if (this.statsValues.ac) {
-                this.statsValues.ac.textContent = `${ac}`;
-            }
+            const speed = this.stats.speed ?? 0;
+            const setStatValue = (nodes, value) => {
+                nodes.forEach((node) => {
+                    if (node) node.textContent = value;
+                });
+            };
+            setStatValue(this.statsValues.hp, `${hpCurrent}/${hpMax}`);
+            setStatValue(this.statsValues.mana, `${manaCurrent}/${manaMax}`);
+            setStatValue(this.statsValues.ki, `${kiCurrent}/${kiMax}`);
+            setStatValue(this.statsValues.speed, `${speed}`);
+            setStatValue(this.statsValues.hungry, `${hungry}/100`);
+            setStatValue(this.statsValues.ac, `${ac}`);
             if (this.statsFills.hp) {
                 const pct = hpMax > 0 ? (hpCurrent / hpMax) * 100 : 0;
                 this.statsFills.hp.style.width = `${Math.min(Math.max(pct, 0), 100)}%`;
@@ -2039,6 +2069,10 @@
             if (this.statsFills.mana) {
                 const pct = manaMax > 0 ? (manaCurrent / manaMax) * 100 : 0;
                 this.statsFills.mana.style.width = `${Math.min(Math.max(pct, 0), 100)}%`;
+            }
+            if (this.statsFills.ki) {
+                const pct = kiMax > 0 ? (kiCurrent / kiMax) * 100 : 0;
+                this.statsFills.ki.style.width = `${Math.min(Math.max(pct, 0), 100)}%`;
             }
             if (this.statsFills.hungry) {
                 const pct = (hungry / 100) * 100;
@@ -2054,6 +2088,10 @@
                     case 'mana_current':
                         input.max = `${manaMax}`;
                         input.value = `${manaCurrent}`;
+                        break;
+                    case 'ki_current':
+                        input.max = `${kiMax}`;
+                        input.value = `${kiCurrent}`;
                         break;
                     case 'hungry':
                         input.max = '100';
@@ -2109,6 +2147,17 @@
             if (!this.attributes) return;
             const stats = this.attributes.stats || {};
             const modifiers = this.attributes.modifiers || {};
+            const race = this.attributes.race || '';
+            const mastery = this.attributes.mastery ?? 7;
+            if (this.characterRaceText) {
+                this.characterRaceText.textContent = race || '—';
+            }
+            if (this.characterRaceInput) {
+                this.characterRaceInput.value = race;
+            }
+            if (this.characterMasteryInput) {
+                this.characterMasteryInput.value = `${mastery}`;
+            }
             this.attributeRows.forEach((row) => {
                 const statKey = row.dataset.attributeKey;
                 if (!statKey) return;
@@ -2374,6 +2423,45 @@
             await this.refreshInventory(this.selectedPlayerId);
         }
 
+        async saveCharacterProfile() {
+            if (!this.lobbyId || !this.selectedPlayerId) return;
+            const payload = {};
+            if (this.characterRaceInput) {
+                payload.race = this.characterRaceInput.value.trim();
+            }
+            if (this.characterMasteryInput) {
+                const masteryValue = Number.parseInt(this.characterMasteryInput.value || '0', 10);
+                if (!Number.isNaN(masteryValue)) {
+                    payload.mastery = masteryValue;
+                }
+            }
+            if (payload.race === undefined && payload.mastery === undefined) {
+                return;
+            }
+            const response = await fetch(
+                `/api/lobby/${this.lobbyId}/character/${this.selectedPlayerId}/profile`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                },
+            );
+            if (response.ok) {
+                const data = await response.json().catch(() => ({}));
+                if (data?.attributes) {
+                    this.attributes = data.attributes;
+                    this.updateAttributesUI();
+                }
+                if (data?.stats) {
+                    this.stats = data.stats;
+                    this.updateStatsUI();
+                }
+                return;
+            }
+            await response.json().catch(() => ({}));
+            await this.refreshInventory(this.selectedPlayerId);
+        }
+
         async submitAttributeUpdate() {
             const payload = {
                 lobby_id: this.lobbyId,
@@ -2433,6 +2521,8 @@
                 hp_max: this.stats?.hp_max ?? 0,
                 mana_current: this.stats?.mana_current ?? 0,
                 mana_max: this.stats?.mana_max ?? 0,
+                ki_current: this.stats?.ki_current ?? 0,
+                ki_max: this.stats?.ki_max ?? 0,
                 hungry: this.stats?.hungry ?? 0,
                 armor_class: this.stats?.armor_class ?? 0,
             };
@@ -2441,6 +2531,7 @@
                 if (Number.isNaN(value)) return;
                 if (input.dataset.statInput === 'hp_current') stats.hp_current = value;
                 if (input.dataset.statInput === 'mana_current') stats.mana_current = value;
+                if (input.dataset.statInput === 'ki_current') stats.ki_current = value;
                 if (input.dataset.statInput === 'hungry') stats.hungry = value;
                 if (input.dataset.statInput === 'armor_class') stats.armor_class = value;
             });

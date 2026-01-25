@@ -80,6 +80,17 @@ CHARACTER_CLASSES = {
     'psychic',
     '???',
 }
+CLASS_MOD_KI = {
+    'control': 1,
+    'creation': 1,
+    'mutation': 0.5,
+    'summoning': 2,
+    'psychic': 1.5,
+    '???': 0,
+}
+MASTERY_MIN = 2
+MASTERY_MAX = 7
+DEFAULT_MASTERY = 7
 SKILL_CHECK_TIME_LIMIT = 30
 SKILL_LEVEL_ORDER = ['BR', '0', '1', '2', '3', '4', '5', '6', '7']
 
@@ -375,6 +386,7 @@ class CharacterStats(db.Model):
     hp_max = db.Column(db.Float, nullable=True)
     mana_current = db.Column(db.Float, nullable=True)
     mana_max = db.Column(db.Float, nullable=True)
+    ki_current = db.Column(db.Float, nullable=True)
     armor_class = db.Column(db.Float, nullable=True)
     hungry = db.Column(db.Float, nullable=True)
     hp_head = db.Column(db.Float, nullable=True)
@@ -391,6 +403,8 @@ class CharacterAttributes(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('userid.id'), nullable=False, unique=True)
+    race = db.Column(db.String(40), nullable=True)
+    mastery = db.Column(db.Integer, nullable=False, default=DEFAULT_MASTERY)
     strength = db.Column(db.Integer, nullable=False, default=4)
     dexterity = db.Column(db.Integer, nullable=False, default=4)
     constitution = db.Column(db.Integer, nullable=False, default=4)
@@ -771,6 +785,9 @@ def _ensure_character_stats_columns():
         if 'mana_max' not in columns:
             db.session.execute(text('ALTER TABLE character_stats ADD COLUMN mana_max INTEGER'))
             db.session.commit()
+        if 'ki_current' not in columns:
+            db.session.execute(text('ALTER TABLE character_stats ADD COLUMN ki_current INTEGER'))
+            db.session.commit()
         if 'armor_class' not in columns:
             db.session.execute(text('ALTER TABLE character_stats ADD COLUMN armor_class INTEGER'))
             db.session.commit()
@@ -797,6 +814,18 @@ def _ensure_character_stats_columns():
             db.session.commit()
         if 'reason' not in columns:
             db.session.execute(text('ALTER TABLE character_stats ADD COLUMN reason REAL'))
+            db.session.commit()
+
+
+def _ensure_character_attributes_columns():
+    inspector = inspect(db.engine)
+    if 'character_attributes' in inspector.get_table_names():
+        columns = {column['name'] for column in inspector.get_columns('character_attributes')}
+        if 'race' not in columns:
+            db.session.execute(text('ALTER TABLE character_attributes ADD COLUMN race VARCHAR(40)'))
+            db.session.commit()
+        if 'mastery' not in columns:
+            db.session.execute(text('ALTER TABLE character_attributes ADD COLUMN mastery INTEGER DEFAULT 7'))
             db.session.commit()
 
 
@@ -880,6 +909,7 @@ def initialize_database():
     _ensure_item_type_columns()
     _ensure_item_definition_columns()
     _ensure_character_stats_columns()
+    _ensure_character_attributes_columns()
     _ensure_rule_schema()
     ensure_attribute_formula()
 
@@ -1630,6 +1660,11 @@ def ensure_character_attributes(user_id: int) -> CharacterAttributes:
     if not attributes:
         attributes = CharacterAttributes(user_id=user_id)
         db.session.add(attributes)
+    if attributes.mastery is None:
+        attributes.mastery = DEFAULT_MASTERY
+    attributes.mastery = max(MASTERY_MIN, min(attributes.mastery, MASTERY_MAX))
+    if attributes.race is None:
+        attributes.race = ''
     for key, column in ATTRIBUTE_COLUMN_MAP.items():
         if getattr(attributes, column) is None:
             setattr(attributes, column, 4)
@@ -2174,20 +2209,55 @@ def compute_attribute_modifier(stat_value: int, formula: str) -> int:
     return int(value)
 
 
+def resolve_attribute_formula() -> str:
+    formula_record = ensure_attribute_formula()
+    return formula_record.formula or DEFAULT_ATTRIBUTE_FORMULA
+
+
+def compute_attribute_modifier_safe(stat_value: int, formula: str) -> int:
+    try:
+        return compute_attribute_modifier(stat_value, formula)
+    except FormulaError:
+        return compute_attribute_modifier(stat_value, DEFAULT_ATTRIBUTE_FORMULA)
+
+
+def compute_attribute_modifiers(attributes: CharacterAttributes, formula: str) -> dict[str, int]:
+    return {
+        key: compute_attribute_modifier_safe(getattr(attributes, column) or 0, formula)
+        for key, column in ATTRIBUTE_COLUMN_MAP.items()
+    }
+
+
+def compute_character_derived_stats(
+    user: User,
+    stats: CharacterStats,
+    attributes: CharacterAttributes,
+) -> dict[str, int]:
+    formula = resolve_attribute_formula()
+    modifiers = compute_attribute_modifiers(attributes, formula)
+    class_mod = CLASS_MOD_KI.get(user.character_class or '???', 0)
+    mastery = max(MASTERY_MIN, min(attributes.mastery or DEFAULT_MASTERY, MASTERY_MAX))
+    ki_base = mastery * modifiers.get('wis', 0) * class_mod
+    ki_max = max(1, math.floor(ki_base))
+    ki_current = stats.ki_current if stats.ki_current is not None else ki_max
+    ki_current = min(max(ki_current, 0), ki_max)
+    speed = (modifiers.get('dex', 0) + 3) * 2
+    return {
+        'ki_max': ki_max,
+        'ki_current': ki_current,
+        'speed': speed,
+        'modifiers': modifiers,
+        'formula': formula,
+    }
+
+
 def build_attributes_payload(user_id: int, viewer: Optional[User], lobby_id: Optional[int]) -> dict:
     attributes = ensure_character_attributes(user_id)
-    formula_record = ensure_attribute_formula()
-    formula = formula_record.formula or DEFAULT_ATTRIBUTE_FORMULA
-    modifiers = {}
-    for key, column in ATTRIBUTE_COLUMN_MAP.items():
-        base_value = getattr(attributes, column) or 0
-        effective_value = base_value
-        try:
-            modifier = compute_attribute_modifier(effective_value, formula)
-        except FormulaError:
-            modifier = compute_attribute_modifier(effective_value, DEFAULT_ATTRIBUTE_FORMULA)
-        modifiers[key] = modifier
+    formula = resolve_attribute_formula()
+    modifiers = compute_attribute_modifiers(attributes, formula)
     return {
+        'race': attributes.race or '',
+        'mastery': attributes.mastery,
         'stats': {
             'str': attributes.strength,
             'dex': attributes.dexterity,
@@ -2570,6 +2640,11 @@ def build_inventory_payload(
     if lobby_id and is_master(viewer, lobby_id):
         recompute_character_formulas(lobby_id, user.id, actor_id=viewer.id)
     stats = ensure_character_stats(user.id)
+    attributes = ensure_character_attributes(user.id)
+    derived_stats = compute_character_derived_stats(user, stats, attributes)
+    if stats.ki_current != derived_stats['ki_current']:
+        stats.ki_current = derived_stats['ki_current']
+        db.session.commit()
     strength_modifier = (stats.strength - 10) // 2
     capacity = max(5, 5 + 5 * strength_modifier)
     if inventory_debug:
@@ -2600,6 +2675,9 @@ def build_inventory_payload(
             'hp_max': stats.hp_max,
             'mana_current': stats.mana_current,
             'mana_max': stats.mana_max,
+            'ki_current': stats.ki_current,
+            'ki_max': derived_stats['ki_max'],
+            'speed': derived_stats['speed'],
             'armor_class': stats.armor_class,
             'hungry': stats.hungry,
             'hp_head': stats.hp_head,
@@ -4875,16 +4953,23 @@ def update_character_stats():
     ).first()
     if not target_membership:
         return jsonify({'error': 'not_in_lobby'}), 403
+    target_user = User.query.get(target_user_id)
+    if not target_user:
+        return jsonify({'error': 'not_found'}), 404
     stats = ensure_character_stats(target_user_id)
     hp_max, mana_max = compute_max_stats(stats.strength or 10)
     stats.hp_max = hp_max
     stats.mana_max = mana_max
     hp_current = parse_int(data.get('hp_current'), stats.hp_current or hp_max, minimum=0)
     mana_current = parse_int(data.get('mana_current'), stats.mana_current or mana_max, minimum=0)
+    attributes = ensure_character_attributes(target_user_id)
+    derived_stats = compute_character_derived_stats(target_user, stats, attributes)
+    ki_current = parse_int(data.get('ki_current'), stats.ki_current or derived_stats['ki_max'], minimum=0)
     armor_class = parse_int(data.get('armor_class'), stats.armor_class or 0, minimum=0)
     hungry = parse_int(data.get('hungry'), stats.hungry or 0, minimum=0)
     stats.hp_current = min(hp_current, hp_max)
     stats.mana_current = min(mana_current, mana_max)
+    stats.ki_current = min(ki_current, derived_stats['ki_max'])
     stats.armor_class = armor_class
     stats.hungry = min(max(hungry, 0), 100)
     db.session.commit()
@@ -4898,6 +4983,9 @@ def update_character_stats():
             'hp_max': stats.hp_max,
             'mana_current': stats.mana_current,
             'mana_max': stats.mana_max,
+            'ki_current': stats.ki_current,
+            'ki_max': derived_stats['ki_max'],
+            'speed': derived_stats['speed'],
             'armor_class': stats.armor_class,
             'hungry': stats.hungry,
             'hp_head': stats.hp_head,
@@ -5208,7 +5296,82 @@ def set_character_class():
         return jsonify({'error': 'not_found'}), 404
     target_user.character_class = class_name
     db.session.commit()
+    stats = ensure_character_stats(target_user_id)
+    attributes = ensure_character_attributes(target_user_id)
+    derived_stats = compute_character_derived_stats(target_user, stats, attributes)
+    if stats.ki_current != derived_stats['ki_current']:
+        stats.ki_current = derived_stats['ki_current']
+        db.session.commit()
     return jsonify({'ok': True, 'character_class': target_user.character_class})
+
+
+def _require_profile_edit_permission(user: User, lobby_id: int, character_id: int):
+    viewer_membership = LobbyMember.query.filter_by(
+        lobby_id=lobby_id,
+        user_id=user.id,
+    ).first()
+    if not viewer_membership:
+        return (jsonify({'ok': False, 'error': 'forbidden'}), 403)
+    target_membership = LobbyMember.query.filter_by(
+        lobby_id=lobby_id,
+        user_id=character_id,
+    ).first()
+    if not target_membership:
+        return (jsonify({'ok': False, 'error': 'not_in_lobby'}), 403)
+    if not is_master(user, lobby_id) and user.id != character_id:
+        return (jsonify({'ok': False, 'error': 'forbidden'}), 403)
+    return None
+
+
+@app.route('/api/lobby/<int:lobby_id>/character/<int:user_id>/profile', methods=['POST'])
+def update_character_profile(lobby_id: int, user_id: int):
+    user = require_user()
+    error_response = _require_profile_edit_permission(user, lobby_id, user_id)
+    if error_response:
+        return error_response
+    data = request.get_json(silent=True) or {}
+    race = data.get('race')
+    mastery = data.get('mastery')
+    if race is None and mastery is None:
+        return jsonify({'ok': False, 'error': 'invalid_payload'}), 400
+    attributes = ensure_character_attributes(user_id)
+    if race is not None:
+        attributes.race = str(race).strip()
+    if mastery is not None:
+        mastery_value = parse_int(mastery, attributes.mastery, minimum=MASTERY_MIN)
+        attributes.mastery = min(mastery_value, MASTERY_MAX)
+    db.session.commit()
+    target_user = User.query.get(user_id)
+    if not target_user:
+        return jsonify({'ok': False, 'error': 'not_found'}), 404
+    stats = ensure_character_stats(user_id)
+    derived_stats = compute_character_derived_stats(target_user, stats, attributes)
+    if stats.ki_current != derived_stats['ki_current']:
+        stats.ki_current = derived_stats['ki_current']
+        db.session.commit()
+    return jsonify({
+        'ok': True,
+        'attributes': build_attributes_payload(user_id, user, lobby_id),
+        'stats': {
+            'strength': stats.strength,
+            'hp_current': stats.hp_current,
+            'hp_max': stats.hp_max,
+            'mana_current': stats.mana_current,
+            'mana_max': stats.mana_max,
+            'ki_current': stats.ki_current,
+            'ki_max': derived_stats['ki_max'],
+            'speed': derived_stats['speed'],
+            'armor_class': stats.armor_class,
+            'hungry': stats.hungry,
+            'hp_head': stats.hp_head,
+            'hp_torso': stats.hp_torso,
+            'hp_left_arm': stats.hp_left_arm,
+            'hp_right_arm': stats.hp_right_arm,
+            'hp_left_leg': stats.hp_left_leg,
+            'hp_right_leg': stats.hp_right_leg,
+            'reason': stats.reason,
+        },
+    })
 
 
 @app.route('/api/master/attributes/update', methods=['POST'])
@@ -5228,6 +5391,11 @@ def update_character_attributes():
     if not target_membership:
         return jsonify({'error': 'not_in_lobby'}), 403
     attributes = ensure_character_attributes(target_user_id)
+    if 'race' in data:
+        attributes.race = (data.get('race') or '').strip()
+    if 'mastery' in data:
+        attributes.mastery = parse_int(data.get('mastery'), attributes.mastery, minimum=MASTERY_MIN)
+        attributes.mastery = min(attributes.mastery, MASTERY_MAX)
     for stat_key, column in ATTRIBUTE_COLUMN_MAP.items():
         if stat_key in data:
             value = parse_int(data.get(stat_key), getattr(attributes, column), minimum=0)
@@ -5236,6 +5404,11 @@ def update_character_attributes():
     recompute_character_formulas(lobby_id, target_user_id, actor_id=user.id)
     viewer = user
     stats = ensure_character_stats(target_user_id)
+    target_user = User.query.get(target_user_id)
+    derived_stats = compute_character_derived_stats(target_user, stats, attributes)
+    if stats.ki_current != derived_stats['ki_current']:
+        stats.ki_current = derived_stats['ki_current']
+        db.session.commit()
     return jsonify({
         'ok': True,
         'attributes': build_attributes_payload(target_user_id, viewer, lobby_id),
@@ -5245,6 +5418,9 @@ def update_character_attributes():
             'hp_max': stats.hp_max,
             'mana_current': stats.mana_current,
             'mana_max': stats.mana_max,
+            'ki_current': stats.ki_current,
+            'ki_max': derived_stats['ki_max'],
+            'speed': derived_stats['speed'],
             'armor_class': stats.armor_class,
             'hungry': stats.hungry,
             'hp_head': stats.hp_head,

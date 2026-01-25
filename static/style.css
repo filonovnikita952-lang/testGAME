@@ -2265,6 +2265,10 @@ textarea {
     background: linear-gradient(90deg, rgba(90, 230, 255, 0.9), rgba(40, 140, 255, 0.9));
 }
 
+.stat-bar[data-stat='ki'] .stat-bar__fill {
+    background: linear-gradient(90deg, rgba(170, 130, 255, 0.9), rgba(120, 80, 220, 0.9));
+}
+
 .stat-bar[data-stat='hungry'] .stat-bar__fill {
     background: linear-gradient(90deg, rgba(255, 186, 90, 0.95), rgba(255, 120, 60, 0.95));
 }
@@ -3207,6 +3211,24 @@ textarea {
 
 .attributes-formula__controls input {
     flex: 1;
+}
+
+.attributes-extra {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.attributes-extra__field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-weight: 600;
+}
+
+.attributes-extra__field input {
+    width: 100%;
 }
 
 .attributes-grid {
