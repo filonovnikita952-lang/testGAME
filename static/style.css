@@ -2087,7 +2087,7 @@ textarea {
 
 .health-row {
     display: grid;
-    grid-template-columns: minmax(90px, 140px) 1fr auto auto;
+    grid-template-columns: minmax(120px, 160px) minmax(180px, 1fr) minmax(120px, 160px);
     align-items: center;
     gap: 12px;
     padding: 6px 8px;
@@ -2142,7 +2142,7 @@ textarea {
 }
 
 .health-bar__over {
-    right: 0;
+    left: 0;
     background: #9b5cff;
     opacity: 0.85;
 }
@@ -2152,6 +2152,7 @@ textarea {
     align-items: center;
     gap: 4px;
     font-size: 0.85rem;
+    justify-self: end;
 }
 
 .health-row__input {
@@ -2164,28 +2165,6 @@ textarea {
     font-size: 0.85rem;
 }
 
-.health-controls {
-    display: inline-flex;
-    gap: 2px;
-}
-
-.health-controls__button {
-    width: 20px;
-    height: 16px;
-    border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(8, 9, 14, 0.6);
-    color: var(--text);
-    cursor: pointer;
-    padding: 0;
-    line-height: 1;
-    font-size: 0.6rem;
-}
-
-.health-controls__button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
 
 .formula-grid {
     display: grid;
