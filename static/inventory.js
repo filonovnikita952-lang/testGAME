@@ -146,10 +146,14 @@
             this.gridElements = Array.from(this.root.querySelectorAll('.tetris-grid'));
             this.characterClassText = this.root.querySelector('[data-character-class-text]');
             this.characterClassSelect = this.root.querySelector('[data-character-class-select]');
+            this.characterRaceWrap = this.root.querySelector('[data-character-race]');
             this.characterRaceText = this.root.querySelector('[data-character-race-text]');
             this.characterRaceInput = this.root.querySelector('[data-character-race-input]');
+            this.characterRaceEditButton = this.root.querySelector('[data-character-race-edit]');
             this.characterMasteryInput = this.root.querySelector('[data-character-mastery-input]');
             this.kiCurrentInput = this.root.querySelector('[data-ki-current-input]');
+            this.kiAdjustButtons = Array.from(this.root.querySelectorAll('[data-ki-adjust]'));
+            this.raceValueBeforeEdit = '';
             this.attributeRows = Array.from(this.root.querySelectorAll('[data-attribute-row]'));
             this.attributeFormulaInput = this.root.querySelector('[data-attribute-formula-input]');
             this.attributeFormulaSave = this.root.querySelector('[data-attribute-formula-save]');
@@ -311,6 +315,26 @@
                     if (!this.canEditProfile()) return;
                     this.saveCharacterProfile();
                 });
+                this.characterRaceInput.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        this.finishRaceEdit(true);
+                    }
+                    if (event.key === 'Escape') {
+                        event.preventDefault();
+                        this.finishRaceEdit(false);
+                    }
+                });
+                this.characterRaceInput.addEventListener('blur', () => {
+                    if (!this.characterRaceWrap?.classList.contains('is-editing')) return;
+                    this.finishRaceEdit(true);
+                });
+            }
+            if (this.characterRaceEditButton) {
+                this.characterRaceEditButton.addEventListener('click', () => {
+                    if (!this.canEditProfile()) return;
+                    this.startRaceEdit();
+                });
             }
             if (this.characterMasteryInput) {
                 this.characterMasteryInput.addEventListener('change', () => {
@@ -322,6 +346,16 @@
                 this.kiCurrentInput.addEventListener('change', () => {
                     if (!this.canEditProfile()) return;
                     this.saveCharacterProfile();
+                });
+            }
+            if (this.kiAdjustButtons.length) {
+                this.kiAdjustButtons.forEach((button) => {
+                    button.addEventListener('click', () => {
+                        if (!this.canEditProfile()) return;
+                        const direction = button.dataset.kiAdjust;
+                        const delta = direction === 'down' ? -1 : 1;
+                        this.adjustKiCurrent(delta);
+                    });
                 });
             }
 
@@ -1816,11 +1850,20 @@
             if (this.characterRaceInput) {
                 this.characterRaceInput.disabled = !this.canEditProfile();
             }
+            if (this.characterRaceEditButton) {
+                this.characterRaceEditButton.disabled = !this.canEditProfile();
+            }
             if (this.characterMasteryInput) {
                 this.characterMasteryInput.disabled = !this.canEditProfile();
             }
             if (this.kiCurrentInput) {
                 this.kiCurrentInput.disabled = !this.canEditProfile();
+            }
+            if (this.kiAdjustButtons.length) {
+                const canEdit = this.canEditProfile();
+                this.kiAdjustButtons.forEach((button) => {
+                    button.disabled = !canEdit;
+                });
             }
             this.attributeRows.forEach((row) => {
                 row.classList.toggle('is-readonly', !this.canEditAttributes());
@@ -2153,6 +2196,48 @@
             }
         }
 
+        startRaceEdit() {
+            if (!this.characterRaceWrap || !this.characterRaceInput) return;
+            if (!this.canEditProfile()) return;
+            this.raceValueBeforeEdit = this.characterRaceInput.value;
+            this.characterRaceWrap.classList.add('is-editing');
+            requestAnimationFrame(() => {
+                this.characterRaceInput.focus();
+                this.characterRaceInput.select();
+            });
+        }
+
+        finishRaceEdit(shouldSave) {
+            if (!this.characterRaceWrap || !this.characterRaceInput) return;
+            const trimmed = this.characterRaceInput.value.trim().slice(0, 20);
+            if (!shouldSave) {
+                this.characterRaceInput.value = this.raceValueBeforeEdit;
+                this.characterRaceWrap.classList.remove('is-editing');
+                return;
+            }
+            this.characterRaceInput.value = trimmed;
+            if (this.characterRaceText) {
+                this.characterRaceText.textContent = trimmed || '—';
+            }
+            this.characterRaceWrap.classList.remove('is-editing');
+            if (this.canEditProfile()) {
+                this.saveCharacterProfile({ race: trimmed });
+            }
+        }
+
+        adjustKiCurrent(delta) {
+            if (!this.stats) return;
+            const kiMax = this.stats.ki_max ?? 0;
+            const minValue = 0;
+            const maxValue = kiMax > 0 ? kiMax : 100;
+            const currentValue = this.stats.ki_current ?? 0;
+            const nextValue = Math.min(Math.max(currentValue + delta, minValue), maxValue);
+            if (nextValue === currentValue) return;
+            this.stats.ki_current = nextValue;
+            this.updateStatsUI();
+            this.saveCharacterProfile({ ki_current: nextValue });
+        }
+
         formatModifier(value) {
             const numeric = Number(value || 0);
             return numeric >= 0 ? `+${numeric}` : `${numeric}`;
@@ -2168,7 +2253,7 @@
                 this.characterRaceText.textContent = race || '—';
             }
             if (this.characterRaceInput) {
-                this.characterRaceInput.value = race;
+                this.characterRaceInput.value = race.slice(0, 20);
             }
             if (this.characterMasteryInput) {
                 this.characterMasteryInput.value = `${mastery}`;
@@ -2438,19 +2523,25 @@
             await this.refreshInventory(this.selectedPlayerId);
         }
 
-        async saveCharacterProfile() {
+        async saveCharacterProfile(overrides = {}) {
             if (!this.lobbyId || !this.selectedPlayerId) return;
             const payload = {};
-            if (this.characterRaceInput) {
+            if (overrides.race !== undefined) {
+                payload.race = overrides.race;
+            } else if (this.characterRaceInput) {
                 payload.race = this.characterRaceInput.value.trim();
             }
-            if (this.characterMasteryInput) {
+            if (overrides.mastery !== undefined) {
+                payload.mastery = overrides.mastery;
+            } else if (this.characterMasteryInput) {
                 const masteryValue = Number.parseInt(this.characterMasteryInput.value || '0', 10);
                 if (!Number.isNaN(masteryValue)) {
                     payload.mastery = masteryValue;
                 }
             }
-            if (this.kiCurrentInput) {
+            if (overrides.ki_current !== undefined) {
+                payload.ki_current = overrides.ki_current;
+            } else if (this.kiCurrentInput) {
                 const kiValue = Number.parseInt(this.kiCurrentInput.value || '0', 10);
                 if (!Number.isNaN(kiValue)) {
                     payload.ki_current = kiValue;
