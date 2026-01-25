@@ -149,6 +149,7 @@
             this.characterRaceText = this.root.querySelector('[data-character-race-text]');
             this.characterRaceInput = this.root.querySelector('[data-character-race-input]');
             this.characterMasteryInput = this.root.querySelector('[data-character-mastery-input]');
+            this.kiCurrentInput = this.root.querySelector('[data-ki-current-input]');
             this.attributeRows = Array.from(this.root.querySelectorAll('[data-attribute-row]'));
             this.attributeFormulaInput = this.root.querySelector('[data-attribute-formula-input]');
             this.attributeFormulaSave = this.root.querySelector('[data-attribute-formula-save]');
@@ -313,6 +314,12 @@
             }
             if (this.characterMasteryInput) {
                 this.characterMasteryInput.addEventListener('change', () => {
+                    if (!this.canEditProfile()) return;
+                    this.saveCharacterProfile();
+                });
+            }
+            if (this.kiCurrentInput) {
+                this.kiCurrentInput.addEventListener('change', () => {
                     if (!this.canEditProfile()) return;
                     this.saveCharacterProfile();
                 });
@@ -1812,6 +1819,9 @@
             if (this.characterMasteryInput) {
                 this.characterMasteryInput.disabled = !this.canEditProfile();
             }
+            if (this.kiCurrentInput) {
+                this.kiCurrentInput.disabled = !this.canEditProfile();
+            }
             this.attributeRows.forEach((row) => {
                 row.classList.toggle('is-readonly', !this.canEditAttributes());
                 const input = row.querySelector('[data-attribute-input]');
@@ -2058,7 +2068,7 @@
             };
             setStatValue(this.statsValues.hp, `${hpCurrent}/${hpMax}`);
             setStatValue(this.statsValues.mana, `${manaCurrent}/${manaMax}`);
-            setStatValue(this.statsValues.ki, `${kiCurrent}/${kiMax}`);
+            setStatValue(this.statsValues.ki, `${kiMax}/${kiCurrent}`);
             setStatValue(this.statsValues.speed, `${speed}`);
             setStatValue(this.statsValues.hungry, `${hungry}/100`);
             setStatValue(this.statsValues.ac, `${ac}`);
@@ -2077,6 +2087,11 @@
             if (this.statsFills.hungry) {
                 const pct = (hungry / 100) * 100;
                 this.statsFills.hungry.style.width = `${Math.min(Math.max(pct, 0), 100)}%`;
+            }
+            if (this.kiCurrentInput) {
+                this.kiCurrentInput.value = `${kiCurrent}`;
+                this.kiCurrentInput.max = '100';
+                this.kiCurrentInput.min = '0';
             }
             this.statsInputs.forEach((input) => {
                 const key = input.dataset.statInput;
@@ -2148,7 +2163,7 @@
             const stats = this.attributes.stats || {};
             const modifiers = this.attributes.modifiers || {};
             const race = this.attributes.race || '';
-            const mastery = this.attributes.mastery ?? 7;
+            const mastery = this.attributes.mastery ?? 2;
             if (this.characterRaceText) {
                 this.characterRaceText.textContent = race || '—';
             }
@@ -2435,7 +2450,17 @@
                     payload.mastery = masteryValue;
                 }
             }
-            if (payload.race === undefined && payload.mastery === undefined) {
+            if (this.kiCurrentInput) {
+                const kiValue = Number.parseInt(this.kiCurrentInput.value || '0', 10);
+                if (!Number.isNaN(kiValue)) {
+                    payload.ki_current = kiValue;
+                }
+            }
+            if (
+                payload.race === undefined
+                && payload.mastery === undefined
+                && payload.ki_current === undefined
+            ) {
                 return;
             }
             const response = await fetch(
