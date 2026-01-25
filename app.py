@@ -395,6 +395,7 @@ class CharacterStats(db.Model):
     hp_right_arm = db.Column(db.Float, nullable=True)
     hp_left_leg = db.Column(db.Float, nullable=True)
     hp_right_leg = db.Column(db.Float, nullable=True)
+    blood = db.Column(db.Float, nullable=True)
     reason = db.Column(db.Float, nullable=True)
 
 
@@ -811,6 +812,9 @@ def _ensure_character_stats_columns():
             db.session.commit()
         if 'hp_right_leg' not in columns:
             db.session.execute(text('ALTER TABLE character_stats ADD COLUMN hp_right_leg REAL'))
+            db.session.commit()
+        if 'blood' not in columns:
+            db.session.execute(text('ALTER TABLE character_stats ADD COLUMN blood REAL'))
             db.session.commit()
         if 'reason' not in columns:
             db.session.execute(text('ALTER TABLE character_stats ADD COLUMN reason REAL'))
@@ -1636,6 +1640,8 @@ def ensure_character_stats(user_id: int) -> CharacterStats:
         stats.hp_left_leg = 0
     if stats.hp_right_leg is None:
         stats.hp_right_leg = 0
+    if stats.blood is None:
+        stats.blood = 0
     if stats.reason is None:
         stats.reason = 0
     stats.hp_current = min(stats.hp_current or 0, stats.hp_max or hp_max)
@@ -2240,7 +2246,7 @@ def compute_character_derived_stats(
     ki_base = mastery * (2 + modifiers.get('wis', 0)) * class_mod
     ki_max = max(1, math.floor(ki_base))
     ki_current = stats.ki_current if stats.ki_current is not None else min(ki_max, 100)
-    ki_current = min(max(ki_current, 0), ki_max, 100)
+    ki_current = max(ki_current, 0)
     speed = (modifiers.get('dex', 0) + 3) * 2
     return {
         'ki_max': ki_max,
@@ -2643,7 +2649,7 @@ def build_inventory_payload(
     attributes = ensure_character_attributes(user.id)
     derived_stats = compute_character_derived_stats(user, stats, attributes)
     if stats.ki_current != derived_stats['ki_current']:
-        stats.ki_current = min(derived_stats['ki_current'], 100)
+        stats.ki_current = max(derived_stats['ki_current'], 0)
         db.session.commit()
     strength_modifier = (stats.strength - 10) // 2
     capacity = max(5, 5 + 5 * strength_modifier)
@@ -2686,6 +2692,7 @@ def build_inventory_payload(
             'hp_right_arm': stats.hp_right_arm,
             'hp_left_leg': stats.hp_left_leg,
             'hp_right_leg': stats.hp_right_leg,
+            'blood': stats.blood,
             'reason': stats.reason,
         },
         'attributes': build_attributes_payload(user.id, viewer, lobby_id),
@@ -4969,7 +4976,7 @@ def update_character_stats():
     hungry = parse_int(data.get('hungry'), stats.hungry or 0, minimum=0)
     stats.hp_current = min(hp_current, hp_max)
     stats.mana_current = min(mana_current, mana_max)
-    stats.ki_current = min(ki_current, derived_stats['ki_max'], 100)
+    stats.ki_current = max(ki_current, 0)
     stats.armor_class = armor_class
     stats.hungry = min(max(hungry, 0), 100)
     db.session.commit()
@@ -4994,6 +5001,7 @@ def update_character_stats():
             'hp_right_arm': stats.hp_right_arm,
             'hp_left_leg': stats.hp_left_leg,
             'hp_right_leg': stats.hp_right_leg,
+            'blood': stats.blood,
             'reason': stats.reason,
         },
     })
@@ -5300,7 +5308,7 @@ def set_character_class():
     attributes = ensure_character_attributes(target_user_id)
     derived_stats = compute_character_derived_stats(target_user, stats, attributes)
     if stats.ki_current != derived_stats['ki_current']:
-        stats.ki_current = min(derived_stats['ki_current'], 100)
+        stats.ki_current = max(derived_stats['ki_current'], 0)
         db.session.commit()
     return jsonify({'ok': True, 'character_class': target_user.character_class})
 
@@ -5333,7 +5341,18 @@ def update_character_profile(lobby_id: int, user_id: int):
     race = data.get('race')
     mastery = data.get('mastery')
     ki_current = data.get('ki_current')
-    if race is None and mastery is None and ki_current is None:
+    health_fields = {
+        'hp_head',
+        'hp_torso',
+        'hp_left_arm',
+        'hp_right_arm',
+        'hp_left_leg',
+        'hp_right_leg',
+        'blood',
+        'reason',
+    }
+    has_health_update = any(field in data for field in health_fields)
+    if race is None and mastery is None and ki_current is None and not has_health_update:
         return jsonify({'ok': False, 'error': 'invalid_payload'}), 400
     attributes = ensure_character_attributes(user_id)
     if race is not None:
@@ -5349,10 +5368,16 @@ def update_character_profile(lobby_id: int, user_id: int):
     derived_stats = compute_character_derived_stats(target_user, stats, attributes)
     if ki_current is not None:
         ki_value = parse_int(ki_current, stats.ki_current or derived_stats['ki_max'], minimum=0)
-        ki_limit = min(derived_stats['ki_max'], 100)
-        stats.ki_current = min(ki_value, ki_limit)
+        stats.ki_current = max(ki_value, 0)
     elif stats.ki_current != derived_stats['ki_current']:
-        stats.ki_current = min(derived_stats['ki_current'], 100)
+        stats.ki_current = max(derived_stats['ki_current'], 0)
+    for field in health_fields:
+        if field not in data:
+            continue
+        value = parse_int(data.get(field), getattr(stats, field) or 0, minimum=0)
+        if field == 'reason':
+            value = min(max(value, 0), 100)
+        setattr(stats, field, value)
     db.session.commit()
     return jsonify({
         'ok': True,
@@ -5374,6 +5399,7 @@ def update_character_profile(lobby_id: int, user_id: int):
             'hp_right_arm': stats.hp_right_arm,
             'hp_left_leg': stats.hp_left_leg,
             'hp_right_leg': stats.hp_right_leg,
+            'blood': stats.blood,
             'reason': stats.reason,
         },
     })
@@ -5412,7 +5438,7 @@ def update_character_attributes():
     target_user = User.query.get(target_user_id)
     derived_stats = compute_character_derived_stats(target_user, stats, attributes)
     if stats.ki_current != derived_stats['ki_current']:
-        stats.ki_current = min(derived_stats['ki_current'], 100)
+        stats.ki_current = max(derived_stats['ki_current'], 0)
         db.session.commit()
     return jsonify({
         'ok': True,
@@ -5434,6 +5460,7 @@ def update_character_attributes():
             'hp_right_arm': stats.hp_right_arm,
             'hp_left_leg': stats.hp_left_leg,
             'hp_right_leg': stats.hp_right_leg,
+            'blood': stats.blood,
             'reason': stats.reason,
         },
     })

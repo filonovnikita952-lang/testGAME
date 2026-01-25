@@ -57,6 +57,16 @@
         hp_right_leg: 'hp_right_leg',
         reason: 'reason',
     };
+    const healthStatConfig = {
+        hp_head: { multiplier: 0.3 },
+        hp_torso: { multiplier: 0.5 },
+        hp_left_arm: { multiplier: 0.2 },
+        hp_right_arm: { multiplier: 0.2 },
+        hp_left_leg: { multiplier: 0.2 },
+        hp_right_leg: { multiplier: 0.2 },
+        blood: { multiplier: 2 },
+        reason: { max: 100 },
+    };
 
     class LobbyInventory {
         constructor(root) {
@@ -101,15 +111,12 @@
                 hungry: Array.from(this.root.querySelectorAll('[data-stat-value="hungry"]')),
                 ac: Array.from(this.root.querySelectorAll('[data-stat-value="ac"]')),
             };
-            this.healthValues = {
-                hp_head: this.root.querySelector('[data-health-value="hp_head"]'),
-                hp_torso: this.root.querySelector('[data-health-value="hp_torso"]'),
-                hp_left_arm: this.root.querySelector('[data-health-value="hp_left_arm"]'),
-                hp_right_arm: this.root.querySelector('[data-health-value="hp_right_arm"]'),
-                hp_left_leg: this.root.querySelector('[data-health-value="hp_left_leg"]'),
-                hp_right_leg: this.root.querySelector('[data-health-value="hp_right_leg"]'),
-                reason: this.root.querySelector('[data-health-value="reason"]'),
-            };
+            this.healthRows = Array.from(this.root.querySelectorAll('[data-health-row]'));
+            this.healthInputs = new Map();
+            this.healthMaxNodes = new Map();
+            this.healthFillNodes = new Map();
+            this.healthOverNodes = new Map();
+            this.healthAdjustButtons = Array.from(this.root.querySelectorAll('[data-health-adjust]'));
             this.statsFills = {
                 hp: this.root.querySelector('[data-stat-fill="hp"]'),
                 mana: this.root.querySelector('[data-stat-fill="mana"]'),
@@ -153,6 +160,18 @@
             this.characterMasteryInput = this.root.querySelector('[data-character-mastery-input]');
             this.kiCurrentInput = this.root.querySelector('[data-ki-current-input]');
             this.kiAdjustButtons = Array.from(this.root.querySelectorAll('[data-ki-adjust]'));
+            this.healthRows.forEach((row) => {
+                const statKey = row.dataset.healthRow;
+                if (!statKey) return;
+                const input = row.querySelector('[data-health-input]');
+                const maxNode = row.querySelector('[data-health-max]');
+                const fillNode = row.querySelector('[data-health-fill]');
+                const overNode = row.querySelector('[data-health-over]');
+                if (input) this.healthInputs.set(statKey, input);
+                if (maxNode) this.healthMaxNodes.set(statKey, maxNode);
+                if (fillNode) this.healthFillNodes.set(statKey, fillNode);
+                if (overNode) this.healthOverNodes.set(statKey, overNode);
+            });
             this.raceValueBeforeEdit = '';
             this.attributeRows = Array.from(this.root.querySelectorAll('[data-attribute-row]'));
             this.attributeFormulaInput = this.root.querySelector('[data-attribute-formula-input]');
@@ -355,6 +374,31 @@
                         const direction = button.dataset.kiAdjust;
                         const delta = direction === 'down' ? -1 : 1;
                         this.adjustKiCurrent(delta);
+                    });
+                });
+            }
+            if (this.healthInputs.size) {
+                this.healthInputs.forEach((input, statKey) => {
+                    input.addEventListener('change', () => {
+                        if (!this.canEditProfile()) return;
+                        const nextValue = this.normalizeHealthValue(statKey, input.value);
+                        if (nextValue === null) return;
+                        if (!this.stats) return;
+                        this.stats[statKey] = nextValue;
+                        this.updateHealthUI();
+                        this.saveHealthValues({ [statKey]: nextValue });
+                    });
+                });
+            }
+            if (this.healthAdjustButtons.length) {
+                this.healthAdjustButtons.forEach((button) => {
+                    button.addEventListener('click', () => {
+                        if (!this.canEditProfile()) return;
+                        const statKey = button.dataset.healthKey;
+                        if (!statKey) return;
+                        const direction = button.dataset.healthAdjust;
+                        const delta = direction === 'down' ? -1 : 1;
+                        this.adjustHealthCurrent(statKey, delta);
                     });
                 });
             }
@@ -1865,6 +1909,18 @@
                     button.disabled = !canEdit;
                 });
             }
+            if (this.healthInputs.size) {
+                const canEdit = this.canEditProfile();
+                this.healthInputs.forEach((input) => {
+                    input.disabled = !canEdit;
+                });
+            }
+            if (this.healthAdjustButtons.length) {
+                const canEdit = this.canEditProfile();
+                this.healthAdjustButtons.forEach((button) => {
+                    button.disabled = !canEdit;
+                });
+            }
             this.attributeRows.forEach((row) => {
                 row.classList.toggle('is-readonly', !this.canEditAttributes());
                 const input = row.querySelector('[data-attribute-input]');
@@ -2133,7 +2189,6 @@
             }
             if (this.kiCurrentInput) {
                 this.kiCurrentInput.value = `${kiCurrent}`;
-                this.kiCurrentInput.max = '100';
                 this.kiCurrentInput.min = '0';
             }
             this.statsInputs.forEach((input) => {
@@ -2148,7 +2203,7 @@
                         input.value = `${manaCurrent}`;
                         break;
                     case 'ki_current':
-                        input.max = `${kiMax}`;
+                        if (input.hasAttribute('max')) input.removeAttribute('max');
                         input.value = `${kiCurrent}`;
                         break;
                     case 'hungry':
@@ -2168,20 +2223,66 @@
         }
 
         updateHealthUI() {
-            const defaults = {
+            if (!this.stats) return;
+            const maxHp = this.stats.hp_max ?? 0;
+            const maxValues = {};
+            Object.entries(healthStatConfig).forEach(([key, config]) => {
+                if (config.max !== undefined) {
+                    maxValues[key] = config.max;
+                    return;
+                }
+                const multiplier = config.multiplier ?? 0;
+                maxValues[key] = Math.floor((maxHp || 0) * multiplier);
+            });
+            const currentValues = {
                 hp_head: this.stats?.hp_head ?? 0,
                 hp_torso: this.stats?.hp_torso ?? 0,
                 hp_left_arm: this.stats?.hp_left_arm ?? 0,
                 hp_right_arm: this.stats?.hp_right_arm ?? 0,
                 hp_left_leg: this.stats?.hp_left_leg ?? 0,
                 hp_right_leg: this.stats?.hp_right_leg ?? 0,
+                blood: this.stats?.blood ?? 0,
                 reason: this.stats?.reason ?? 0,
             };
-            const values = { ...defaults, ...this.formulaValues };
-            Object.entries(this.healthValues).forEach(([key, node]) => {
-                if (!node) return;
-                const value = values[key];
-                node.textContent = Number.isFinite(value) ? `${value}` : '—';
+            this.healthInputs.forEach((input, key) => {
+                const value = currentValues[key] ?? 0;
+                input.value = `${Number.isFinite(value) ? value : 0}`;
+                input.min = '0';
+                if (key === 'reason') {
+                    input.max = '100';
+                } else if (input.hasAttribute('max')) {
+                    input.removeAttribute('max');
+                }
+            });
+            this.healthMaxNodes.forEach((node, key) => {
+                const value = maxValues[key] ?? 0;
+                node.textContent = `${Number.isFinite(value) ? value : 0}`;
+            });
+            this.healthFillNodes.forEach((node, key) => {
+                const maxValue = maxValues[key] ?? 0;
+                const currentValue = currentValues[key] ?? 0;
+                const percent = maxValue > 0 ? (currentValue / maxValue) * 100 : 0;
+                const normalized = Math.min(Math.max(percent, 0), 100);
+                node.style.width = `${normalized}%`;
+                node.classList.remove('is-green', 'is-yellow', 'is-red', 'is-black');
+                if (normalized > 69) {
+                    node.classList.add('is-green');
+                } else if (normalized > 29) {
+                    node.classList.add('is-yellow');
+                } else if (normalized > 1) {
+                    node.classList.add('is-red');
+                } else if (normalized > 0) {
+                    node.classList.add('is-black');
+                }
+            });
+            this.healthOverNodes.forEach((node, key) => {
+                const maxValue = maxValues[key] ?? 0;
+                const currentValue = currentValues[key] ?? 0;
+                const percent = maxValue > 0 ? (currentValue / maxValue) * 100 : 0;
+                const overPercent = Math.max(percent - 100, 0);
+                const width = Math.min(overPercent, 100);
+                node.style.width = `${width}%`;
+                node.style.display = width > 0 ? 'block' : 'none';
             });
         }
 
@@ -2227,15 +2328,36 @@
 
         adjustKiCurrent(delta) {
             if (!this.stats) return;
-            const kiMax = this.stats.ki_max ?? 0;
             const minValue = 0;
-            const maxValue = kiMax > 0 ? kiMax : 100;
             const currentValue = this.stats.ki_current ?? 0;
-            const nextValue = Math.min(Math.max(currentValue + delta, minValue), maxValue);
+            const nextValue = Math.max(currentValue + delta, minValue);
             if (nextValue === currentValue) return;
             this.stats.ki_current = nextValue;
             this.updateStatsUI();
             this.saveCharacterProfile({ ki_current: nextValue });
+        }
+
+        normalizeHealthValue(statKey, value) {
+            const parsed = Number.parseInt(value, 10);
+            if (Number.isNaN(parsed)) return null;
+            let nextValue = Math.max(parsed, 0);
+            if (statKey === 'reason') {
+                nextValue = Math.min(nextValue, 100);
+            }
+            return nextValue;
+        }
+
+        adjustHealthCurrent(statKey, delta) {
+            if (!this.stats) return;
+            const currentValue = Number.parseInt(this.stats[statKey] ?? 0, 10) || 0;
+            let nextValue = Math.max(currentValue + delta, 0);
+            if (statKey === 'reason') {
+                nextValue = Math.min(nextValue, 100);
+            }
+            if (nextValue === currentValue) return;
+            this.stats[statKey] = nextValue;
+            this.updateHealthUI();
+            this.saveHealthValues({ [statKey]: nextValue });
         }
 
         formatModifier(value) {
@@ -2517,6 +2639,43 @@
             });
             if (response.ok) {
                 await this.refreshInventory(this.selectedPlayerId);
+                return;
+            }
+            await response.json().catch(() => ({}));
+            await this.refreshInventory(this.selectedPlayerId);
+        }
+
+        async saveHealthValues(overrides = {}) {
+            if (!this.lobbyId || !this.selectedPlayerId) return;
+            const payload = {};
+            const keys = Object.keys(overrides);
+            const targets = keys.length ? keys : Array.from(this.healthInputs.keys());
+            targets.forEach((statKey) => {
+                if (overrides[statKey] !== undefined) {
+                    payload[statKey] = overrides[statKey];
+                    return;
+                }
+                const input = this.healthInputs.get(statKey);
+                if (!input) return;
+                const value = this.normalizeHealthValue(statKey, input.value);
+                if (value === null) return;
+                payload[statKey] = value;
+            });
+            if (!Object.keys(payload).length) return;
+            const response = await fetch(
+                `/api/lobby/${this.lobbyId}/character/${this.selectedPlayerId}/profile`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                },
+            );
+            if (response.ok) {
+                const data = await response.json().catch(() => ({}));
+                if (data?.stats) {
+                    this.stats = data.stats;
+                    this.updateStatsUI();
+                }
                 return;
             }
             await response.json().catch(() => ({}));
