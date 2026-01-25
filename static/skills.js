@@ -26,6 +26,7 @@ let currentCategoryIndex = 0;
 let currentSubclassIndex = 0;
 let hintTimeout = null;
 let lastSelectedSkill = null;
+const HOLD_DURATION_MS = 1500;
 
 function showHint(message) {
     if (!hintEl) {
@@ -289,7 +290,13 @@ function renderGrid() {
             button.dataset.skillId = skill.id || '';
             button.dataset.levelKey = skill.level_key;
             const label = skill.id && skill.name ? skill.name : skill.level_key;
-            button.innerHTML = `<span class="skill-node__label">${label}</span>`;
+            const holdIndicator = document.createElement('span');
+            holdIndicator.className = 'skill-node__hold';
+            const labelSpan = document.createElement('span');
+            labelSpan.className = 'skill-node__label';
+            labelSpan.textContent = label;
+            button.appendChild(holdIndicator);
+            button.appendChild(labelSpan);
 
             button.addEventListener('mouseenter', (event) => {
                 showTooltip(event, skill);
@@ -299,15 +306,53 @@ function renderGrid() {
             button.addEventListener('focus', (event) => showTooltip(event, skill));
             button.addEventListener('blur', hideTooltip);
 
-            button.addEventListener('click', async () => {
+            let holdTimer = null;
+            let holdClass = null;
+            const clearHold = () => {
+                if (holdTimer) {
+                    clearTimeout(holdTimer);
+                    holdTimer = null;
+                }
+                button.classList.remove('is-holding');
+                if (holdClass) {
+                    button.classList.remove(holdClass);
+                    holdClass = null;
+                }
+            };
+
+            button.addEventListener('click', () => {
                 lastSelectedSkill = skill;
                 renderSkillDetail(skill);
+            });
+
+            button.addEventListener('pointerdown', (event) => {
+                if (event.button !== 0) {
+                    return;
+                }
                 if (!skill.id || !skill.is_enabled) {
                     return;
                 }
+                event.preventDefault();
+                clearHold();
                 const isActive = activeSkillIds.has(skill.id);
-                await toggleSkill(skill.id, !isActive);
+                holdClass = isActive ? 'hold-drain' : 'hold-fill';
+                button.classList.add(holdClass);
+                requestAnimationFrame(() => button.classList.add('is-holding'));
+                holdTimer = setTimeout(async () => {
+                    holdTimer = null;
+                    await toggleSkill(skill.id, !isActive);
+                    clearHold();
+                }, HOLD_DURATION_MS);
             });
+
+            button.addEventListener('pointerup', (event) => {
+                if (event.button !== 0) {
+                    return;
+                }
+                clearHold();
+            });
+            button.addEventListener('pointerleave', clearHold);
+            button.addEventListener('pointercancel', clearHold);
             list.appendChild(button);
         });
 

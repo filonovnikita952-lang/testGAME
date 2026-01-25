@@ -1149,6 +1149,9 @@ textarea {
     color: rgba(255, 255, 255, 0.8);
     cursor: pointer;
     transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+    --hold-duration: 1500ms;
 }
 
 .skill-node--active {
@@ -1169,6 +1172,40 @@ textarea {
 
 .skill-node__label {
     font-weight: 600;
+    position: relative;
+    z-index: 2;
+}
+
+.skill-node__hold {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(129, 216, 255, 0.45), rgba(129, 216, 255, 0.15));
+    opacity: 0;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform var(--hold-duration) linear, opacity 0.2s ease;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.skill-node.hold-fill .skill-node__hold {
+    opacity: 0.85;
+    transform: scaleX(0);
+    transform-origin: left;
+}
+
+.skill-node.hold-fill.is-holding .skill-node__hold {
+    transform: scaleX(1);
+}
+
+.skill-node.hold-drain .skill-node__hold {
+    opacity: 0.7;
+    transform: scaleX(1);
+    transform-origin: right;
+}
+
+.skill-node.hold-drain.is-holding .skill-node__hold {
+    transform: scaleX(0);
 }
 
 .skills-hint {
