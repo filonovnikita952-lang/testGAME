@@ -80,8 +80,8 @@
                                                     <strong>{{ role_labels.get(membership.role, membership.role) }}</strong>
                                                     {% if is_master_user %}
                                                         <div class="panel-toggle" data-master-toggle data-lobby-id="{{ membership.lobby.id }}">
-                                                            <button type="button" class="button ghost is-active" data-master-mode="view">👓 View as player</button>
-                                                            <button type="button" class="button ghost" data-master-mode="control">🕶️ Master control</button>
+                                                            <button type="button" class="button ghost is-active" data-master-mode="view" aria-label="View as player" title="View as player">👓</button>
+                                                            <button type="button" class="button ghost" data-master-mode="control" aria-label="Master control" title="Master control">🕶️</button>
                                                         </div>
                                                     {% endif %}
                                                 </div>
@@ -235,21 +235,23 @@
                                                 <div>
                                                     <span class="lobby-info__label">Клас</span>
                                                     <strong
-                                                        class="character-class-link"
+                                                        class="character-class-link{% if is_master_user %} is-hidden{% endif %}"
                                                         data-character-class-text
                                                         data-skills-link
                                                         role="link"
                                                         tabindex="0"
                                                         aria-label="Відкрити прокачку"
                                                     >???</strong>
-                                                    <select class="is-hidden" data-character-class-select>
-                                                        <option value="control">control</option>
-                                                        <option value="creation">creation</option>
-                                                        <option value="mutation">mutation</option>
-                                                        <option value="summoning">summoning</option>
-                                                        <option value="psychic">psychic</option>
-                                                        <option value="???">???</option>
-                                                    </select>
+                                                    {% if is_master_user %}
+                                                        <select data-character-class-select>
+                                                            <option value="control">control</option>
+                                                            <option value="creation">creation</option>
+                                                            <option value="mutation">mutation</option>
+                                                            <option value="summoning">summoning</option>
+                                                            <option value="psychic">psychic</option>
+                                                            <option value="???">???</option>
+                                                        </select>
+                                                    {% endif %}
                                                 </div>
                                                 <div>
                                                     <span class="lobby-info__label">Armor Class</span>
@@ -433,7 +435,6 @@
                                                             <span data-attribute-readonly>0</span>
                                                         </div>
                                                         <span class="attribute-modifier" data-attribute-modifier>+0</span>
-                                                        <button type="button" class="button ghost" data-attribute-prof-toggle>Proficiency</button>
                                                     </div>
                                                     <div class="attribute-row" data-attribute-row data-attribute-key="dex">
                                                         <span class="attribute-label">DEX</span>
@@ -442,7 +443,6 @@
                                                             <span data-attribute-readonly>0</span>
                                                         </div>
                                                         <span class="attribute-modifier" data-attribute-modifier>+0</span>
-                                                        <button type="button" class="button ghost" data-attribute-prof-toggle>Proficiency</button>
                                                     </div>
                                                     <div class="attribute-row" data-attribute-row data-attribute-key="con">
                                                         <span class="attribute-label">CON</span>
@@ -451,7 +451,6 @@
                                                             <span data-attribute-readonly>0</span>
                                                         </div>
                                                         <span class="attribute-modifier" data-attribute-modifier>+0</span>
-                                                        <button type="button" class="button ghost" data-attribute-prof-toggle>Proficiency</button>
                                                     </div>
                                                     <div class="attribute-row" data-attribute-row data-attribute-key="int">
                                                         <span class="attribute-label">INT</span>
@@ -460,7 +459,6 @@
                                                             <span data-attribute-readonly>0</span>
                                                         </div>
                                                         <span class="attribute-modifier" data-attribute-modifier>+0</span>
-                                                        <button type="button" class="button ghost" data-attribute-prof-toggle>Proficiency</button>
                                                     </div>
                                                     <div class="attribute-row" data-attribute-row data-attribute-key="wis">
                                                         <span class="attribute-label">WIS</span>
@@ -469,7 +467,6 @@
                                                             <span data-attribute-readonly>0</span>
                                                         </div>
                                                         <span class="attribute-modifier" data-attribute-modifier>+0</span>
-                                                        <button type="button" class="button ghost" data-attribute-prof-toggle>Proficiency</button>
                                                     </div>
                                                     <div class="attribute-row" data-attribute-row data-attribute-key="cha">
                                                         <span class="attribute-label">CHA</span>
@@ -478,7 +475,6 @@
                                                             <span data-attribute-readonly>0</span>
                                                         </div>
                                                         <span class="attribute-modifier" data-attribute-modifier>+0</span>
-                                                        <button type="button" class="button ghost" data-attribute-prof-toggle>Proficiency</button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -535,6 +531,7 @@
                                                                             <option value="shield">Shield</option>
                                                                             <option value="backpack">Backpack</option>
                                                                             <option value="belt">Belt</option>
+                                                                            <option value="cloth">Cloth</option>
                                                                             <option value="head">Head</option>
                                                                             <option value="shirt">Shirt</option>
                                                                             <option value="pants">Pants</option>
@@ -663,6 +660,7 @@
                                                                             <option value="shield">Shield</option>
                                                                             <option value="backpack">Backpack</option>
                                                                             <option value="belt">Belt</option>
+                                                                            <option value="cloth">Cloth</option>
                                                                             <option value="head">Head</option>
                                                                             <option value="shirt">Shirt</option>
                                                                             <option value="pants">Pants</option>
@@ -763,6 +761,7 @@
                                                                             <option value="shield">Shield</option>
                                                                             <option value="backpack">Backpack</option>
                                                                             <option value="belt">Belt</option>
+                                                                            <option value="cloth">Cloth</option>
                                                                             <option value="head">Head</option>
                                                                             <option value="shirt">Shirt</option>
                                                                             <option value="pants">Pants</option>
@@ -974,11 +973,11 @@
                                                     <span class="equipment-group__label">Belt</span>
                                                     <div class="tetris-grid tetris-grid--equip" data-container-id="equip_belt"></div>
                                                 </div>
-                                                <div class="equipment-group">
-                                                    <span class="equipment-group__label">Hands</span>
-                                                    <div class="tetris-grid tetris-grid--equip" data-container-id="hands"></div>
-                                                </div>
                                             </div>
+                                        </div>
+                                        <div class="equipment-group">
+                                            <span class="equipment-group__label">Hands</span>
+                                            <div class="tetris-grid tetris-grid--equip" data-container-id="hands"></div>
                                         </div>
                                     </div>
                                     <div class="inventory-panel panel-secondary lobby-panel dra-card">

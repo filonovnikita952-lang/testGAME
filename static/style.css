@@ -3020,7 +3020,7 @@ textarea {
 
 .attribute-row {
     display: grid;
-    grid-template-columns: 60px 1fr 80px 140px;
+    grid-template-columns: 60px 1fr 80px;
     align-items: center;
     gap: 12px;
 }
@@ -3056,9 +3056,6 @@ textarea {
     text-align: center;
 }
 
-.attribute-row.is-proficient .attribute-modifier {
-    color: #62d9a1;
-}
 
 .context-menu__field input {
     width: 100%;
