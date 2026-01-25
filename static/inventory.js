@@ -316,16 +316,9 @@
 
             this.attributeRows.forEach((row) => {
                 const input = row.querySelector('[data-attribute-input]');
-                const toggle = row.querySelector('[data-attribute-prof-toggle]');
                 input?.addEventListener('change', () => {
                     if (!this.canEditAttributes()) return;
                     this.submitAttributeUpdate();
-                });
-                toggle?.addEventListener('click', () => {
-                    if (!this.canEditAttributes()) return;
-                    const statKey = row.dataset.attributeKey;
-                    if (!statKey) return;
-                    this.toggleAttributeProficiency(statKey);
                 });
             });
 
@@ -1798,9 +1791,7 @@
             this.attributeRows.forEach((row) => {
                 row.classList.toggle('is-readonly', !this.canEditAttributes());
                 const input = row.querySelector('[data-attribute-input]');
-                const toggle = row.querySelector('[data-attribute-prof-toggle]');
                 if (input) input.disabled = !this.canEditAttributes();
-                if (toggle) toggle.disabled = !this.canEditAttributes();
             });
             if (this.attributeFormulaInput) {
                 this.attributeFormulaInput.disabled = !this.canEditAttributes();
@@ -2103,11 +2094,9 @@
             const className = userPayload.character_class || '???';
             if (this.characterClassText) {
                 this.characterClassText.textContent = className;
-                this.characterClassText.classList.toggle('is-hidden', this.permissions.is_master);
             }
             if (this.characterClassSelect) {
                 this.characterClassSelect.value = className;
-                this.characterClassSelect.classList.toggle('is-hidden', !this.permissions.is_master);
             }
         }
 
@@ -2120,24 +2109,17 @@
             if (!this.attributes) return;
             const stats = this.attributes.stats || {};
             const modifiers = this.attributes.modifiers || {};
-            const proficient = this.attributes.proficient || {};
             this.attributeRows.forEach((row) => {
                 const statKey = row.dataset.attributeKey;
                 if (!statKey) return;
                 const value = stats[statKey] ?? 0;
                 const modifier = modifiers[statKey] ?? 0;
-                const isProficient = Boolean(proficient[statKey]);
                 const input = row.querySelector('[data-attribute-input]');
                 const readonly = row.querySelector('[data-attribute-readonly]');
                 const modifierNode = row.querySelector('[data-attribute-modifier]');
-                const toggle = row.querySelector('[data-attribute-prof-toggle]');
                 if (input) input.value = `${value}`;
                 if (readonly) readonly.textContent = `${value}`;
                 if (modifierNode) modifierNode.textContent = this.formatModifier(modifier);
-                row.classList.toggle('is-proficient', isProficient);
-                if (toggle) {
-                    toggle.classList.toggle('is-active', isProficient);
-                }
             });
             if (this.attributeFormulaInput && this.permissions.is_master) {
                 this.attributeFormulaInput.value = this.attributes.formula || '';
@@ -2445,32 +2427,6 @@
             await this.refreshInventory(this.selectedPlayerId);
         }
 
-        async toggleAttributeProficiency(statKey) {
-            const current = this.attributes?.proficient?.[statKey];
-            const response = await fetch('/api/master/attributes/proficiency', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    lobby_id: this.lobbyId,
-                    user_id: this.selectedPlayerId,
-                    stat: statKey,
-                    enabled: !current,
-                }),
-            });
-            if (response.ok) {
-                const data = await response.json().catch(() => ({}));
-                if (data?.attributes) {
-                    this.attributes = data.attributes;
-                    this.updateAttributesUI();
-                } else {
-                    await this.refreshInventory(this.selectedPlayerId);
-                }
-                return;
-            }
-            await response.json().catch(() => ({}));
-            await this.refreshInventory(this.selectedPlayerId);
-        }
-
         updateStatsPreviewFromInputs() {
             const stats = {
                 hp_current: this.stats?.hp_current ?? 0,
@@ -2568,6 +2524,16 @@
             const isBelt = typeValue === 'belt';
             clothFields?.classList.toggle('is-hidden', !isCloth);
             beltFields?.classList.toggle('is-hidden', !isBelt);
+            clothFields?.querySelectorAll(
+                'input[id^="item_bag_w_"], input[id^="item_bag_h_"], input[data-template-bag-width], input[data-template-bag-height]',
+            ).forEach((input) => {
+                input.disabled = !isCloth;
+            });
+            beltFields?.querySelectorAll(
+                'input[id^="item_fast_w_"], input[id^="item_fast_h_"], input[data-template-fast-w], input[data-template-fast-h]',
+            ).forEach((input) => {
+                input.disabled = !isBelt;
+            });
         };
 
         const updateAmmoVisibility = (form) => {
@@ -2667,7 +2633,11 @@
                 const randomDurability = form.querySelector('input[id^="item_random_durability_"]')?.value || '';
                 const maxAmount = Number.parseInt(form.querySelector('input[id^="item_max_amount_"]')?.value || '1', 10);
                 const issueAmount = Number.parseInt(form.querySelector('input[id^="item_issue_amount_"]')?.value || '1', 10);
-                const isCloth = form.querySelector('input[id^="item_is_cloth_"]')?.checked;
+                const typeValue = type || 'other';
+                const isCloth = form.querySelector('input[id^="item_is_cloth_"]')?.checked
+                    || typeValue === 'cloth'
+                    || typeValue === 'belt';
+                const isBelt = typeValue === 'belt';
                 const bagWidth = Number.parseInt(form.querySelector('input[id^="item_bag_w_"]')?.value || '0', 10);
                 const bagHeight = Number.parseInt(form.querySelector('input[id^="item_bag_h_"]')?.value || '0', 10);
                 const fastWidth = Number.parseInt(form.querySelector('input[id^="item_fast_w_"]')?.value || '0', 10);
@@ -2680,12 +2650,20 @@
                 if (!name) {
                     return;
                 }
-                if (type === 'weapon' && (!Number.isFinite(max_durability_value) || max_durability_value < 1)) {
+                if (typeValue === 'weapon' && (!Number.isFinite(max_durability_value) || max_durability_value < 1)) {
                     window.alert('Weapon max durability must be at least 1.');
                     return;
                 }
-                if (type === 'ammo' && !ammoType) {
+                if (typeValue === 'ammo' && !ammoType) {
                     window.alert('Ammo type is required for ammo items.');
+                    return;
+                }
+                if (isCloth && (!Number.isFinite(bagWidth) || bagWidth < 1 || !Number.isFinite(bagHeight) || bagHeight < 1)) {
+                    window.alert('Bag width and height must be at least 1 for cloth items.');
+                    return;
+                }
+                if (isBelt && (!Number.isFinite(fastWidth) || fastWidth < 1 || !Number.isFinite(fastHeight) || fastHeight < 1)) {
+                    window.alert('Fast slot width and height must be at least 1 for belts.');
                     return;
                 }
 
@@ -2693,7 +2671,7 @@
                 payload.append('lobby_id', lobbyId);
                 payload.append('name', name);
                 payload.append('description', description || '');
-                payload.append('type', type || 'other');
+                payload.append('type', typeValue);
                 payload.append('quality', quality || 'common');
                 payload.append('width', width);
                 payload.append('height', height);
@@ -2704,10 +2682,10 @@
                 payload.append('max_amount', maxAmount);
                 payload.append('issue_amount', issueAmount);
                 payload.append('is_cloth', isCloth ? '1' : '0');
-                payload.append('bag_width', Number.isNaN(bagWidth) ? 0 : bagWidth);
-                payload.append('bag_height', Number.isNaN(bagHeight) ? 0 : bagHeight);
-                payload.append('fast_w', Number.isNaN(fastWidth) ? 0 : fastWidth);
-                payload.append('fast_h', Number.isNaN(fastHeight) ? 0 : fastHeight);
+                payload.append('bag_width', isCloth && !Number.isNaN(bagWidth) ? bagWidth : 0);
+                payload.append('bag_height', isCloth && !Number.isNaN(bagHeight) ? bagHeight : 0);
+                payload.append('fast_w', isBelt && !Number.isNaN(fastWidth) ? fastWidth : 0);
+                payload.append('fast_h', isBelt && !Number.isNaN(fastHeight) ? fastHeight : 0);
                 payload.append('ammo_type', ammoType);
                 const issueTo = issueSelfToggle?.checked ? root.dataset.currentUserId : (target || '');
                 payload.append('issue_to', issueTo || '');
@@ -3214,24 +3192,31 @@
                     if (statusLine) statusLine.textContent = 'Вкажіть ID шаблону.';
                     return;
                 }
+                const typeValue = typeSelect?.value || 'other';
+                const isCloth = Boolean(clothToggle?.checked) || typeValue === 'cloth' || typeValue === 'belt';
+                const isBelt = typeValue === 'belt';
+                const bagWidthValue = parseNumber(bagWidthInput?.value || '0', 0);
+                const bagHeightValue = parseNumber(bagHeightInput?.value || '0', 0);
+                const fastWValue = parseNumber(fastWInput?.value || '0', 0);
+                const fastHValue = parseNumber(fastHInput?.value || '0', 0);
                 const payload = {
                     lobby_id: lobbyId,
                     template_id: templateId,
                     new_id: newId,
                     name: nameInput?.value?.trim() || '',
                     description: descriptionInput?.value?.trim() || '',
-                    type: typeSelect?.value || 'other',
+                    type: typeValue,
                     quality: qualitySelect?.value || 'common',
                     width: parseNumber(widthInput?.value || '1', 1),
                     height: parseNumber(heightInput?.value || '1', 1),
                     weight: parseFloat(weightInput?.value || '0') || 0,
                     max_durability: parseNumber(max_durability_input?.value || '1', 1),
                     max_amount: parseNumber(maxAmountInput?.value || '1', 1),
-                    is_cloth: clothToggle?.checked ? '1' : '0',
-                    bag_width: parseNumber(bagWidthInput?.value || '0', 0),
-                    bag_height: parseNumber(bagHeightInput?.value || '0', 0),
-                    fast_w: parseNumber(fastWInput?.value || '0', 0),
-                    fast_h: parseNumber(fastHInput?.value || '0', 0),
+                    is_cloth: isCloth ? '1' : '0',
+                    bag_width: isCloth ? bagWidthValue : 0,
+                    bag_height: isCloth ? bagHeightValue : 0,
+                    fast_w: isBelt ? fastWValue : 0,
+                    fast_h: isBelt ? fastHValue : 0,
                     ammo_type: ammoTypeInput?.value?.trim() || '',
                 };
                 if (payload.type === 'weapon' && (!Number.isFinite(payload.max_durability) || payload.max_durability < 1)) {
@@ -3240,6 +3225,14 @@
                 }
                 if (payload.type === 'ammo' && !payload.ammo_type) {
                     if (statusLine) statusLine.textContent = 'Ammo type is required for ammo items.';
+                    return;
+                }
+                if (isCloth && (bagWidthValue < 1 || bagHeightValue < 1)) {
+                    if (statusLine) statusLine.textContent = 'Bag width and height must be at least 1 for cloth items.';
+                    return;
+                }
+                if (isBelt && (fastWValue < 1 || fastHValue < 1)) {
+                    if (statusLine) statusLine.textContent = 'Fast slot width and height must be at least 1 for belts.';
                     return;
                 }
                 const response = await fetch('/api/master/item_template/update', {

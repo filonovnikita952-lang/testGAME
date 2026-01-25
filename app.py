@@ -72,7 +72,6 @@ HANDS_GRID_HEIGHT = 3
 DEFAULT_MAX_STACK = 20
 DEFAULT_ATTRIBUTE_FORMULA = 'floor(sqrt(stat)) - 3'
 ATTRIBUTE_STATS = ('str', 'dex', 'con', 'int', 'wis', 'cha')
-ATTRIBUTE_PROFICIENCY_BONUS = 2
 CHARACTER_CLASSES = {
     'control',
     'creation',
@@ -1634,9 +1633,6 @@ def ensure_character_attributes(user_id: int) -> CharacterAttributes:
     for key, column in ATTRIBUTE_COLUMN_MAP.items():
         if getattr(attributes, column) is None:
             setattr(attributes, column, 4)
-        prof_column = f'{column}_prof'
-        if getattr(attributes, prof_column) is None:
-            setattr(attributes, prof_column, False)
     db.session.commit()
     return attributes
 
@@ -2183,17 +2179,14 @@ def build_attributes_payload(user_id: int, viewer: Optional[User], lobby_id: Opt
     formula_record = ensure_attribute_formula()
     formula = formula_record.formula or DEFAULT_ATTRIBUTE_FORMULA
     modifiers = {}
-    proficient = {}
     for key, column in ATTRIBUTE_COLUMN_MAP.items():
         base_value = getattr(attributes, column) or 0
-        prof_flag = bool(getattr(attributes, f'{column}_prof'))
-        effective_value = base_value + (ATTRIBUTE_PROFICIENCY_BONUS if prof_flag else 0)
+        effective_value = base_value
         try:
             modifier = compute_attribute_modifier(effective_value, formula)
         except FormulaError:
             modifier = compute_attribute_modifier(effective_value, DEFAULT_ATTRIBUTE_FORMULA)
         modifiers[key] = modifier
-        proficient[key] = prof_flag
     return {
         'stats': {
             'str': attributes.strength,
@@ -2204,9 +2197,7 @@ def build_attributes_payload(user_id: int, viewer: Optional[User], lobby_id: Opt
             'cha': attributes.charisma,
         },
         'modifiers': modifiers,
-        'proficient': proficient,
         'formula': formula if viewer and is_master(viewer, lobby_id) else None,
-        'proficiency_bonus': ATTRIBUTE_PROFICIENCY_BONUS,
     }
 
 
@@ -5288,30 +5279,6 @@ def update_attribute_formula():
     db.session.commit()
     return jsonify({'ok': True, 'formula': record.formula})
 
-
-@app.route('/api/master/attributes/proficiency', methods=['POST'])
-def update_attribute_proficiency():
-    user = require_user()
-    data = request.get_json(silent=True) or {}
-    lobby_id = parse_int(data.get('lobby_id'), 0) or current_lobby_id_for(user)
-    if not is_master(user, lobby_id):
-        return jsonify({'error': 'forbidden'}), 403
-    target_user_id = parse_int(data.get('user_id'), 0)
-    stat_key = (data.get('stat') or '').strip()
-    enabled = bool(data.get('enabled'))
-    if not target_user_id or stat_key not in ATTRIBUTE_COLUMN_MAP:
-        return jsonify({'error': 'invalid_payload'}), 400
-    target_membership = LobbyMember.query.filter_by(
-        lobby_id=lobby_id,
-        user_id=target_user_id,
-    ).first()
-    if not target_membership:
-        return jsonify({'error': 'not_in_lobby'}), 403
-    attributes = ensure_character_attributes(target_user_id)
-    column = ATTRIBUTE_COLUMN_MAP[stat_key]
-    setattr(attributes, f'{column}_prof', enabled)
-    db.session.commit()
-    return jsonify({'ok': True, 'attributes': build_attributes_payload(target_user_id, user, lobby_id)})
 
 
 @app.route('/api/inventory/drop', methods=['POST'])
