@@ -2520,9 +2520,11 @@
             const clothFields = form.querySelector('[data-cloth-fields]');
             const beltFields = form.querySelector('[data-belt-fields]');
             const typeValue = typeSelect?.value || 'other';
+            const clothToggleTypes = new Set(['backpack', 'shirt', 'pants', 'armor']);
             const isCloth = clothToggle?.checked || typeValue === 'cloth' || typeValue === 'belt';
+            const shouldShowClothFields = isCloth || clothToggleTypes.has(typeValue);
             const isBelt = typeValue === 'belt';
-            clothFields?.classList.toggle('is-hidden', !isCloth);
+            clothFields?.classList.toggle('is-hidden', !shouldShowClothFields);
             beltFields?.classList.toggle('is-hidden', !isBelt);
             clothFields?.querySelectorAll(
                 'input[id^="item_bag_w_"], input[id^="item_bag_h_"], input[data-template-bag-width], input[data-template-bag-height]',
