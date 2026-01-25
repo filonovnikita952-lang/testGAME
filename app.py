@@ -1573,7 +1573,8 @@ def compute_inventory_weight(
 
 
 def compute_weight_capacity(stats: CharacterStats) -> int:
-    strength_modifier = (stats.strength - 10) // 2
+    strength_value = max(stats.strength or 0, 0)
+    strength_modifier = math.floor(math.sqrt(strength_value)) - 3
     return max(3, (strength_modifier + 2) * 5)
 
 
