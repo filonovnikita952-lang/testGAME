@@ -13,12 +13,19 @@ const subclassesEl = document.querySelector('[data-skill-subclasses]');
 const gridEl = document.querySelector('[data-skill-grid]');
 const hintEl = document.querySelector('[data-skill-hint]');
 const tooltipEl = document.getElementById('skill-tooltip');
+const detailEl = document.querySelector('[data-skill-detail]');
+const detailTitleEl = document.querySelector('[data-skill-detail-title]');
+const detailStatusEl = document.querySelector('[data-skill-detail-status]');
+const detailListEl = document.querySelector('[data-skill-detail-list]');
+const detailRequirementsEl = document.querySelector('[data-skill-detail-requirements]');
+const detailDescriptionEl = document.querySelector('[data-skill-detail-description]');
 
 let treeData = null;
 let activeSkillIds = new Set();
 let currentCategoryIndex = 0;
 let currentSubclassIndex = 0;
 let hintTimeout = null;
+let lastSelectedSkill = null;
 
 function showHint(message) {
     if (!hintEl) {
@@ -72,6 +79,104 @@ function buildTooltipText(skill) {
     }
     lines.push(skill.description ? skill.description : '-');
     return lines.join('\n');
+}
+
+function createDetailRow(label, value) {
+    const wrapper = document.createElement('div');
+    const term = document.createElement('dt');
+    const desc = document.createElement('dd');
+    term.textContent = label;
+    desc.textContent = value;
+    wrapper.appendChild(term);
+    wrapper.appendChild(desc);
+    return wrapper;
+}
+
+function resolveSkillStatus(skill) {
+    if (!skill.id) {
+        return 'Не створено';
+    }
+    if (activeSkillIds.has(skill.id)) {
+        return 'Активна';
+    }
+    if (!skill.is_enabled) {
+        return 'Заблокована';
+    }
+    return 'Доступна';
+}
+
+function renderSkillDetail(skill) {
+    if (!detailEl) {
+        return;
+    }
+    if (!skill) {
+        if (detailTitleEl) {
+            detailTitleEl.textContent = 'Оберіть навичку';
+        }
+        if (detailStatusEl) {
+            detailStatusEl.textContent = 'Натисніть на вузол, щоб переглянути інформацію.';
+        }
+        if (detailListEl) {
+            detailListEl.innerHTML = '';
+        }
+        if (detailRequirementsEl) {
+            detailRequirementsEl.innerHTML = '';
+        }
+        if (detailDescriptionEl) {
+            detailDescriptionEl.textContent = '';
+        }
+        return;
+    }
+
+    if (detailTitleEl) {
+        detailTitleEl.textContent = skill.name || `Рівень ${skill.level_key}`;
+    }
+    if (detailStatusEl) {
+        detailStatusEl.textContent = `Статус: ${resolveSkillStatus(skill)}`;
+    }
+    if (detailListEl) {
+        detailListEl.innerHTML = '';
+        detailListEl.appendChild(createDetailRow('Рівень', skill.level_key));
+        detailListEl.appendChild(
+            createDetailRow(
+                'Вартість',
+                skill.cost_int !== null && skill.cost_int !== undefined ? `${skill.cost_int}` : '-',
+            ),
+        );
+        detailListEl.appendChild(
+            createDetailRow('Тип', abilityTypeLabels[skill.ability_type] || 'Пасивна'),
+        );
+        detailListEl.appendChild(createDetailRow('Дистанція', formatDistance(skill)));
+        detailListEl.appendChild(
+            createDetailRow('Компоненти', skill.components ? skill.components : '-'),
+        );
+        detailListEl.appendChild(
+            createDetailRow('Час активації', formatOptionalSeconds(skill.cast_time_seconds)),
+        );
+        detailListEl.appendChild(
+            createDetailRow('Тривалість', formatOptionalSeconds(skill.duration_seconds)),
+        );
+    }
+    if (detailRequirementsEl) {
+        if (Array.isArray(skill.requirements) && skill.requirements.length) {
+            const list = document.createElement('ul');
+            skill.requirements.forEach((req) => {
+                if (!req.req_value) {
+                    return;
+                }
+                const item = document.createElement('li');
+                item.textContent = req.req_value;
+                list.appendChild(item);
+            });
+            detailRequirementsEl.innerHTML = '<strong>Вимоги:</strong>';
+            detailRequirementsEl.appendChild(list);
+        } else {
+            detailRequirementsEl.innerHTML = '<strong>Вимоги:</strong> —';
+        }
+    }
+    if (detailDescriptionEl) {
+        detailDescriptionEl.textContent = skill.description ? skill.description : 'Опис відсутній.';
+    }
 }
 
 function showTooltip(event, skill) {
@@ -195,6 +300,8 @@ function renderGrid() {
             button.addEventListener('blur', hideTooltip);
 
             button.addEventListener('click', async () => {
+                lastSelectedSkill = skill;
+                renderSkillDetail(skill);
                 if (!skill.id || !skill.is_enabled) {
                     return;
                 }
@@ -213,6 +320,9 @@ function renderAll() {
     renderTabs();
     renderSubclasses();
     renderGrid();
+    if (lastSelectedSkill) {
+        renderSkillDetail(lastSelectedSkill);
+    }
 }
 
 async function toggleSkill(skillId, isActive) {
