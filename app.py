@@ -1572,17 +1572,18 @@ def compute_inventory_weight(
     return total_weight
 
 
-def compute_weight_capacity(stats: CharacterStats) -> int:
-    strength_value = max(stats.strength or 0, 0)
-    strength_modifier = math.floor(math.sqrt(strength_value)) - 3
+def compute_weight_capacity(attributes: CharacterAttributes) -> int:
+    strength_value = max(attributes.strength or 0, 0)
+    formula = resolve_attribute_formula()
+    strength_modifier = compute_attribute_modifier_safe(strength_value, formula)
     return max(3, (strength_modifier + 2) * 5)
 
 
 def build_weight_payload(user_id: int, *, log_context: str = 'inventory') -> dict:
     instances = ItemInstance.query.filter_by(owner_id=user_id).all()
     current_weight = compute_inventory_weight(instances, user_id=user_id, log_context=log_context)
-    stats = ensure_character_stats(user_id)
-    capacity = compute_weight_capacity(stats)
+    attributes = ensure_character_attributes(user_id)
+    capacity = compute_weight_capacity(attributes)
     log_debug(
         'Inventory weight (%s) user=%s instances=%s current=%.2f capacity=%s',
         log_context,
@@ -2656,7 +2657,7 @@ def build_inventory_payload(
     if stats.ki_current != derived_stats['ki_current']:
         stats.ki_current = max(derived_stats['ki_current'], 0)
         db.session.commit()
-    capacity = compute_weight_capacity(stats)
+    capacity = compute_weight_capacity(attributes)
     if inventory_debug:
         inventory_logger.debug(
             'Inventory payload user=%s instances=%s current=%.2f',
