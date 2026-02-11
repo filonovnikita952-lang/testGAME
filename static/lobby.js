@@ -331,6 +331,9 @@
             this.deadline = null;
             this.resultSent = false;
             this.currentDifficulty = null;
+            this.requiredSuccesses = 3;
+            this.maxFailures = 3;
+            this.currentStreak = 0;
             this.attemptCooldown = 350;
             this.lastAttemptAt = 0;
             this.lastLoggedRemaining = null;
@@ -378,7 +381,7 @@
         }
 
         handleStatus(check) {
-            const signature = check ? `${check.id}:${check.status}:${check.target_user_id}` : 'none';
+            const signature = check ? `${check.id}:${check.status}:${check.target_user_id}:${check.result || 'na'}` : 'none';
             if (signature === this.lastCheckSignature) {
                 return;
             }
@@ -434,6 +437,9 @@
             this.currentCheckId = null;
             this.resultSent = false;
             this.currentDifficulty = null;
+            this.requiredSuccesses = 3;
+            this.maxFailures = 3;
+            this.currentStreak = 0;
             this.lastCheckSignature = null;
         }
 
@@ -483,7 +489,10 @@
             this.activePanel?.classList.remove('is-hidden');
             this.successes = 0;
             this.failures = 0;
+            this.currentStreak = 0;
             this.resultSent = false;
+            this.requiredSuccesses = Math.max(2, Number(check.required_successes) || 3);
+            this.maxFailures = Math.max(1, Number(check.max_failures) || 3);
             this.speed = this.getBaseSpeed(check.difficulty);
             this.angle = 0;
             this.direction = 1;
@@ -555,7 +564,7 @@
 
         updateProgress() {
             if (this.progress) {
-                this.progress.textContent = `${this.successes}/3`;
+                this.progress.textContent = `${this.successes}/${this.requiredSuccesses} · ❌ ${this.failures}/${this.maxFailures} · x${this.currentStreak}`;
             }
         }
 
@@ -567,15 +576,15 @@
         }
 
         getSuccessFraction(difficulty) {
-            if (difficulty <= 10) return 0.15;
-            if (difficulty <= 15) return 0.1;
-            if (difficulty <= 20) return 0.07;
-            return 0.05;
+            const normalized = Math.min(30, Math.max(5, Number(difficulty) || 10));
+            const fraction = 0.22 - ((normalized - 5) / 25) * 0.16;
+            return Math.max(0.05, Math.min(0.22, fraction));
         }
 
         getBaseSpeed(difficulty) {
-            const base = 140 + (difficulty - 5) * 6;
-            return Math.max(40, base);
+            const normalized = Math.min(30, Math.max(5, Number(difficulty) || 10));
+            const base = 110 + (normalized - 5) * 5;
+            return Math.max(60, base);
         }
 
         handleKey(event) {
@@ -602,15 +611,18 @@
             this.debugLog('attempt', { angle: Math.round(this.angle), insideZone: isSuccess });
             if (isSuccess) {
                 this.successes += 1;
-                this.speed = Math.max(10, this.speed * 1.1);
+                this.currentStreak += 1;
+                this.speed = Math.max(35, this.speed * 0.94);
             } else {
                 this.failures += 1;
+                this.currentStreak = 0;
+                this.speed = Math.min(260, this.speed * 1.08);
             }
-            this.reverseUntil = performance.now() + 200;
+            this.reverseUntil = performance.now() + 150;
             this.updateProgress();
-            if (this.successes >= 3) {
+            if (this.successes >= this.requiredSuccesses) {
                 this.finish(true);
-            } else if (this.failures >= 3) {
+            } else if (this.failures >= this.maxFailures) {
                 this.finish(false);
             }
         }

@@ -92,6 +92,7 @@ MASTERY_MIN = 2
 MASTERY_MAX = 7
 DEFAULT_MASTERY = 2
 SKILL_CHECK_TIME_LIMIT = 30
+SKILL_CHECK_PENDING_LIMIT = 30
 SKILL_LEVEL_ORDER = ['BR', '0', '1', '2', '3', '4', '5', '6', '7']
 
 ROLL_INVALID_MESSAGE = 'Невірний кидок'
@@ -139,6 +140,8 @@ class ActiveSkillCheck:
     lobby_id: int
     target_user_id: int
     difficulty: int
+    required_successes: int
+    max_failures: int
     status: str = 'pending'
     created_at: datetime = field(default_factory=datetime.utcnow)
     started_at: Optional[datetime] = None
@@ -1445,12 +1448,26 @@ def serialize_skill_check(check: ActiveSkillCheck) -> dict:
         'lobby_id': check.lobby_id,
         'target_user_id': check.target_user_id,
         'difficulty': check.difficulty,
+        'required_successes': check.required_successes,
+        'max_failures': check.max_failures,
         'status': check.status,
         'created_at': check.created_at.isoformat(),
         'started_at': check.started_at.isoformat() if check.started_at else None,
         'expires_at': check.expires_at.isoformat() if check.expires_at else None,
         'result': check.result,
     }
+
+
+def skill_check_required_successes(difficulty: int) -> int:
+    return max(2, min(6, math.ceil(difficulty / 6)))
+
+
+def skill_check_max_failures(difficulty: int) -> int:
+    if difficulty >= 24:
+        return 2
+    if difficulty >= 15:
+        return 3
+    return 4
 
 
 def complete_skill_check(check: ActiveSkillCheck, *, success: bool) -> None:
@@ -4117,6 +4134,8 @@ def start_skill_check(lobby_id: int):
         lobby_id=lobby_id,
         target_user_id=target_user_id,
         difficulty=difficulty,
+        required_successes=skill_check_required_successes(difficulty),
+        max_failures=skill_check_max_failures(difficulty),
     )
     ACTIVE_SKILL_CHECKS[lobby_id] = check
     return jsonify({'status': 'ok', 'check': serialize_skill_check(check)})
@@ -4130,6 +4149,9 @@ def skill_check_status(lobby_id: int):
         return jsonify({'error': 'forbidden'}), 403
     check = ACTIVE_SKILL_CHECKS.get(lobby_id)
     if not check:
+        return jsonify({'check': None})
+    if check.status == 'pending' and datetime.utcnow() >= check.created_at + timedelta(seconds=SKILL_CHECK_PENDING_LIMIT):
+        complete_skill_check(check, success=False)
         return jsonify({'check': None})
     if check.status == 'active' and check.expires_at and datetime.utcnow() >= check.expires_at:
         complete_skill_check(check, success=False)
@@ -4150,6 +4172,9 @@ def accept_skill_check(lobby_id: int):
         return jsonify({'error': 'forbidden'}), 403
     if check.status != 'pending':
         return jsonify({'error': 'already_started'}), 409
+    if datetime.utcnow() >= check.created_at + timedelta(seconds=SKILL_CHECK_PENDING_LIMIT):
+        complete_skill_check(check, success=False)
+        return jsonify({'error': 'expired'}), 409
     check.status = 'active'
     check.started_at = datetime.utcnow()
     check.expires_at = check.started_at + timedelta(seconds=SKILL_CHECK_TIME_LIMIT)
@@ -4175,10 +4200,18 @@ def skill_check_result(lobby_id: int):
     failures = parse_int(str(data.get('failures') or ''), -1)
     if successes < 0 or failures < 0:
         return jsonify({'error': 'invalid_result'}), 400
-    if success and check.status != 'active':
+    if check.status != 'active':
         return jsonify({'error': 'not_active'}), 409
-    if check.status in {'pending', 'active'}:
-        complete_skill_check(check, success=success)
+    if check.expires_at and datetime.utcnow() >= check.expires_at:
+        complete_skill_check(check, success=False)
+        return jsonify({'error': 'expired'}), 409
+    threshold_successes = check.required_successes
+    threshold_failures = check.max_failures
+    if success and successes < threshold_successes:
+        return jsonify({'error': 'invalid_result'}), 400
+    if (not success) and failures < threshold_failures:
+        return jsonify({'error': 'invalid_result'}), 400
+    complete_skill_check(check, success=success)
     return jsonify({'status': 'ok'})
 
 
