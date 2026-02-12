@@ -73,22 +73,27 @@
 
 <script>
     const banners = document.querySelectorAll('.banner');
+    const leftArrow = document.querySelector('.arrow.left');
+    const rightArrow = document.querySelector('.arrow.right');
     let current = 0;
 
     function showBanner(index) {
+        if (!banners.length) return;
         banners[current].classList.remove('active');
         current = (index + banners.length) % banners.length;
         banners[current].classList.add('active');
     }
 
-    document.querySelector('.arrow.left').addEventListener('click', () => {
-        showBanner(current - 1);
-    });
+    if (banners.length > 1) {
+        leftArrow?.addEventListener('click', () => {
+            showBanner(current - 1);
+        });
 
-    document.querySelector('.arrow.right').addEventListener('click', () => {
-        showBanner(current + 1);
-    });
+        rightArrow?.addEventListener('click', () => {
+            showBanner(current + 1);
+        });
 
-    setInterval(() => showBanner(current + 1), 16000);
+        setInterval(() => showBanner(current + 1), 16000);
+    }
 </script>
 {% endblock %}

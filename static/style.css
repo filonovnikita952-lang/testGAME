@@ -408,17 +408,23 @@ a {
     margin-top: 20px;
     border: 1px solid var(--border);
     animation: float-glow 8s ease-in-out infinite;
+    min-height: 260px;
 }
 
 .banner {
+    position: absolute;
+    inset: 0;
     width: 100%;
-    display: none;
     height: 260px;
     object-fit: cover;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.45s ease;
 }
 
 .banner.active {
-    display: block;
+    opacity: 1;
+    visibility: visible;
 }
 
 .arrow {
