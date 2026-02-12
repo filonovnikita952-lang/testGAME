@@ -320,13 +320,14 @@
             this.isRunning = false;
             this.currentCheckId = null;
             this.state = 'idle';
-            this.lastCheckSignature = null;
+            this.lastStatusKey = null;
             this.isBound = false;
             this.successes = 0;
             this.failures = 0;
             this.speed = 0;
             this.position = 0;
-            this.direction = 1;
+            this.motionPhase = 0;
+            this.motionDirection = 1;
             this.lastFrameTime = 0;
             this.deadline = null;
             this.resultSent = false;
@@ -337,7 +338,7 @@
             this.attemptCooldown = 350;
             this.lastAttemptAt = 0;
             this.lastLoggedRemaining = null;
-            this.wasReloaded = performance.getEntriesByType('navigation')[0]?.type === 'reload';
+            this.missingStatusCount = 0;
             if (this.overlay) {
                 this.bind();
                 this.refresh();
@@ -381,39 +382,41 @@
         }
 
         handleStatus(check) {
-            const signature = check ? `${check.id}:${check.status}:${check.target_user_id}:${check.result || 'na'}` : 'none';
-            if (signature === this.lastCheckSignature) {
-                return;
-            }
-            this.lastCheckSignature = signature;
-            this.debugLog('status update', { signature, state: this.state });
-            if (!check || check.target_user_id !== window.CURRENT_USER_ID) {
-                if (this.state !== 'idle') {
+            const isForCurrentUser = check && check.target_user_id === window.CURRENT_USER_ID;
+            if (!isForCurrentUser) {
+                this.missingStatusCount += 1;
+                if (this.state !== 'idle' && this.missingStatusCount >= 2) {
                     this.closeOverlay('no-check');
                 }
                 return;
             }
+
+            this.missingStatusCount = 0;
+            const statusKey = `${check.id}:${check.status}:${check.target_user_id}`;
+            const changed = statusKey !== this.lastStatusKey;
+            if (changed) {
+                this.lastStatusKey = statusKey;
+                this.debugLog('status update', { statusKey, state: this.state });
+            }
+
             if (check.status === 'pending') {
                 if (this.state === 'running') {
                     this.debugLog('ignoring pending while running', { checkId: check.id });
                     return;
                 }
-                if (this.state !== 'pending_accept' || this.currentCheckId !== check.id) {
+                if (changed || this.state !== 'pending_accept' || this.currentCheckId !== check.id) {
                     this.showPending(check);
                 }
                 return;
             }
+
             if (check.status === 'active') {
-                if (this.wasReloaded) {
-                    this.wasReloaded = false;
-                    this.handleReloadFailure();
-                    return;
-                }
-                if (this.state !== 'running' || this.currentCheckId !== check.id) {
+                if (this.state !== 'running' || this.currentCheckId !== check.id || changed) {
                     this.startGame(check);
                 }
                 return;
             }
+
             if (this.state !== 'idle') {
                 this.closeOverlay('status-complete');
             }
@@ -440,7 +443,8 @@
             this.requiredSuccesses = 3;
             this.maxFailures = 3;
             this.currentStreak = 0;
-            this.lastCheckSignature = null;
+            this.lastStatusKey = null;
+            this.missingStatusCount = 0;
         }
 
         updateDifficultyLabels(value) {
@@ -498,7 +502,8 @@
             this.maxFailures = Math.max(1, Number(check.max_failures) || 3);
             this.speed = this.getBaseSpeed(check.difficulty);
             this.position = 0;
-            this.direction = 1;
+            this.motionPhase = 0;
+            this.motionDirection = 1;
             this.lastFrameTime = performance.now();
             this.deadline = check.expires_at
                 ? new Date(check.expires_at).getTime()
@@ -537,14 +542,11 @@
         }
 
         updateLine(delta) {
-            this.position += this.direction * this.speed * delta;
-            if (this.position >= 100) {
-                this.position = 100;
-                this.direction = -1;
-            } else if (this.position <= 0) {
-                this.position = 0;
-                this.direction = 1;
-            }
+            const normalizedSpeed = Math.max(0.18, this.speed / 100);
+            this.motionPhase += delta * normalizedSpeed;
+            const raw = Math.sin(this.motionPhase);
+            this.motionDirection = raw >= 0 ? 1 : -1;
+            this.position = ((raw + 1) / 2) * 100;
             if (this.marker) {
                 this.marker.style.left = `${this.position}%`;
             }
@@ -625,7 +627,7 @@
                 this.currentStreak = 0;
                 this.speed = Math.min(260, this.speed * 1.08);
             }
-            this.direction *= -1;
+            this.motionPhase += this.motionDirection * 0.45;
             this.updateProgress();
             if (this.successes >= this.requiredSuccesses) {
                 this.finish(true);
@@ -646,13 +648,6 @@
             this.closeOverlay(success ? 'success' : 'failure');
         }
 
-        async handleReloadFailure() {
-            if (this.resultSent) return;
-            this.resultSent = true;
-            this.debugLog('reload failure', { state: this.state });
-            await this.sendResult(false);
-            this.closeOverlay('reload-failure');
-        }
 
         async sendResult(success) {
             if (!this.lobbyId) return;
