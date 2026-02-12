@@ -309,8 +309,9 @@
             this.acceptButton = this.overlay?.querySelector('[data-skill-check-accept]');
             this.closeButton = this.overlay?.querySelector('[data-skill-check-close]');
             this.timerDisplay = this.overlay?.querySelector('[data-skill-check-timer]');
-            this.pointer = this.overlay?.querySelector('[data-skill-check-pointer]');
-            this.wheel = this.overlay?.querySelector('[data-skill-check-wheel]');
+            this.marker = this.overlay?.querySelector('[data-skill-check-marker]');
+            this.line = this.overlay?.querySelector('[data-skill-check-line]');
+            this.successZone = this.overlay?.querySelector('[data-skill-check-success-zone]');
             this.progress = this.overlay?.querySelector('[data-skill-check-progress]');
             this.difficultyLabels = this.overlay?.querySelectorAll('[data-skill-check-difficulty]');
             this.pollInterval = 2000;
@@ -324,9 +325,8 @@
             this.successes = 0;
             this.failures = 0;
             this.speed = 0;
-            this.angle = 0;
+            this.position = 0;
             this.direction = 1;
-            this.reverseUntil = 0;
             this.lastFrameTime = 0;
             this.deadline = null;
             this.resultSent = false;
@@ -457,6 +457,9 @@
             this.pendingPanel?.classList.remove('is-hidden');
             this.activePanel?.classList.add('is-hidden');
             this.updateDifficultyLabels(check.difficulty);
+            if (this.marker) {
+                this.marker.style.left = '0%';
+            }
             this.updateTimerDisplay(SKILL_CHECK_TIME_LIMIT);
             this.logState('pending', SKILL_CHECK_TIME_LIMIT);
         }
@@ -494,15 +497,17 @@
             this.requiredSuccesses = Math.max(2, Number(check.required_successes) || 3);
             this.maxFailures = Math.max(1, Number(check.max_failures) || 3);
             this.speed = this.getBaseSpeed(check.difficulty);
-            this.angle = 0;
+            this.position = 0;
             this.direction = 1;
-            this.reverseUntil = 0;
             this.lastFrameTime = performance.now();
             this.deadline = check.expires_at
                 ? new Date(check.expires_at).getTime()
                 : Date.now() + SKILL_CHECK_TIME_LIMIT * 1000;
             this.lastLoggedRemaining = null;
             this.updateDifficultyLabels(check.difficulty);
+            if (this.marker) {
+                this.marker.style.left = '0%';
+            }
             this.updateProgress();
             this.updateSuccessZone(check.difficulty);
             this.startGameLoop();
@@ -516,7 +521,7 @@
                 if (!this.isRunning) return;
                 const delta = (timestamp - this.lastFrameTime) / 1000;
                 this.lastFrameTime = timestamp;
-                this.updateWheel(delta);
+                this.updateLine(delta);
                 this.updateTimer();
                 this.animationFrame = window.requestAnimationFrame(tick);
             };
@@ -531,15 +536,17 @@
             }
         }
 
-        updateWheel(delta) {
-            const now = performance.now();
-            this.direction = now < this.reverseUntil ? -1 : 1;
-            this.angle = (this.angle + this.direction * this.speed * delta) % 360;
-            if (this.angle < 0) {
-                this.angle += 360;
+        updateLine(delta) {
+            this.position += this.direction * this.speed * delta;
+            if (this.position >= 100) {
+                this.position = 100;
+                this.direction = -1;
+            } else if (this.position <= 0) {
+                this.position = 0;
+                this.direction = 1;
             }
-            if (this.pointer) {
-                this.pointer.style.transform = `translate(-50%, -100%) rotate(${this.angle}deg)`;
+            if (this.marker) {
+                this.marker.style.left = `${this.position}%`;
             }
         }
 
@@ -569,10 +576,10 @@
         }
 
         updateSuccessZone(difficulty) {
-            if (!this.wheel) return;
+            if (!this.successZone) return;
             const fraction = this.getSuccessFraction(difficulty);
-            const angle = Math.round(fraction * 360);
-            this.wheel.style.setProperty('--success-angle', `${angle}deg`);
+            const widthPercent = Math.round(fraction * 1000) / 10;
+            this.successZone.style.width = `${widthPercent}%`;
         }
 
         getSuccessFraction(difficulty) {
@@ -606,9 +613,9 @@
             const now = performance.now();
             if (now - this.lastAttemptAt < this.attemptCooldown) return;
             this.lastAttemptAt = now;
-            const successAngle = (this.getSuccessFraction(this.getCurrentDifficulty()) || 0) * 360;
-            const isSuccess = this.angle <= successAngle;
-            this.debugLog('attempt', { angle: Math.round(this.angle), insideZone: isSuccess });
+            const successRange = (this.getSuccessFraction(this.getCurrentDifficulty()) || 0) * 100;
+            const isSuccess = this.position <= successRange;
+            this.debugLog('attempt', { position: Math.round(this.position), insideZone: isSuccess });
             if (isSuccess) {
                 this.successes += 1;
                 this.currentStreak += 1;
@@ -618,7 +625,7 @@
                 this.currentStreak = 0;
                 this.speed = Math.min(260, this.speed * 1.08);
             }
-            this.reverseUntil = performance.now() + 150;
+            this.direction *= -1;
             this.updateProgress();
             if (this.successes >= this.requiredSuccesses) {
                 this.finish(true);

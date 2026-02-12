@@ -3740,33 +3740,38 @@ body.skill-check-lock {
     display: none;
 }
 
-.skill-check-wheel {
-    --success-angle: 36deg;
-    width: 240px;
-    height: 240px;
-    border-radius: 50%;
-    background: conic-gradient(
-        rgba(96, 214, 150, 0.9) 0deg var(--success-angle),
-        rgba(255, 255, 255, 0.08) var(--success-angle) 360deg
-    );
-    border: 6px solid rgba(255, 255, 255, 0.12);
+.skill-check-line {
     position: relative;
-    display: grid;
-    place-items: center;
-    box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.35);
+    width: min(420px, 82vw);
+    height: 28px;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
 }
 
-.skill-check-pointer {
+.skill-check-line__success {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 22%;
+    background: linear-gradient(90deg, rgba(96, 214, 150, 0.88), rgba(96, 214, 150, 0.55));
+    border-right: 1px solid rgba(255, 255, 255, 0.55);
+}
+
+.skill-check-line__marker {
     position: absolute;
     top: 50%;
-    left: 50%;
-    width: 4px;
-    height: 110px;
+    left: 0;
+    width: 16px;
+    height: 16px;
+    margin-left: -8px;
+    border-radius: 50%;
     background: #f8f9ff;
-    border-radius: 999px;
-    transform-origin: bottom center;
-    transform: translate(-50%, -100%) rotate(0deg);
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.65);
+    transform: translateY(-50%);
+    will-change: left;
 }
 
 .skill-check-info {
