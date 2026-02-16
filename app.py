@@ -260,6 +260,14 @@ CONTAINER_ALLOWED_TYPES = {
     'slot_weapon_main': {'weapon'},
 }
 QUALITY_LEVELS = {'common', 'uncommon', 'epic', 'legendary', 'mythical'}
+GRADE_LEVELS = {
+    1: 'Жахливо',
+    2: 'Погано',
+    3: 'Нормально',
+    4: 'Добре',
+    5: 'Чудово',
+    6: 'Шедевр',
+}
 DURABLE_ITEM_TYPES = {
     'weapon',
     'armor',
@@ -429,6 +437,7 @@ class ItemDefinition(db.Model):
     max_durability = db.Column(db.Integer, nullable=True)
     max_stack = db.Column(db.Integer, nullable=True)
     quality = db.Column(db.String(20), nullable=False, default='common')
+    grade = db.Column(db.Integer, nullable=True)
     is_cloth = db.Column(db.Boolean, nullable=False, default=False)
     bag_width = db.Column(db.Integer, nullable=True)
     bag_height = db.Column(db.Integer, nullable=True)
@@ -895,6 +904,10 @@ def _ensure_item_definition_columns():
         if 'ammo_type' not in columns:
             db.session.execute(text('ALTER TABLE item_definition ADD COLUMN ammo_type TEXT'))
             print('[DB MIGRATION] Added item_definition.ammo_type', file=sys.stderr)
+            db.session.commit()
+        if 'grade' not in columns:
+            db.session.execute(text('ALTER TABLE item_definition ADD COLUMN grade INTEGER'))
+            print('[DB MIGRATION] Added item_definition.grade', file=sys.stderr)
             db.session.commit()
         db.session.execute(text(
             'UPDATE item_definition '
@@ -1689,6 +1702,24 @@ def has_durability(definition: ItemDefinition) -> bool:
     return definition.max_durability is not None
 
 
+def parse_grade_value(raw_value) -> Optional[int]:
+    if raw_value in (None, ''):
+        return None
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        return None
+    if parsed not in GRADE_LEVELS:
+        return None
+    return parsed
+
+
+def grade_label(grade_value: Optional[int]) -> Optional[str]:
+    if grade_value is None:
+        return None
+    return GRADE_LEVELS.get(grade_value)
+
+
 def serialize_item_definition(definition: ItemDefinition) -> dict:
     return {
         'id': definition.id,
@@ -1697,6 +1728,8 @@ def serialize_item_definition(definition: ItemDefinition) -> dict:
         'image': definition.image_path,
         'type': definition.item_type.name if definition.item_type else '',
         'quality': definition.quality,
+        'grade': definition.grade,
+        'grade_label': grade_label(definition.grade),
         'width': definition.w,
         'height': definition.h,
         'weight': definition.weight,
@@ -2915,6 +2948,8 @@ def build_instance_payload(
         'type': definition.item_type.name,
         'type_id': definition.type_id,
         'quality': definition.quality,
+        'grade': definition.grade,
+        'grade_label': grade_label(definition.grade),
         'description': definition.description,
         'custom_description': visible_custom_description,
         'image_path': definition.image_path,
@@ -6327,6 +6362,7 @@ def create_item_template():
     description = (data.get('description') or '').strip() or 'Опис не додано.'
     type_name = (data.get('type') or 'other').strip().lower()
     quality = (data.get('quality') or 'common').strip().lower()
+    grade = parse_grade_value(data.get('grade'))
     width = parse_int(data.get('width'), 1, minimum=1)
     height = parse_int(data.get('height'), 1, minimum=1)
     weight = float(data.get('weight') or 0)
@@ -6412,6 +6448,7 @@ def create_item_template():
         max_durability=max_durability,
         max_stack=max_amount,
         quality=quality,
+        grade=grade,
         is_cloth=is_cloth,
         bag_width=bag_width if is_cloth and bag_width > 0 else None,
         bag_height=bag_height if is_cloth and bag_height > 0 else None,
@@ -6563,6 +6600,7 @@ def update_item_template():
     description = (data.get('description') or '').strip() or 'Опис не додано.'
     type_name = (data.get('type') or '').strip().lower() or 'other'
     quality = (data.get('quality') or 'common').strip().lower()
+    grade = parse_grade_value(data.get('grade'))
     width = parse_int(data.get('width'), definition.w or 1, minimum=1)
     height = parse_int(data.get('height'), definition.h or 1, minimum=1)
     weight = float(data.get('weight') or 0)
@@ -6636,6 +6674,7 @@ def update_item_template():
     definition.max_durability = max_durability
     definition.max_stack = max_amount
     definition.quality = quality
+    definition.grade = grade
     definition.is_cloth = is_cloth
     definition.bag_width = bag_width if is_cloth and bag_width > 0 else None
     definition.bag_height = bag_height if is_cloth and bag_height > 0 else None

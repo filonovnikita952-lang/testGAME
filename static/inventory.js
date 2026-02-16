@@ -1343,6 +1343,12 @@
             document.getElementById('context-name').textContent = item.name;
             document.getElementById('context-type').textContent = item.type;
             document.getElementById('context-quality').textContent = item.quality;
+            const gradeEl = document.getElementById('context-grade');
+            if (gradeEl) {
+                gradeEl.textContent = item.grade_label
+                    ? `Оцінка: ${item.grade_label}`
+                    : 'Оцінка: —';
+            }
             const size = this.getItemSize(item);
             document.getElementById('context-size').textContent = `Розмір: ${size.w}×${size.h}`;
             document.getElementById('context-weight').textContent = `Вага: ${(item.weight * item.amount).toFixed(2)} кг`;
@@ -3014,6 +3020,7 @@
                 const description = form.querySelector('textarea[id^="item_description_"]')?.value?.trim();
                 const type = form.querySelector('select[id^="item_type_"]')?.value;
                 const quality = form.querySelector('select[id^="item_quality_"]')?.value;
+                const grade = form.querySelector('select[id^="item_grade_"]')?.value;
                 const width = Number.parseInt(form.querySelector('input[id^="item_w_"]')?.value || '1', 10);
                 const height = Number.parseInt(form.querySelector('input[id^="item_h_"]')?.value || '1', 10);
                 const weight = parseFloat(form.querySelector('input[id^="item_weight_"]')?.value || '0');
@@ -3064,6 +3071,7 @@
                 payload.append('description', description || '');
                 payload.append('type', typeValue);
                 payload.append('quality', quality || 'common');
+                payload.append('grade', grade || '');
                 payload.append('width', width);
                 payload.append('height', height);
                 payload.append('weight', weight);
@@ -3414,6 +3422,7 @@
             const descriptionInput = form.querySelector('[data-template-description]');
             const typeSelect = form.querySelector('[data-template-type]');
             const qualitySelect = form.querySelector('[data-template-quality]');
+            const gradeSelect = form.querySelector('[data-template-grade]');
             const widthInput = form.querySelector('[data-template-width]');
             const heightInput = form.querySelector('[data-template-height]');
             const weightInput = form.querySelector('[data-template-weight]');
@@ -3445,6 +3454,7 @@
                 if (descriptionInput) descriptionInput.value = template.description || '';
                 if (typeSelect) typeSelect.value = template.type || 'other';
                 if (qualitySelect) qualitySelect.value = template.quality || 'common';
+                if (gradeSelect) gradeSelect.value = template.grade ? `${template.grade}` : '';
                 if (widthInput) widthInput.value = `${template.width || 1}`;
                 if (heightInput) heightInput.value = `${template.height || 1}`;
                 if (weightInput) weightInput.value = `${template.weight || 0}`;
@@ -3598,6 +3608,7 @@
                     description: descriptionInput?.value?.trim() || '',
                     type: typeValue,
                     quality: qualitySelect?.value || 'common',
+                    grade: gradeSelect?.value || '',
                     width: parseNumber(widthInput?.value || '1', 1),
                     height: parseNumber(heightInput?.value || '1', 1),
                     weight: parseFloat(weightInput?.value || '0') || 0,

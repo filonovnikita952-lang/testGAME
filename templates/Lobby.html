@@ -712,6 +712,16 @@
                                                                             <option value="legendary">Legendary</option>
                                                                             <option value="mythical">Mythical</option>
                                                                         </select>
+                                                                        <label for="item_grade_{{ membership.lobby.id }}">Оцінка (опційно)</label>
+                                                                        <select id="item_grade_{{ membership.lobby.id }}">
+                                                                            <option value="">Не вказано</option>
+                                                                            <option value="1">Жахливо</option>
+                                                                            <option value="2">Погано</option>
+                                                                            <option value="3">Нормально</option>
+                                                                            <option value="4">Добре</option>
+                                                                            <option value="5">Чудово</option>
+                                                                            <option value="6">Шедевр</option>
+                                                                        </select>
                                                                         <div class="form inline">
                                                                             <div>
                                                                                 <label for="item_w_{{ membership.lobby.id }}">W</label>
@@ -835,6 +845,16 @@
                                                                             <option value="legendary">Legendary</option>
                                                                             <option value="mythical">Mythical</option>
                                                                         </select>
+                                                                        <label>Оцінка</label>
+                                                                        <select data-template-grade disabled>
+                                                                            <option value="">Не вказано</option>
+                                                                            <option value="1">Жахливо</option>
+                                                                            <option value="2">Погано</option>
+                                                                            <option value="3">Нормально</option>
+                                                                            <option value="4">Добре</option>
+                                                                            <option value="5">Чудово</option>
+                                                                            <option value="6">Шедевр</option>
+                                                                        </select>
                                                                         <div class="form inline">
                                                                             <div>
                                                                         <label>Ширина</label>
@@ -941,6 +961,16 @@
                                                                             <option value="epic">Epic</option>
                                                                             <option value="legendary">Legendary</option>
                                                                             <option value="mythical">Mythical</option>
+                                                                        </select>
+                                                                        <label for="setting_template_grade_{{ membership.lobby.id }}">Оцінка (опційно)</label>
+                                                                        <select id="setting_template_grade_{{ membership.lobby.id }}" data-template-grade>
+                                                                            <option value="">Не вказано</option>
+                                                                            <option value="1">Жахливо</option>
+                                                                            <option value="2">Погано</option>
+                                                                            <option value="3">Нормально</option>
+                                                                            <option value="4">Добре</option>
+                                                                            <option value="5">Чудово</option>
+                                                                            <option value="6">Шедевр</option>
                                                                         </select>
                                                                         <div class="form inline">
                                                                             <div>
@@ -1166,6 +1196,7 @@
                                 <strong id="context-name">Item</strong>
                                 <span class="chip" id="context-type">type</span>
                                 <span class="chip chip--quality" id="context-quality">quality</span>
+                                <span class="chip" id="context-grade">Оцінка: —</span>
                             </div>
                             <p class="context-menu__meta" id="context-size">Розмір: 1×1</p>
                             <p class="context-menu__meta" id="context-weight">Вага: 0</p>
