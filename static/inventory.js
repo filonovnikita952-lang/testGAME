@@ -68,6 +68,13 @@
         reason: { max: 100 },
     };
 
+    const attributeRadarKeys = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+    const attributeRadarLabels = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
+    const ATTRIBUTE_RADAR_MIN = -3;
+    const ATTRIBUTE_RADAR_MAX = 7;
+    const ATTRIBUTE_RADAR_RADIUS = 95;
+    const ATTRIBUTE_RADAR_RINGS = 5;
+
     class LobbyInventory {
         constructor(root) {
             this.root = root;
@@ -177,6 +184,9 @@
             });
             this.raceValueBeforeEdit = '';
             this.attributeRows = Array.from(this.root.querySelectorAll('[data-attribute-row]'));
+            this.attributesRadarRoot = this.root.querySelector('[data-attributes-radar]');
+            this.attributesRadarSvg = this.attributesRadarRoot?.querySelector('.attributes-radar__svg') || null;
+            this.attributesRadarObserver = null;
             this.attributeFormulaInput = this.root.querySelector('[data-attribute-formula-input]');
             this.attributeFormulaSave = this.root.querySelector('[data-attribute-formula-save]');
             this.attributeFormulaWrap = this.root.querySelector('[data-attribute-formula]');
@@ -220,6 +230,7 @@
             });
 
             this.bindEvents();
+            this.initAttributesRadar();
             this.loadInitialState();
             this.initShop();
         }
@@ -2369,9 +2380,128 @@
             this.saveHealthValues({ [statKey]: nextValue });
         }
 
+
         formatModifier(value) {
             const numeric = Number(value || 0);
             return numeric >= 0 ? `+${numeric}` : `${numeric}`;
+        }
+
+        parseAttributeModifier(value) {
+            const parsed = Number.parseInt(String(value || '').replace(/\s+/g, ''), 10);
+            if (Number.isNaN(parsed)) return ATTRIBUTE_RADAR_MIN;
+            return Math.min(ATTRIBUTE_RADAR_MAX, Math.max(ATTRIBUTE_RADAR_MIN, parsed));
+        }
+
+        getAttributeRadarValues() {
+            const values = [];
+            attributeRadarKeys.forEach((key) => {
+                const row = this.attributeRows.find((node) => node.dataset.attributeKey === key);
+                const modifierNode = row?.querySelector('[data-attribute-modifier]');
+                values.push(this.parseAttributeModifier(modifierNode?.textContent || `${ATTRIBUTE_RADAR_MIN}`));
+            });
+            return values;
+        }
+
+        getAttributeRadarPoint(index, normalized, radius = ATTRIBUTE_RADAR_RADIUS) {
+            const angle = ((-90 + index * 60) * Math.PI) / 180;
+            const r = Math.max(0, Math.min(1, normalized)) * radius;
+            return {
+                x: Math.cos(angle) * r,
+                y: Math.sin(angle) * r,
+            };
+        }
+
+        createRadarSvgNode(tagName, attributes = {}) {
+            const node = document.createElementNS('http://www.w3.org/2000/svg', tagName);
+            Object.entries(attributes).forEach(([key, value]) => {
+                node.setAttribute(key, String(value));
+            });
+            return node;
+        }
+
+        renderAttributesRadar() {
+            if (!this.attributesRadarSvg) return;
+            const svg = this.attributesRadarSvg;
+            svg.innerHTML = '';
+            const values = this.getAttributeRadarValues();
+            const range = ATTRIBUTE_RADAR_MAX - ATTRIBUTE_RADAR_MIN;
+            const normalized = values.map((value) => (value - ATTRIBUTE_RADAR_MIN) / range);
+
+            for (let ring = 1; ring <= ATTRIBUTE_RADAR_RINGS; ring += 1) {
+                const ringFactor = ring / ATTRIBUTE_RADAR_RINGS;
+                const ringPoints = attributeRadarKeys
+                    .map((_, index) => this.getAttributeRadarPoint(index, ringFactor))
+                    .map((point) => `${point.x},${point.y}`)
+                    .join(' ');
+                svg.appendChild(this.createRadarSvgNode('polygon', {
+                    class: 'attributes-radar__ring',
+                    points: ringPoints,
+                }));
+            }
+
+            attributeRadarKeys.forEach((_, index) => {
+                const axisEnd = this.getAttributeRadarPoint(index, 1);
+                svg.appendChild(this.createRadarSvgNode('line', {
+                    class: 'attributes-radar__axis',
+                    x1: 0,
+                    y1: 0,
+                    x2: axisEnd.x,
+                    y2: axisEnd.y,
+                }));
+
+                const labelPoint = this.getAttributeRadarPoint(index, 1.18, ATTRIBUTE_RADAR_RADIUS);
+                const textAnchor = labelPoint.x > 18 ? 'start' : (labelPoint.x < -18 ? 'end' : 'middle');
+                svg.appendChild(this.createRadarSvgNode('text', {
+                    class: 'attributes-radar__label',
+                    x: labelPoint.x,
+                    y: labelPoint.y,
+                    'text-anchor': textAnchor,
+                    'dominant-baseline': 'middle',
+                })).textContent = attributeRadarLabels[index];
+            });
+
+            const polygonPoints = normalized
+                .map((value, index) => this.getAttributeRadarPoint(index, value))
+                .map((point) => `${point.x},${point.y}`)
+                .join(' ');
+            svg.appendChild(this.createRadarSvgNode('polygon', {
+                class: 'attributes-radar__shape',
+                points: polygonPoints,
+            }));
+
+            normalized.forEach((value, index) => {
+                const point = this.getAttributeRadarPoint(index, value);
+                svg.appendChild(this.createRadarSvgNode('circle', {
+                    class: 'attributes-radar__dot',
+                    cx: point.x,
+                    cy: point.y,
+                    r: 3.5,
+                }));
+            });
+        }
+
+        initAttributesRadar() {
+            if (!this.attributesRadarRoot) return;
+            this.renderAttributesRadar();
+            if (this.attributesRadarObserver) {
+                this.attributesRadarObserver.disconnect();
+            }
+            this.attributesRadarObserver = new MutationObserver(() => {
+                this.renderAttributesRadar();
+            });
+            this.attributeRows.forEach((row) => {
+                const modifierNode = row.querySelector('[data-attribute-modifier]');
+                if (!modifierNode) return;
+                this.attributesRadarObserver.observe(modifierNode, {
+                    characterData: true,
+                    childList: true,
+                    subtree: true,
+                });
+            });
+            this.attributeRows.forEach((row) => {
+                const input = row.querySelector('[data-attribute-input]');
+                input?.addEventListener('input', () => this.renderAttributesRadar());
+            });
         }
 
         updateAttributesUI() {
@@ -2408,6 +2538,7 @@
                 this.attributeFormulaWrap.classList.toggle('is-hidden', !this.permissions.is_master);
             }
             this.refreshMasterModeState();
+            this.renderAttributesRadar();
         }
 
         clearFormulaError(statKey) {
