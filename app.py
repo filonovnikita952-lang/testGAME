@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+import hashlib
+import hmac
 import html
 import logging
 import os
@@ -12,14 +14,16 @@ import ast
 import math
 import difflib
 import shutil
+import smtplib
+import ssl
 import sys
 from collections import defaultdict, deque
+from email.message import EmailMessage
 from threading import Lock
 import time
 from typing import Optional
 from uuid import uuid4
 
-import requests
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import inspect, text, func
@@ -140,8 +144,18 @@ CHARACTER_FORMULA_ORDER = [
 ]
 
 
-OTP_SERVICE_TIMEOUT_SECONDS = 5
+# Configuration (set via environment variables, never hardcode secrets):
+# - GMAIL_SMTP_USER: Gmail sender account (required for OTP email delivery)
+# - GMAIL_SMTP_PASS: Google App Password for the sender account
+# - GMAIL_SMTP_FROM_NAME: Optional display name for the From header
+# - OTP_SECRET: secret key used to HMAC-hash OTP values before persistence
+# - OTP_TTL_MINUTES: OTP validity window in minutes (default: 10)
+# - OTP_MAX_ATTEMPTS: invalid attempts before lockout (default: 5)
+# - OTP_LOCK_MINUTES: lockout duration in minutes (default: 15)
 PENDING_SIGNUP_TTL_MINUTES = 30
+OTP_TTL_MINUTES = int(os.environ.get('OTP_TTL_MINUTES', '10'))
+OTP_MAX_ATTEMPTS = int(os.environ.get('OTP_MAX_ATTEMPTS', '5'))
+OTP_LOCK_MINUTES = int(os.environ.get('OTP_LOCK_MINUTES', '15'))
 SIGNUP_REQUEST_IP_LIMIT = 20
 SIGNUP_REQUEST_EMAIL_LIMIT = 5
 SIGNUP_VERIFY_IP_LIMIT = 30
@@ -330,6 +344,26 @@ class PendingSignup(db.Model):
     is_admin_request = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False)
+    ip_address = db.Column(db.String(64), nullable=True)
+    user_agent = db.Column(db.String(255), nullable=True)
+
+
+class SignupOtp(db.Model):
+    __tablename__ = 'signup_otp'
+    __table_args__ = (
+        db.Index('ix_signup_otp_email_created_at', 'email', 'created_at'),
+        db.Index('ix_signup_otp_expires_at', 'expires_at'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), nullable=False, index=True)
+    otp_hash = db.Column(db.String(64), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+    attempt_count = db.Column(db.Integer, nullable=False, default=0)
+    last_sent_at = db.Column(db.DateTime, nullable=False)
+    lock_until = db.Column(db.DateTime, nullable=True)
     ip_address = db.Column(db.String(64), nullable=True)
     user_agent = db.Column(db.String(255), nullable=True)
 
@@ -750,11 +784,46 @@ def _ensure_auth_columns_and_tables():
             db.session.execute(text("ALTER TABLE pending_signup ADD COLUMN is_admin_request BOOLEAN DEFAULT 0"))
             db.session.commit()
 
+    if 'signup_otp' in table_names:
+        columns = {column['name'] for column in inspector.get_columns('signup_otp')}
+        if 'last_sent_at' not in columns:
+            db.session.execute(text('ALTER TABLE signup_otp ADD COLUMN last_sent_at DATETIME'))
+            db.session.commit()
+            db.session.execute(text('UPDATE signup_otp SET last_sent_at = created_at WHERE last_sent_at IS NULL'))
+            db.session.commit()
+        if 'attempt_count' not in columns:
+            db.session.execute(text('ALTER TABLE signup_otp ADD COLUMN attempt_count INTEGER DEFAULT 0'))
+            db.session.commit()
+        if 'lock_until' not in columns:
+            db.session.execute(text('ALTER TABLE signup_otp ADD COLUMN lock_until DATETIME'))
+            db.session.commit()
+        if 'ip_address' not in columns:
+            db.session.execute(text('ALTER TABLE signup_otp ADD COLUMN ip_address VARCHAR(64)'))
+            db.session.commit()
+        if 'user_agent' not in columns:
+            db.session.execute(text('ALTER TABLE signup_otp ADD COLUMN user_agent VARCHAR(255)'))
+            db.session.commit()
+
 
 def cleanup_expired_pending_signups() -> None:
     now = datetime.utcnow()
     PendingSignup.query.filter(PendingSignup.expires_at <= now).delete(synchronize_session=False)
     db.session.commit()
+
+
+def _ensure_signup_otp_schema() -> None:
+    inspector = inspect(db.engine)
+    table_names = inspector.get_table_names()
+    if 'signup_otp' not in table_names:
+        return
+
+    index_names = {index['name'] for index in inspector.get_indexes('signup_otp')}
+    if 'ix_signup_otp_email_created_at' not in index_names:
+        db.session.execute(text('CREATE INDEX IF NOT EXISTS ix_signup_otp_email_created_at ON signup_otp (email, created_at)'))
+        db.session.commit()
+    if 'ix_signup_otp_expires_at' not in index_names:
+        db.session.execute(text('CREATE INDEX IF NOT EXISTS ix_signup_otp_expires_at ON signup_otp (expires_at)'))
+        db.session.commit()
 
 
 def _ensure_item_type_columns():
@@ -995,6 +1064,7 @@ def initialize_database():
     db.create_all()
     _ensure_user_columns()
     _ensure_auth_columns_and_tables()
+    _ensure_signup_otp_schema()
     _ensure_item_type_columns()
     _ensure_item_definition_columns()
     _ensure_character_stats_columns()
@@ -1032,8 +1102,24 @@ class AuthError(Exception):
     pass
 
 
-def otp_service_url() -> str:
-    return os.environ.get('OTP_SERVICE_URL', 'http://localhost:3000').rstrip('/')
+class OtpDeliveryError(Exception):
+    pass
+
+
+def _otp_secret() -> str:
+    return os.environ.get('OTP_SECRET', '').strip()
+
+
+def _gmail_from_name() -> str:
+    return (os.environ.get('GMAIL_SMTP_FROM_NAME') or 'DRA App').strip() or 'DRA App'
+
+
+def _gmail_smtp_user() -> str:
+    return os.environ.get('GMAIL_SMTP_USER', '').strip()
+
+
+def _gmail_smtp_pass() -> str:
+    return os.environ.get('GMAIL_SMTP_PASS', '').strip()
 
 
 def _client_ip() -> str:
@@ -1053,28 +1139,142 @@ def _generic_signup_error(message: str = 'Unable to process signup right now. Pl
     return jsonify({'ok': False, 'message': message}), 400
 
 
-def _otp_request(email: str) -> tuple[bool, int]:
+def generate_otp_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def hash_otp(email: str, otp: str, secret: str) -> str:
+    payload = f"{email}:{otp}".encode('utf-8')
+    return hmac.new(secret.encode('utf-8'), payload, hashlib.sha256).hexdigest()
+
+
+def verify_otp_hash(email: str, otp: str, stored_hash: str, secret: str) -> bool:
+    expected = hash_otp(email, otp, secret)
+    return hmac.compare_digest(expected, stored_hash)
+
+
+def is_expired(expires_at: datetime) -> bool:
+    return datetime.utcnow() >= expires_at
+
+
+def cleanup_expired_otps() -> None:
+    now = datetime.utcnow()
+    SignupOtp.query.filter(SignupOtp.expires_at <= now).delete(synchronize_session=False)
+    SignupOtp.query.filter(
+        SignupOtp.used_at.isnot(None),
+        SignupOtp.used_at <= now - timedelta(days=1),
+    ).delete(synchronize_session=False)
+    db.session.commit()
+
+
+def _send_signup_otp_email(email: str, otp: str, ttl_minutes: int) -> None:
+    smtp_user = _gmail_smtp_user()
+    smtp_pass = _gmail_smtp_pass()
+    if not smtp_user or not smtp_pass:
+        raise OtpDeliveryError('SMTP credentials are not configured')
+
+    message = EmailMessage()
+    message['From'] = f"{_gmail_from_name()} <{smtp_user}>"
+    message['To'] = email
+    message['Subject'] = 'Your verification code'
+    message.set_content(
+        f"Your verification code is: {otp}\n"
+        f"It expires in {ttl_minutes} minutes.\n"
+        "If you did not request this code, ignore this email."
+    )
+
+    tls_context = ssl.create_default_context()
     try:
-        response = requests.post(
-            f"{otp_service_url()}/auth/request-otp",
-            json={'email': email},
-            timeout=OTP_SERVICE_TIMEOUT_SECONDS,
-        )
-    except requests.RequestException:
+        with smtplib.SMTP('smtp.gmail.com', 587, timeout=15) as server:
+            server.ehlo()
+            server.starttls(context=tls_context)
+            server.ehlo()
+            server.login(smtp_user, smtp_pass)
+            server.send_message(message)
+        app.logger.info('OTP email sent successfully for signup flow')
+        return
+    except (smtplib.SMTPException, OSError) as exc_587:
+        app.logger.warning('OTP send on SMTP 587 failed: %s', exc_587)
+
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15, context=tls_context) as server:
+            server.login(smtp_user, smtp_pass)
+            server.send_message(message)
+        app.logger.info('OTP email sent successfully for signup flow')
+    except (smtplib.SMTPException, OSError) as exc_465:
+        app.logger.error('OTP email delivery failed')
+        raise OtpDeliveryError('Failed to send OTP email') from exc_465
+
+
+def _otp_request(email: str) -> tuple[bool, int]:
+    cleanup_expired_otps()
+    now = datetime.utcnow()
+    latest = SignupOtp.query.filter_by(email=email).order_by(SignupOtp.created_at.desc()).first()
+
+    if latest and latest.lock_until and latest.lock_until > now:
+        return False, 429
+
+    secret = _otp_secret()
+    if not secret:
+        app.logger.error('OTP_SECRET is missing; unable to issue OTP')
         return False, 503
-    return response.ok, response.status_code
+
+    otp = generate_otp_code()
+    otp_hash = hash_otp(email, otp, secret)
+
+    try:
+        _send_signup_otp_email(email, otp, OTP_TTL_MINUTES)
+    except OtpDeliveryError:
+        return False, 503
+
+    SignupOtp.query.filter(
+        SignupOtp.email == email,
+        SignupOtp.used_at.is_(None),
+        SignupOtp.expires_at > now,
+    ).update({'used_at': now}, synchronize_session=False)
+
+    db.session.add(
+        SignupOtp(
+            email=email,
+            otp_hash=otp_hash,
+            created_at=now,
+            expires_at=now + timedelta(minutes=OTP_TTL_MINUTES),
+            last_sent_at=now,
+            ip_address=_client_ip(),
+            user_agent=(request.headers.get('User-Agent', '') or '')[:255],
+        )
+    )
+    db.session.commit()
+    return True, 200
 
 
 def _otp_verify(email: str, code: str) -> tuple[bool, int]:
-    try:
-        response = requests.post(
-            f"{otp_service_url()}/auth/verify-otp",
-            json={'email': email, 'code': code},
-            timeout=OTP_SERVICE_TIMEOUT_SECONDS,
-        )
-    except requests.RequestException:
+    cleanup_expired_otps()
+    now = datetime.utcnow()
+    latest = SignupOtp.query.filter_by(email=email).order_by(SignupOtp.created_at.desc()).first()
+    if not latest or latest.used_at is not None or is_expired(latest.expires_at):
+        return False, 400
+
+    if latest.lock_until and latest.lock_until > now:
+        return False, 429
+
+    secret = _otp_secret()
+    if not secret:
+        app.logger.error('OTP_SECRET is missing; unable to verify OTP')
         return False, 503
-    return response.ok, response.status_code
+
+    if not verify_otp_hash(email, code, latest.otp_hash, secret):
+        latest.attempt_count += 1
+        if latest.attempt_count >= OTP_MAX_ATTEMPTS:
+            latest.lock_until = now + timedelta(minutes=OTP_LOCK_MINUTES)
+            db.session.commit()
+            return False, 429
+        db.session.commit()
+        return False, 400
+
+    latest.used_at = now
+    db.session.commit()
+    return True, 200
 
 
 def _enforce_signup_rate_limits(email: str, verify: bool = False) -> Optional[tuple[dict, int]]:
@@ -3130,9 +3330,9 @@ def signup_request_api():
     if User.query.filter_by(email=email).first() or User.query.filter_by(nickname=nickname).first():
         return jsonify({'ok': True, 'message': 'If possible, a code was sent.'}), 200
 
-    otp_ok, otp_status = _otp_request(email)
+    otp_ok, _ = _otp_request(email)
     if not otp_ok:
-        return jsonify({'ok': False, 'message': 'Unable to send code.'}), 503 if otp_status >= 500 else 400
+        return jsonify({'ok': True, 'message': 'If possible, a code was sent.'}), 200
 
     pending = PendingSignup.query.filter_by(email=email).first()
     if pending:
@@ -3221,9 +3421,9 @@ def register():
             flash('Некоректні дані реєстрації.', 'danger')
             return redirect(url_for('register'))
 
-        otp_ok, otp_status = _otp_request(email)
+        otp_ok, _ = _otp_request(email)
         if not otp_ok:
-            flash('Не вдалося надіслати код підтвердження. Спробуйте пізніше.', 'danger')
+            flash('Якщо можливо, код підтвердження було надіслано.', 'info')
             return redirect(url_for('register'))
 
         cleanup_expired_pending_signups()
