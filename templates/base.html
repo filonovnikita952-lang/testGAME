@@ -43,6 +43,7 @@
         <a href="{{ url_for('rules_page') }}">Правила</a>
         {% if user %}
             {% if user.is_admin %}
+                <a href="{{ url_for('admin_users_page') }}">Адмін: Користувачі</a>
                 <a href="{{ url_for('admin_skills_page') }}">Адмін: Навички</a>
             {% endif %}
             <div class="user-chip">

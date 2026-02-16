@@ -4383,3 +4383,38 @@ body.skill-check-lock {
         scroll-behavior: auto !important;
     }
 }
+
+.page--admin-users .admin-users {
+    background: rgba(9, 11, 18, 0.7);
+    border-radius: 18px;
+    padding: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.admin-users__table-wrap {
+    overflow-x: auto;
+}
+
+.admin-users__table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 680px;
+}
+
+.admin-users__table th,
+.admin-users__table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: left;
+}
+
+.admin-users__table th {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.admin-users__table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
