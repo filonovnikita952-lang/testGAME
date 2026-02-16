@@ -202,8 +202,11 @@ class ActiveSkillCheck:
     max_failures: int
     status: str = 'pending'
     created_at: datetime = field(default_factory=datetime.utcnow)
+    pending_until: Optional[datetime] = None
     started_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
+    successes: int = 0
+    failures: int = 0
     result: Optional[str] = None
 
 
@@ -1881,6 +1884,20 @@ def create_chat_message(lobby_id: int, user_id: int, message: str, *, is_system:
     return chat_message
 
 
+def skill_check_required_successes(difficulty: int) -> int:
+    normalized = max(5, min(30, difficulty))
+    return max(1, min(6, math.ceil(normalized / 5)))
+
+
+def skill_check_max_failures(difficulty: int) -> int:
+    normalized = max(5, min(30, difficulty))
+    if normalized >= 25:
+        return 2
+    if normalized >= 15:
+        return 3
+    return 4
+
+
 def serialize_skill_check(check: ActiveSkillCheck) -> dict:
     return {
         'id': check.id,
@@ -1889,42 +1906,51 @@ def serialize_skill_check(check: ActiveSkillCheck) -> dict:
         'difficulty': check.difficulty,
         'required_successes': check.required_successes,
         'max_failures': check.max_failures,
+        'successes': check.successes,
+        'failures': check.failures,
         'status': check.status,
         'created_at': check.created_at.isoformat(),
+        'pending_until': check.pending_until.isoformat() if check.pending_until else None,
         'started_at': check.started_at.isoformat() if check.started_at else None,
         'expires_at': check.expires_at.isoformat() if check.expires_at else None,
         'result': check.result,
     }
 
 
-def skill_check_required_successes(difficulty: int) -> int:
-    return max(2, min(6, math.ceil(difficulty / 6)))
+def skill_check_expired(check: ActiveSkillCheck) -> bool:
+    now = datetime.utcnow()
+    if check.status == 'pending' and check.pending_until and now >= check.pending_until:
+        return True
+    if check.status == 'active' and check.expires_at and now >= check.expires_at:
+        return True
+    return False
 
 
-def skill_check_max_failures(difficulty: int) -> int:
-    if difficulty >= 24:
-        return 2
-    if difficulty >= 15:
-        return 3
-    return 4
-
-
-def complete_skill_check(check: ActiveSkillCheck, *, success: bool) -> None:
+def complete_skill_check(check: ActiveSkillCheck, *, success: bool, reason: Optional[str] = None) -> None:
     if check.status == 'completed':
         return
     check.status = 'completed'
     check.result = 'success' if success else 'failure'
-    target = User.query.get(check.target_user_id)
-    if target:
-        outcome = 'successfully passed' if success else 'failed'
-        create_chat_message(
-            check.lobby_id,
-            target.id,
-            f'{target.nickname} {outcome} the skill check.',
-            is_system=True,
-        )
-        db.session.commit()
     ACTIVE_SKILL_CHECKS.pop(check.lobby_id, None)
+
+    target = User.query.get(check.target_user_id)
+    if not target:
+        return
+
+    if success:
+        message = (
+            f'✅ Skill Check: {target.nickname} успішно пройшов перевірку '
+            f'({check.successes}/{check.required_successes}).'
+        )
+    else:
+        suffix = f' Причина: {reason}.' if reason else ''
+        message = (
+            f'❌ Skill Check: {target.nickname} провалив перевірку '
+            f'({check.failures}/{check.max_failures}).{suffix}'
+        )
+
+    create_chat_message(check.lobby_id, target.id, message, is_system=True)
+    db.session.commit()
 
 
 def is_lobby_master(user: User, lobby_id: int) -> bool:
@@ -4778,28 +4804,34 @@ def start_skill_check(lobby_id: int):
     user = require_user()
     if not is_lobby_master(user, lobby_id):
         return jsonify({'error': 'forbidden'}), 403
+
     lobby = Lobby.query.get(lobby_id)
     if not lobby:
         return jsonify({'error': 'not_found'}), 404
+
     data = request.get_json(silent=True) or {}
     target_user_id = parse_int(str(data.get('target_user_id') or ''), 0)
     difficulty = parse_int(str(data.get('difficulty') or ''), 0)
     if difficulty < 5 or difficulty > 30:
         return jsonify({'error': 'invalid_difficulty'}), 400
+
     target_member = LobbyMember.query.filter_by(lobby_id=lobby_id, user_id=target_user_id).first()
     if not target_member:
         return jsonify({'error': 'invalid_target'}), 400
+
     existing = ACTIVE_SKILL_CHECKS.get(lobby_id)
     if existing and existing.status != 'completed':
         return jsonify({'error': 'already_active'}), 409
-    check_id = secrets.token_hex(8)
+
+    now = datetime.utcnow()
     check = ActiveSkillCheck(
-        id=check_id,
+        id=secrets.token_hex(8),
         lobby_id=lobby_id,
         target_user_id=target_user_id,
         difficulty=difficulty,
         required_successes=skill_check_required_successes(difficulty),
         max_failures=skill_check_max_failures(difficulty),
+        pending_until=now + timedelta(seconds=SKILL_CHECK_PENDING_LIMIT),
     )
     ACTIVE_SKILL_CHECKS[lobby_id] = check
     return jsonify({'status': 'ok', 'check': serialize_skill_check(check)})
@@ -4811,15 +4843,15 @@ def skill_check_status(lobby_id: int):
     membership = LobbyMember.query.filter_by(lobby_id=lobby_id, user_id=user.id).first()
     if not membership:
         return jsonify({'error': 'forbidden'}), 403
+
     check = ACTIVE_SKILL_CHECKS.get(lobby_id)
     if not check:
         return jsonify({'check': None})
-    if check.status == 'pending' and datetime.utcnow() >= check.created_at + timedelta(seconds=SKILL_CHECK_PENDING_LIMIT):
-        complete_skill_check(check, success=False)
+
+    if skill_check_expired(check):
+        complete_skill_check(check, success=False, reason='timeout')
         return jsonify({'check': None})
-    if check.status == 'active' and check.expires_at and datetime.utcnow() >= check.expires_at:
-        complete_skill_check(check, success=False)
-        return jsonify({'check': None})
+
     return jsonify({'check': serialize_skill_check(check)})
 
 
@@ -4829,6 +4861,7 @@ def accept_skill_check(lobby_id: int):
     membership = LobbyMember.query.filter_by(lobby_id=lobby_id, user_id=user.id).first()
     if not membership:
         return jsonify({'error': 'forbidden'}), 403
+
     check = ACTIVE_SKILL_CHECKS.get(lobby_id)
     if not check:
         return jsonify({'error': 'not_found'}), 404
@@ -4836,12 +4869,17 @@ def accept_skill_check(lobby_id: int):
         return jsonify({'error': 'forbidden'}), 403
     if check.status != 'pending':
         return jsonify({'error': 'already_started'}), 409
-    if datetime.utcnow() >= check.created_at + timedelta(seconds=SKILL_CHECK_PENDING_LIMIT):
-        complete_skill_check(check, success=False)
+    if skill_check_expired(check):
+        complete_skill_check(check, success=False, reason='timeout')
         return jsonify({'error': 'expired'}), 409
+
+    now = datetime.utcnow()
     check.status = 'active'
-    check.started_at = datetime.utcnow()
-    check.expires_at = check.started_at + timedelta(seconds=SKILL_CHECK_TIME_LIMIT)
+    check.started_at = now
+    check.expires_at = now + timedelta(seconds=SKILL_CHECK_TIME_LIMIT)
+    check.successes = 0
+    check.failures = 0
+
     return jsonify({'status': 'ok', 'check': serialize_skill_check(check)})
 
 
@@ -4851,32 +4889,36 @@ def skill_check_result(lobby_id: int):
     membership = LobbyMember.query.filter_by(lobby_id=lobby_id, user_id=user.id).first()
     if not membership:
         return jsonify({'error': 'forbidden'}), 403
+
     check = ACTIVE_SKILL_CHECKS.get(lobby_id)
     if not check:
         return jsonify({'error': 'not_found'}), 404
     if check.target_user_id != user.id:
         return jsonify({'error': 'forbidden'}), 403
-    data = request.get_json(silent=True) or {}
-    success = data.get('success')
-    if not isinstance(success, bool):
-        return jsonify({'error': 'invalid_result'}), 400
-    successes = parse_int(str(data.get('successes') or ''), -1)
-    failures = parse_int(str(data.get('failures') or ''), -1)
-    if successes < 0 or failures < 0:
-        return jsonify({'error': 'invalid_result'}), 400
     if check.status != 'active':
         return jsonify({'error': 'not_active'}), 409
-    if check.expires_at and datetime.utcnow() >= check.expires_at:
-        complete_skill_check(check, success=False)
+    if skill_check_expired(check):
+        complete_skill_check(check, success=False, reason='timeout')
         return jsonify({'error': 'expired'}), 409
-    threshold_successes = check.required_successes
-    threshold_failures = check.max_failures
-    if success and successes < threshold_successes:
+
+    data = request.get_json(silent=True) or {}
+    hit = data.get('hit')
+    if not isinstance(hit, bool):
         return jsonify({'error': 'invalid_result'}), 400
-    if (not success) and failures < threshold_failures:
-        return jsonify({'error': 'invalid_result'}), 400
-    complete_skill_check(check, success=success)
-    return jsonify({'status': 'ok'})
+
+    if hit:
+        check.successes += 1
+        if check.successes >= check.required_successes:
+            complete_skill_check(check, success=True)
+            return jsonify({'status': 'completed', 'result': 'success'})
+    else:
+        check.failures += 1
+        if check.failures >= check.max_failures:
+            complete_skill_check(check, success=False, reason='max_failures')
+            return jsonify({'status': 'completed', 'result': 'failure'})
+
+    return jsonify({'status': 'ok', 'check': serialize_skill_check(check)})
+
 
 
 def _assert_version(instance: ItemInstance, version: int) -> bool:
