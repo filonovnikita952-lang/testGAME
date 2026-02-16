@@ -145,6 +145,10 @@ CHARACTER_FORMULA_ORDER = [
 
 
 # Configuration (set via environment variables, never hardcode secrets):
+# PythonAnywhere note:
+#   Set these env vars in the WSGI file *before* importing this app, or load
+#   a .env there (for example via python-dotenv). PythonAnywhere Free does not
+#   provide a separate web UI env manager for all plans.
 # - GMAIL_SMTP_USER: Gmail sender account (required for OTP email delivery)
 # - GMAIL_SMTP_PASS: Google App Password for the sender account
 # - GMAIL_SMTP_FROM_NAME: Optional display name for the From header
@@ -162,6 +166,8 @@ SIGNUP_VERIFY_IP_LIMIT = 30
 SIGNUP_VERIFY_EMAIL_LIMIT = 10
 EMAIL_REGEX = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 RATE_LIMIT_WINDOW_SECONDS = 60
+GENERIC_SIGNUP_REQUEST_MESSAGE = 'If the email is valid, a code was sent.'
+GENERIC_SIGNUP_VERIFY_ERROR = 'Invalid or expired code/session.'
 
 
 class InMemoryRateLimiter:
@@ -1191,18 +1197,18 @@ def _send_signup_otp_email(email: str, otp: str, ttl_minutes: int) -> None:
             server.ehlo()
             server.login(smtp_user, smtp_pass)
             server.send_message(message)
-        app.logger.info('OTP email sent successfully for signup flow')
+        app.logger.info('OTP email sent for signup: email=%s', email)
         return
     except (smtplib.SMTPException, OSError) as exc_587:
-        app.logger.warning('OTP send on SMTP 587 failed: %s', exc_587)
+        app.logger.warning('OTP send on SMTP 587 failed for email=%s: %s', email, exc_587)
 
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=15, context=tls_context) as server:
             server.login(smtp_user, smtp_pass)
             server.send_message(message)
-        app.logger.info('OTP email sent successfully for signup flow')
+        app.logger.info('OTP email sent for signup: email=%s', email)
     except (smtplib.SMTPException, OSError) as exc_465:
-        app.logger.error('OTP email delivery failed')
+        app.logger.error('OTP email delivery failed for email=%s: %s', email, exc_465)
         raise OtpDeliveryError('Failed to send OTP email') from exc_465
 
 
@@ -1212,11 +1218,12 @@ def _otp_request(email: str) -> tuple[bool, int]:
     latest = SignupOtp.query.filter_by(email=email).order_by(SignupOtp.created_at.desc()).first()
 
     if latest and latest.lock_until and latest.lock_until > now:
+        app.logger.info('OTP request blocked by lockout: email=%s lock_until=%s', email, latest.lock_until)
         return False, 429
 
     secret = _otp_secret()
     if not secret:
-        app.logger.error('OTP_SECRET is missing; unable to issue OTP')
+        app.logger.error('OTP_SECRET is missing; unable to issue OTP for email=%s', email)
         return False, 503
 
     otp = generate_otp_code()
@@ -1224,7 +1231,8 @@ def _otp_request(email: str) -> tuple[bool, int]:
 
     try:
         _send_signup_otp_email(email, otp, OTP_TTL_MINUTES)
-    except OtpDeliveryError:
+    except OtpDeliveryError as exc:
+        app.logger.error('OTP delivery error for email=%s: %s', email, exc)
         return False, 503
 
     SignupOtp.query.filter(
@@ -1245,6 +1253,7 @@ def _otp_request(email: str) -> tuple[bool, int]:
         )
     )
     db.session.commit()
+    app.logger.info('OTP issued for signup: email=%s', email)
     return True, 200
 
 
@@ -1253,14 +1262,16 @@ def _otp_verify(email: str, code: str) -> tuple[bool, int]:
     now = datetime.utcnow()
     latest = SignupOtp.query.filter_by(email=email).order_by(SignupOtp.created_at.desc()).first()
     if not latest or latest.used_at is not None or is_expired(latest.expires_at):
+        app.logger.info('OTP verify failed: email=%s reason=missing_or_expired', email)
         return False, 400
 
     if latest.lock_until and latest.lock_until > now:
+        app.logger.info('OTP verify blocked by lockout: email=%s lock_until=%s', email, latest.lock_until)
         return False, 429
 
     secret = _otp_secret()
     if not secret:
-        app.logger.error('OTP_SECRET is missing; unable to verify OTP')
+        app.logger.error('OTP_SECRET is missing; unable to verify OTP for email=%s', email)
         return False, 503
 
     if not verify_otp_hash(email, code, latest.otp_hash, secret):
@@ -1268,12 +1279,20 @@ def _otp_verify(email: str, code: str) -> tuple[bool, int]:
         if latest.attempt_count >= OTP_MAX_ATTEMPTS:
             latest.lock_until = now + timedelta(minutes=OTP_LOCK_MINUTES)
             db.session.commit()
+            app.logger.info(
+                'OTP verify failed and locked: email=%s attempts=%s lock_until=%s',
+                email,
+                latest.attempt_count,
+                latest.lock_until,
+            )
             return False, 429
         db.session.commit()
+        app.logger.info('OTP verify failed: email=%s attempts=%s', email, latest.attempt_count)
         return False, 400
 
     latest.used_at = now
     db.session.commit()
+    app.logger.info('OTP verify success: email=%s', email)
     return True, 200
 
 
@@ -1287,6 +1306,54 @@ def _enforce_signup_rate_limits(email: str, verify: bool = False) -> Optional[tu
     if not signup_rate_limiter.allow(f'signup:{suffix}:email:{email}', email_limit):
         return {'ok': False, 'message': 'Too many attempts, try later.'}, 429
     return None
+
+
+def _upsert_pending_signup(email: str, nickname: str, password: str, admin_code: str) -> PendingSignup:
+    now = datetime.utcnow()
+    pending = PendingSignup.query.filter_by(email=email).first()
+    if pending:
+        pending.nickname = nickname
+        pending.password_hash = generate_password_hash(password)
+        pending.is_admin_request = admin_code == 'DRA-ADMIN-2024'
+        pending.created_at = now
+        pending.expires_at = now + timedelta(minutes=PENDING_SIGNUP_TTL_MINUTES)
+        pending.ip_address = _client_ip()
+        pending.user_agent = (request.headers.get('User-Agent', '') or '')[:255]
+        db.session.commit()
+        return pending
+
+    pending = PendingSignup(
+        email=email,
+        nickname=nickname,
+        password_hash=generate_password_hash(password),
+        is_admin_request=admin_code == 'DRA-ADMIN-2024',
+        created_at=now,
+        expires_at=now + timedelta(minutes=PENDING_SIGNUP_TTL_MINUTES),
+        ip_address=_client_ip(),
+        user_agent=(request.headers.get('User-Agent', '') or '')[:255],
+    )
+    db.session.add(pending)
+    db.session.commit()
+    return pending
+
+
+def _create_user_from_pending(pending: PendingSignup) -> Optional[User]:
+    if User.query.filter_by(email=pending.email).first() or User.query.filter_by(nickname=pending.nickname).first():
+        db.session.delete(pending)
+        db.session.commit()
+        return None
+
+    new_user = User(
+        email=pending.email,
+        nickname=pending.nickname,
+        password=pending.password_hash,
+        status='ACTIVE',
+        is_admin=pending.is_admin_request,
+    )
+    db.session.add(new_user)
+    db.session.delete(pending)
+    db.session.commit()
+    return new_user
 
 
 def normalize_static_path(path: Optional[str]) -> Optional[str]:
@@ -3317,41 +3384,29 @@ def signup_request_api():
     password = payload.get('password') or ''
     admin_code = (payload.get('admin_code') or '').strip()
 
+    generic = {'ok': True, 'message': GENERIC_SIGNUP_REQUEST_MESSAGE}
+
     rate_limited = _enforce_signup_rate_limits(email, verify=False)
     if rate_limited:
-        body, status = rate_limited
-        return jsonify(body), status
+        _, status = rate_limited
+        return jsonify(generic), status
 
     if not email or not nickname or not password:
-        return jsonify({'ok': False, 'message': 'Invalid signup data.'}), 400
+        return jsonify(generic), 200
     if not _is_valid_email(email) or not _password_is_valid(password):
-        return jsonify({'ok': False, 'message': 'Invalid signup data.'}), 400
+        return jsonify(generic), 200
 
     if User.query.filter_by(email=email).first() or User.query.filter_by(nickname=nickname).first():
-        return jsonify({'ok': True, 'message': 'If possible, a code was sent.'}), 200
+        app.logger.info('Signup request ignored due to existing account/nickname: email=%s', email)
+        return jsonify(generic), 200
 
     otp_ok, _ = _otp_request(email)
-    if not otp_ok:
-        return jsonify({'ok': True, 'message': 'If possible, a code was sent.'}), 200
+    if otp_ok:
+        _upsert_pending_signup(email, nickname, password, admin_code)
+    else:
+        app.logger.warning('Signup OTP request failed internally for email=%s', email)
 
-    pending = PendingSignup.query.filter_by(email=email).first()
-    if pending:
-        db.session.delete(pending)
-        db.session.flush()
-
-    pending = PendingSignup(
-        email=email,
-        nickname=nickname,
-        password_hash=generate_password_hash(password),
-        is_admin_request=admin_code == 'DRA-ADMIN-2024',
-        created_at=datetime.utcnow(),
-        expires_at=datetime.utcnow() + timedelta(minutes=PENDING_SIGNUP_TTL_MINUTES),
-        ip_address=_client_ip(),
-        user_agent=(request.headers.get('User-Agent', '') or '')[:255],
-    )
-    db.session.add(pending)
-    db.session.commit()
-    return jsonify({'ok': True, 'message': 'Code sent.'}), 200
+    return jsonify(generic), 200
 
 
 @app.route('/signup/verify', methods=['POST'])
@@ -3363,40 +3418,28 @@ def signup_verify_api():
 
     rate_limited = _enforce_signup_rate_limits(email, verify=True)
     if rate_limited:
-        body, status = rate_limited
-        return jsonify(body), status
+        _, status = rate_limited
+        return jsonify({'ok': False, 'message': GENERIC_SIGNUP_VERIFY_ERROR}), status
 
     if not email or not code or not _is_valid_email(email):
-        return jsonify({'ok': False, 'message': 'Invalid verification data.'}), 400
+        return jsonify({'ok': False, 'message': GENERIC_SIGNUP_VERIFY_ERROR}), 400
 
     pending = PendingSignup.query.filter_by(email=email).first()
     if not pending or pending.expires_at <= datetime.utcnow():
         if pending:
             db.session.delete(pending)
             db.session.commit()
-        return jsonify({'ok': False, 'message': 'Invalid or expired signup session.'}), 400
+        return jsonify({'ok': False, 'message': GENERIC_SIGNUP_VERIFY_ERROR}), 400
 
     verified, otp_status = _otp_verify(email, code)
     if not verified:
-        if otp_status in (400, 429):
-            return jsonify({'ok': False, 'message': 'Invalid code or too many attempts.'}), otp_status
-        return jsonify({'ok': False, 'message': 'Unable to verify code.'}), 503
+        if otp_status == 429:
+            return jsonify({'ok': False, 'message': GENERIC_SIGNUP_VERIFY_ERROR}), 429
+        return jsonify({'ok': False, 'message': GENERIC_SIGNUP_VERIFY_ERROR}), 400
 
-    if User.query.filter_by(email=email).first() or User.query.filter_by(nickname=pending.nickname).first():
-        db.session.delete(pending)
-        db.session.commit()
-        return jsonify({'ok': False, 'message': 'Signup data is no longer available.'}), 400
-
-    new_user = User(
-        email=pending.email,
-        nickname=pending.nickname,
-        password=pending.password_hash,
-        status='ACTIVE',
-        is_admin=pending.is_admin_request,
-    )
-    db.session.add(new_user)
-    db.session.delete(pending)
-    db.session.commit()
+    new_user = _create_user_from_pending(pending)
+    if not new_user:
+        return jsonify({'ok': False, 'message': GENERIC_SIGNUP_VERIFY_ERROR}), 400
 
     session['user_id'] = new_user.id
     new_user.is_online = True
@@ -3417,37 +3460,107 @@ def register():
         if not email or not nickname or not password:
             flash('Заповніть усі поля для реєстрації.', 'danger')
             return redirect(url_for('register'))
-        if not _is_valid_email(email) or not _password_is_valid(password):
-            flash('Некоректні дані реєстрації.', 'danger')
+        if not _is_valid_email(email):
+            flash('Некоректний email.', 'danger')
+            return redirect(url_for('register'))
+        if not _password_is_valid(password):
+            flash('Пароль має містити щонайменше 8 символів.', 'danger')
+            return redirect(url_for('register'))
+        if User.query.filter_by(email=email).first() or User.query.filter_by(nickname=nickname).first():
+            flash('Акаунт з такими даними вже існує.', 'danger')
             return redirect(url_for('register'))
 
         otp_ok, _ = _otp_request(email)
         if not otp_ok:
-            flash('Якщо можливо, код підтвердження було надіслано.', 'info')
+            flash('Unable to send code, try later.', 'danger')
             return redirect(url_for('register'))
 
         cleanup_expired_pending_signups()
-        existing = PendingSignup.query.filter_by(email=email).first()
-        if existing:
-            db.session.delete(existing)
-            db.session.flush()
-        pending = PendingSignup(
-            email=email,
-            nickname=nickname,
-            password_hash=generate_password_hash(password),
-            is_admin_request=admin_code == 'DRA-ADMIN-2024',
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(minutes=PENDING_SIGNUP_TTL_MINUTES),
-            ip_address=_client_ip(),
-            user_agent=(request.headers.get('User-Agent', '') or '')[:255],
-        )
-        db.session.add(pending)
-        db.session.commit()
-
-        flash('Код підтвердження надіслано. Використайте API /signup/verify для завершення реєстрації.', 'info')
-        return redirect(url_for('register'))
+        _upsert_pending_signup(email, nickname, password, admin_code)
+        session['pending_email'] = email
+        session['pending_nickname'] = nickname
+        flash('Код підтвердження надіслано на вашу пошту.', 'info')
+        return redirect(url_for('sign_up_verify'))
 
     return render_template('sign_up.html', user=current_user())
+
+
+@app.route('/SignUpVerify', methods=['GET', 'POST'])
+def sign_up_verify():
+    cleanup_expired_pending_signups()
+    email = (session.get('pending_email') or request.args.get('email') or '').strip().lower()
+    if not email:
+        flash('Спочатку заповніть форму реєстрації.', 'warning')
+        return redirect(url_for('register'))
+
+    pending = PendingSignup.query.filter_by(email=email).first()
+    if not pending or pending.expires_at <= datetime.utcnow():
+        if pending:
+            db.session.delete(pending)
+            db.session.commit()
+        session.pop('pending_email', None)
+        session.pop('pending_nickname', None)
+        flash('Сесія реєстрації завершилась. Спробуйте ще раз.', 'warning')
+        return redirect(url_for('register'))
+
+    if request.method == 'POST':
+        code = (request.form.get('code') or '').strip()
+        if not code:
+            flash('Введіть код підтвердження.', 'danger')
+            return render_template('sign_up_verify.html', user=current_user(), pending_email=email)
+
+        verified, otp_status = _otp_verify(email, code)
+        if not verified:
+            if otp_status == 429:
+                flash('Забагато спроб. Спробуйте пізніше.', 'danger')
+            else:
+                flash('Invalid code or expired. Try again.', 'danger')
+            return render_template('sign_up_verify.html', user=current_user(), pending_email=email)
+
+        new_user = _create_user_from_pending(pending)
+        if not new_user:
+            flash('Сесія реєстрації недійсна. Спробуйте ще раз.', 'danger')
+            return redirect(url_for('register'))
+
+        session.pop('pending_email', None)
+        session.pop('pending_nickname', None)
+        session['user_id'] = new_user.id
+        new_user.is_online = True
+        new_user.last_seen = datetime.utcnow()
+        db.session.commit()
+        flash('Реєстрацію завершено успішно.', 'success')
+        return redirect(url_for('profile'))
+
+    return render_template('sign_up_verify.html', user=current_user(), pending_email=email)
+
+
+@app.route('/SignUpResend', methods=['POST'])
+def sign_up_resend():
+    cleanup_expired_pending_signups()
+    email = (session.get('pending_email') or '').strip().lower()
+    if not email:
+        flash('Сесія реєстрації не знайдена. Почніть спочатку.', 'warning')
+        return redirect(url_for('register'))
+
+    pending = PendingSignup.query.filter_by(email=email).first()
+    if not pending or pending.expires_at <= datetime.utcnow():
+        if pending:
+            db.session.delete(pending)
+            db.session.commit()
+        session.pop('pending_email', None)
+        session.pop('pending_nickname', None)
+        flash('Сесія реєстрації завершилась. Почніть ще раз.', 'warning')
+        return redirect(url_for('register'))
+
+    otp_ok, _ = _otp_request(email)
+    if not otp_ok:
+        flash('Unable to send code, try later.', 'danger')
+        return redirect(url_for('sign_up_verify'))
+
+    pending.expires_at = datetime.utcnow() + timedelta(minutes=PENDING_SIGNUP_TTL_MINUTES)
+    db.session.commit()
+    flash('If valid, code resent.', 'info')
+    return redirect(url_for('sign_up_verify'))
 
 
 @app.route('/LogIn', methods=['GET', 'POST'])

@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+
+{% block title %}Підтвердження реєстрації{% endblock %}
+{% block header_title %}Підтвердження Email{% endblock %}
+
+{% block content %}
+<section class="card narrow">
+    <h2>Введіть код підтвердження</h2>
+    <p class="muted">Enter the 6-digit code sent to your email: <strong>{{ pending_email }}</strong></p>
+    <form method="post" class="form">
+        <label for="code">code</label>
+        <input id="code" name="code" type="text" pattern="\d{6}" maxlength="6" minlength="6" inputmode="numeric" required>
+        <button type="submit" class="button">Підтвердити</button>
+    </form>
+
+    <form method="post" action="{{ url_for('sign_up_resend') }}" style="margin-top: 12px;">
+        <button type="submit" class="button ghost">Resend code</button>
+    </form>
+</section>
+{% endblock %}
