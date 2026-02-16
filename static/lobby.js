@@ -310,167 +310,172 @@
             this.closeButton = this.overlay?.querySelector('[data-skill-check-close]');
             this.timerDisplay = this.overlay?.querySelector('[data-skill-check-timer]');
             this.marker = this.overlay?.querySelector('[data-skill-check-marker]');
-            this.line = this.overlay?.querySelector('[data-skill-check-line]');
             this.successZone = this.overlay?.querySelector('[data-skill-check-success-zone]');
             this.progress = this.overlay?.querySelector('[data-skill-check-progress]');
             this.difficultyLabels = this.overlay?.querySelectorAll('[data-skill-check-difficulty]');
-            this.pollInterval = 2000;
+            this.current = null;
             this.pollTimer = null;
-            this.animationFrame = null;
-            this.isRunning = false;
-            this.currentCheckId = null;
-            this.state = 'idle';
-            this.lastStatusKey = null;
-            this.isBound = false;
-            this.successes = 0;
-            this.failures = 0;
-            this.speed = 0;
-            this.position = 0;
-            this.motionPhase = 0;
-            this.motionDirection = 1;
-            this.lastFrameTime = 0;
-            this.deadline = null;
-            this.resultSent = false;
-            this.currentDifficulty = null;
-            this.requiredSuccesses = 3;
-            this.maxFailures = 3;
-            this.currentStreak = 0;
-            this.attemptCooldown = 350;
+            this.rafId = null;
+            this.phase = 0;
+            this.position = 50;
+            this.baseSpeed = 1;
+            this.lastFrameAt = 0;
+            this.attemptCooldownMs = 180;
             this.lastAttemptAt = 0;
-            this.lastLoggedRemaining = null;
-            this.missingStatusCount = 0;
-            if (this.overlay) {
-                this.bind();
-                this.refresh();
-                this.startPolling();
+            if (!this.overlay) {
+                this.menu = null;
+                return;
             }
+            this.bind();
             this.menu = new SkillCheckMenu(this);
+            this.refreshStatus();
+            this.pollTimer = window.setInterval(() => this.refreshStatus(), 1500);
         }
 
         bind() {
-            if (this.isBound) return;
-            this.isBound = true;
-            this.acceptButton?.addEventListener('click', () => this.accept());
-            this.closeButton?.addEventListener('click', () => this.failAndClose(false));
+            this.acceptButton?.addEventListener('click', () => this.acceptCheck());
+            this.closeButton?.addEventListener('click', () => this.cancelAsFailure());
             this.activePanel?.addEventListener('click', (event) => {
-                if (this.state !== 'running') return;
-                if (event.target?.closest('button, input, textarea, select, a')) return;
-                this.handleAttempt();
+                if (event.target?.closest('button, a, input, textarea, select')) return;
+                this.sendHit();
             });
-            document.addEventListener('keydown', (event) => this.handleKey(event));
-            window.addEventListener('beforeunload', () => this.handleUnload());
+            document.addEventListener('keydown', (event) => {
+                if (!this.isOpen()) return;
+                if (event.code === 'Escape') {
+                    event.preventDefault();
+                    this.cancelAsFailure();
+                }
+                if (event.code === 'Space') {
+                    event.preventDefault();
+                    if (event.repeat) return;
+                    this.sendHit();
+                }
+            });
         }
 
-        startPolling() {
-            if (this.pollTimer) return;
-            this.pollTimer = window.setInterval(() => this.refresh(), this.pollInterval);
-            this.debugLog('polling started', { interval: this.pollInterval });
+        isOpen() {
+            return this.overlay?.classList.contains('is-open');
         }
 
-        async refresh() {
+        async refreshStatus() {
             if (!this.lobbyId) return;
-            this.debugLog('poll', { lobbyId: this.lobbyId });
             try {
                 const response = await fetch(`/api/lobby/${this.lobbyId}/skill-check/status`);
                 if (!response.ok) return;
                 const data = await response.json().catch(() => ({}));
-                const check = data?.check;
-                this.handleStatus(check || null);
+                this.renderStatus(data?.check || null);
             } catch (error) {
-                console.debug('Skill check refresh failed', error);
+                console.debug('Skill check status failed', error);
             }
         }
 
-        handleStatus(check) {
-            const isForCurrentUser = check && check.target_user_id === window.CURRENT_USER_ID;
-            if (!isForCurrentUser) {
-                this.missingStatusCount += 1;
-                if (this.state !== 'idle' && this.missingStatusCount >= 2) {
-                    this.closeOverlay('no-check');
-                }
+        renderStatus(check) {
+            const isMine = Boolean(check && Number(check.target_user_id) === Number(window.CURRENT_USER_ID));
+            if (!isMine) {
+                this.stopRun();
+                this.hideOverlay();
+                this.current = null;
                 return;
             }
-
-            this.missingStatusCount = 0;
-            const statusKey = `${check.id}:${check.status}:${check.target_user_id}`;
-            const changed = statusKey !== this.lastStatusKey;
-            if (changed) {
-                this.lastStatusKey = statusKey;
-                this.debugLog('status update', { statusKey, state: this.state });
-            }
-
+            this.current = check;
+            this.openOverlay();
+            this.renderDifficulty(check.difficulty);
+            this.renderProgress(check);
             if (check.status === 'pending') {
-                if (this.state === 'running') {
-                    this.debugLog('ignoring pending while running', { checkId: check.id });
-                    return;
-                }
-                if (changed || this.state !== 'pending_accept' || this.currentCheckId !== check.id) {
-                    this.showPending(check);
-                }
+                this.pendingPanel?.classList.remove('is-hidden');
+                this.activePanel?.classList.add('is-hidden');
+                this.stopRun();
+                this.renderTimer(check.pending_until);
                 return;
             }
-
             if (check.status === 'active') {
-                if (this.state !== 'running' || this.currentCheckId !== check.id || changed) {
-                    this.startGame(check);
-                }
+                this.pendingPanel?.classList.add('is-hidden');
+                this.activePanel?.classList.remove('is-hidden');
+                this.renderTimer(check.expires_at);
+                this.renderSuccessZone(check.difficulty);
+                this.startRun(check.difficulty);
                 return;
             }
-
-            if (this.state !== 'idle') {
-                this.closeOverlay('status-complete');
-            }
+            this.stopRun();
+            this.hideOverlay();
         }
 
         openOverlay() {
-            if (this.overlay?.classList.contains('is-open')) return;
             this.overlay?.classList.add('is-open');
             this.overlay?.setAttribute('aria-hidden', 'false');
             document.body.classList.add('skill-check-lock');
-            this.debugLog('overlay open', { state: this.state });
         }
 
-        closeOverlay(reason = 'close') {
-            this.stopGameLoop();
-            this.debugLog('overlay close', { state: this.state, reason });
+        hideOverlay() {
             this.overlay?.classList.remove('is-open');
             this.overlay?.setAttribute('aria-hidden', 'true');
             document.body.classList.remove('skill-check-lock');
-            this.state = 'idle';
-            this.currentCheckId = null;
-            this.resultSent = false;
-            this.currentDifficulty = null;
-            this.requiredSuccesses = 3;
-            this.maxFailures = 3;
-            this.currentStreak = 0;
-            this.lastStatusKey = null;
-            this.missingStatusCount = 0;
         }
 
-        updateDifficultyLabels(value) {
-            this.difficultyLabels?.forEach((label) => {
-                label.textContent = value;
+        renderDifficulty(difficulty) {
+            this.difficultyLabels?.forEach((node) => {
+                node.textContent = String(difficulty ?? '—');
             });
         }
 
-        showPending(check) {
-            this.setState('pending_accept', 'pending');
-            this.currentCheckId = check.id;
-            this.currentDifficulty = check.difficulty;
-            this.openOverlay();
-            this.pendingPanel?.classList.remove('is-hidden');
-            this.activePanel?.classList.add('is-hidden');
-            this.updateDifficultyLabels(check.difficulty);
-            if (this.marker) {
-                this.marker.style.left = '0%';
-            }
-            this.updateTimerDisplay(SKILL_CHECK_TIME_LIMIT);
-            this.logState('pending', SKILL_CHECK_TIME_LIMIT);
+        renderProgress(check) {
+            if (!this.progress) return;
+            const s = Number(check?.successes || 0);
+            const f = Number(check?.failures || 0);
+            const need = Number(check?.required_successes || 0);
+            const maxf = Number(check?.max_failures || 0);
+            this.progress.textContent = `${s}/${need} · ❌ ${f}/${maxf}`;
         }
 
-        async accept() {
+        renderTimer(isoDeadline) {
+            if (!this.timerDisplay) return;
+            if (!isoDeadline) {
+                this.timerDisplay.textContent = `${SKILL_CHECK_TIME_LIMIT}`;
+                return;
+            }
+            const ms = new Date(isoDeadline).getTime() - Date.now();
+            const sec = Math.max(0, Math.ceil(ms / 1000));
+            this.timerDisplay.textContent = `${sec}`;
+        }
+
+        renderSuccessZone(difficulty) {
+            if (!this.successZone) return;
+            const normalized = Math.min(30, Math.max(5, Number(difficulty) || 10));
+            const width = 26 - (normalized - 5) * 0.72;
+            this.successZone.style.width = `${Math.max(8, Math.min(26, width)).toFixed(1)}%`;
+        }
+
+        startRun(difficulty) {
+            if (this.rafId) return;
+            this.baseSpeed = 1 + (Math.min(30, Math.max(5, Number(difficulty) || 10)) - 5) / 22;
+            this.lastFrameAt = performance.now();
+            const tick = (ts) => {
+                if (!this.current || this.current.status !== 'active') {
+                    this.stopRun();
+                    return;
+                }
+                const delta = Math.min(0.1, (ts - this.lastFrameAt) / 1000);
+                this.lastFrameAt = ts;
+                this.phase += delta * this.baseSpeed * 2.4;
+                const wave = (Math.sin(this.phase) + 1) / 2;
+                this.position = wave * 100;
+                if (this.marker) {
+                    this.marker.style.left = `${this.position.toFixed(2)}%`;
+                }
+                this.renderTimer(this.current.expires_at);
+                this.rafId = window.requestAnimationFrame(tick);
+            };
+            this.rafId = window.requestAnimationFrame(tick);
+        }
+
+        stopRun() {
+            if (!this.rafId) return;
+            window.cancelAnimationFrame(this.rafId);
+            this.rafId = null;
+        }
+
+        async acceptCheck() {
             if (!this.lobbyId) return;
-            this.debugLog('accept click', { state: this.state, checkId: this.currentCheckId });
             try {
                 const response = await fetch(`/api/lobby/${this.lobbyId}/skill-check/accept`, {
                     method: 'POST',
@@ -479,259 +484,59 @@
                 });
                 if (!response.ok) return;
                 const data = await response.json().catch(() => ({}));
-                if (data?.check) {
-                    this.startGame(data.check);
-                }
+                this.renderStatus(data?.check || null);
             } catch (error) {
                 console.debug('Skill check accept failed', error);
             }
         }
 
-        startGame(check) {
-            this.setState('running', 'start');
-            this.currentCheckId = check.id;
-            this.currentDifficulty = check.difficulty;
-            this.openOverlay();
-            this.pendingPanel?.classList.add('is-hidden');
-            this.activePanel?.classList.remove('is-hidden');
-            this.successes = 0;
-            this.failures = 0;
-            this.currentStreak = 0;
-            this.resultSent = false;
-            this.requiredSuccesses = Math.max(2, Number(check.required_successes) || 3);
-            this.maxFailures = Math.max(1, Number(check.max_failures) || 3);
-            this.speed = this.getBaseSpeed(check.difficulty);
-            this.position = 0;
-            this.motionPhase = 0;
-            this.motionDirection = 1;
-            this.lastFrameTime = performance.now();
-            this.deadline = check.expires_at
-                ? new Date(check.expires_at).getTime()
-                : Date.now() + SKILL_CHECK_TIME_LIMIT * 1000;
-            this.lastLoggedRemaining = null;
-            this.updateDifficultyLabels(check.difficulty);
-            if (this.marker) {
-                this.marker.style.left = '0%';
-            }
-            this.updateProgress();
-            this.updateSuccessZone(check.difficulty);
-            this.startGameLoop();
-            this.logState('start', this.getRemainingSeconds());
-        }
-
-        startGameLoop() {
-            if (this.isRunning) return;
-            this.isRunning = true;
-            const tick = (timestamp) => {
-                if (!this.isRunning) return;
-                const delta = (timestamp - this.lastFrameTime) / 1000;
-                this.lastFrameTime = timestamp;
-                this.updateLine(delta);
-                this.updateTimer();
-                this.animationFrame = window.requestAnimationFrame(tick);
-            };
-            this.animationFrame = window.requestAnimationFrame(tick);
-        }
-
-        stopGameLoop() {
-            this.isRunning = false;
-            if (this.animationFrame) {
-                window.cancelAnimationFrame(this.animationFrame);
-                this.animationFrame = null;
-            }
-        }
-
-        updateLine(delta) {
-            const normalizedSpeed = Math.max(0.18, this.speed / 100);
-            this.motionPhase += delta * normalizedSpeed;
-            const raw = Math.sin(this.motionPhase);
-            this.motionDirection = raw >= 0 ? 1 : -1;
-            this.position = ((raw + 1) / 2) * 100;
-            if (this.marker) {
-                this.marker.style.left = `${this.position}%`;
-            }
-        }
-
-        updateTimer() {
-            if (!this.deadline) return;
-            const remaining = Math.max(0, Math.ceil((this.deadline - Date.now()) / 1000));
-            this.updateTimerDisplay(remaining);
-            if (DEBUG_SKILL_CHECK && this.lastLoggedRemaining !== remaining) {
-                this.lastLoggedRemaining = remaining;
-                this.logState('tick', remaining);
-            }
-            if (remaining <= 0) {
-                this.finish(false);
-            }
-        }
-
-        updateTimerDisplay(value) {
-            if (this.timerDisplay) {
-                this.timerDisplay.textContent = `${value}`;
-            }
-        }
-
-        updateProgress() {
-            if (this.progress) {
-                this.progress.textContent = `${this.successes}/${this.requiredSuccesses} · ❌ ${this.failures}/${this.maxFailures} · x${this.currentStreak}`;
-            }
-        }
-
-        updateSuccessZone(difficulty) {
-            if (!this.successZone) return;
-            const fraction = this.getSuccessFraction(difficulty);
-            const widthPercent = Math.round(fraction * 1000) / 10;
-            this.successZone.style.width = `${widthPercent}%`;
-        }
-
-        getSuccessFraction(difficulty) {
-            const normalized = Math.min(30, Math.max(5, Number(difficulty) || 10));
-            const fraction = 0.22 - ((normalized - 5) / 25) * 0.16;
-            return Math.max(0.05, Math.min(0.22, fraction));
-        }
-
-        getBaseSpeed(difficulty) {
-            const normalized = Math.min(30, Math.max(5, Number(difficulty) || 10));
-            const base = 110 + (normalized - 5) * 5;
-            return Math.max(60, base);
-        }
-
-        handleKey(event) {
-            if (!this.overlay?.classList.contains('is-open')) return;
-            if (event.code === 'Escape') {
-                event.preventDefault();
-                this.failAndClose(false);
-                return;
-            }
-            if (event.code === 'Space') {
-                event.preventDefault();
-                if (event.repeat) return;
-                if (this.state !== 'running') return;
-                this.handleAttempt();
-            }
-        }
-
-        handleAttempt() {
+        async sendHit() {
+            if (!this.current || this.current.status !== 'active') return;
             const now = performance.now();
-            if (now - this.lastAttemptAt < this.attemptCooldown) return;
+            if (now - this.lastAttemptAt < this.attemptCooldownMs) return;
             this.lastAttemptAt = now;
-            const successRange = (this.getSuccessFraction(this.getCurrentDifficulty()) || 0) * 100;
-            const isSuccess = this.position <= successRange;
-            this.debugLog('attempt', { position: Math.round(this.position), insideZone: isSuccess });
-            if (isSuccess) {
-                this.successes += 1;
-                this.currentStreak += 1;
-                this.speed = Math.max(35, this.speed * 0.94);
-            } else {
-                this.failures += 1;
-                this.currentStreak = 0;
-                this.speed = Math.min(260, this.speed * 1.08);
-            }
-            this.motionPhase += this.motionDirection * 0.45;
-            this.updateProgress();
-            if (this.successes >= this.requiredSuccesses) {
-                this.finish(true);
-            } else if (this.failures >= this.maxFailures) {
-                this.finish(false);
-            }
-        }
-
-        getCurrentDifficulty() {
-            return this.currentDifficulty || 10;
-        }
-
-        async finish(success) {
-            if (this.resultSent) return;
-            this.resultSent = true;
-            this.stopGameLoop();
-            await this.sendResult(success);
-            this.closeOverlay(success ? 'success' : 'failure');
-        }
-
-
-        async sendResult(success) {
-            if (!this.lobbyId) return;
-            this.debugLog('sending result', { success, successes: this.successes, failures: this.failures });
+            const zoneWidth = parseFloat(this.successZone?.style.width || '0') || 0;
+            const hit = this.position <= zoneWidth;
             try {
                 const response = await fetch(`/api/lobby/${this.lobbyId}/skill-check/result`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        success,
-                        successes: this.successes,
-                        failures: this.failures,
-                    }),
+                    body: JSON.stringify({ hit }),
                 });
-                this.debugLog('result response', { ok: response.ok, status: response.status });
+                if (!response.ok) {
+                    await this.refreshStatus();
+                    return;
+                }
+                const data = await response.json().catch(() => ({}));
+                if (data?.check) {
+                    this.renderStatus(data.check);
+                    return;
+                }
+                await this.refreshStatus();
             } catch (error) {
-                this.debugLog('result error', { error });
-                console.debug('Skill check result failed', error);
+                console.debug('Skill check hit failed', error);
             }
         }
 
-        async failAndClose(success) {
-            if (this.state === 'idle') return;
-            if (this.resultSent) return;
-            this.resultSent = true;
-            await this.sendResult(success);
-            this.closeOverlay(success ? 'success' : 'failure');
-        }
-
-        handleUnload() {
-            if (this.state !== 'running') return;
-            const payload = JSON.stringify({
-                success: false,
-                successes: this.successes,
-                failures: this.failures,
-            });
-            const url = `/api/lobby/${this.lobbyId}/skill-check/result`;
-            if (navigator.sendBeacon) {
-                navigator.sendBeacon(url, new Blob([payload], { type: 'application/json' }));
-            } else {
-                fetch(url, {
+        async cancelAsFailure() {
+            if (!this.current || this.current.status !== 'active') {
+                this.hideOverlay();
+                return;
+            }
+            try {
+                await fetch(`/api/lobby/${this.lobbyId}/skill-check/result`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: payload,
-                    keepalive: true,
+                    body: JSON.stringify({ hit: false }),
                 });
+            } catch (error) {
+                console.debug('Skill check cancel failed', error);
             }
-        }
-
-        getRemainingSeconds() {
-            if (!this.deadline) return SKILL_CHECK_TIME_LIMIT;
-            return Math.max(0, Math.ceil((this.deadline - Date.now()) / 1000));
-        }
-
-        logState(context, remainingOverride) {
-            if (!DEBUG_SKILL_CHECK) return;
-            const remaining = remainingOverride ?? this.getRemainingSeconds();
-            this.debugLog('state', {
-                context,
-                accepted: this.state === 'running',
-                running: this.isRunning,
-                successes: this.successes,
-                failures: this.failures,
-                timeLeft: remaining,
-            });
-        }
-
-        setState(nextState, context) {
-            if (this.state === nextState) return;
-            this.state = nextState;
-            this.debugLog('state change', { context, state: this.state });
-        }
-
-        debugLog(message, payload = {}) {
-            if (!DEBUG_SKILL_CHECK) return;
-            console.log('[SkillCheck]', message, payload);
+            await this.refreshStatus();
         }
 
         async startSkillCheck(targetId, difficulty, onStatus) {
             if (!this.isMaster || !this.lobbyId) return;
-            if (!targetId || Number.isNaN(difficulty)) {
-                onStatus?.('Заповніть гравця та складність.');
-                return;
-            }
             onStatus?.('Надсилаємо запит...');
             try {
                 const response = await fetch(`/api/lobby/${this.lobbyId}/skill-check/start`, {
@@ -740,16 +545,10 @@
                     body: JSON.stringify({ target_user_id: targetId, difficulty }),
                 });
                 if (!response.ok) {
-                    if (response.status === 409) {
-                        onStatus?.('Перевірка вже активна.');
-                    } else if (response.status === 400) {
-                        onStatus?.('Перевірте складність або гравця.');
-                    } else {
-                        onStatus?.('Не вдалося запустити.');
-                    }
+                    onStatus?.('Не вдалося запустити перевірку.');
                     return;
                 }
-                onStatus?.('Очікуємо підтвердження гравця.');
+                onStatus?.('Запит відправлено.');
             } catch (error) {
                 console.debug('Skill check start failed', error);
                 onStatus?.('Помилка запуску.');
@@ -776,101 +575,48 @@
         }
 
         bind() {
-            this.rosterList.addEventListener('contextmenu', (event) => this.handleContextMenu(event));
+            this.rosterList.addEventListener('contextmenu', (event) => {
+                const card = event.target.closest('.roster-card');
+                if (!card) return;
+                event.preventDefault();
+                this.targetUserId = card.dataset.playerId;
+                this.targetLabel.textContent = card.dataset.playerName || '—';
+                this.menu.style.left = `${event.clientX}px`;
+                this.menu.style.top = `${event.clientY}px`;
+                this.menu.classList.add('is-open');
+                this.menu.setAttribute('aria-hidden', 'false');
+                this.updateStatus('');
+            });
             this.startButton?.addEventListener('click', () => this.start());
             this.closeButton?.addEventListener('click', () => this.close());
-            document.addEventListener('mousedown', (event) => this.handleDocumentClick(event));
-            document.addEventListener('keydown', (event) => this.handleKey(event));
-        }
-
-        handleContextMenu(event) {
-            const card = event.target.closest('.roster-card');
-            if (!card) return;
-            event.preventDefault();
-            const targetId = card.dataset.playerId;
-            const targetName = card.dataset.playerName || card.querySelector('summary span')?.textContent?.trim();
-            this.open(targetId, targetName || '—', event.clientX, event.clientY);
-        }
-
-        open(targetId, targetName, x, y) {
-            if (!this.menu) return;
-            this.targetUserId = targetId;
-            if (this.targetLabel) {
-                this.targetLabel.textContent = targetName;
-            }
-            if (this.difficultyInput && !this.difficultyInput.value) {
-                this.difficultyInput.value = '10';
-            }
-            this.menu.style.left = `${x}px`;
-            this.menu.style.top = `${y}px`;
-            this.menu.classList.add('is-open');
-            this.menu.setAttribute('aria-hidden', 'false');
-            this.updateStatus('');
-            this.repositionWithinViewport();
-        }
-
-        repositionWithinViewport() {
-            if (!this.menu) return;
-            const rect = this.menu.getBoundingClientRect();
-            const padding = 12;
-            let nextLeft = rect.left;
-            let nextTop = rect.top;
-            if (rect.right > window.innerWidth - padding) {
-                nextLeft = Math.max(padding, window.innerWidth - rect.width - padding);
-            }
-            if (rect.bottom > window.innerHeight - padding) {
-                nextTop = Math.max(padding, window.innerHeight - rect.height - padding);
-            }
-            this.menu.style.left = `${nextLeft}px`;
-            this.menu.style.top = `${nextTop}px`;
+            document.addEventListener('mousedown', (event) => {
+                if (!this.menu?.classList.contains('is-open')) return;
+                if (!this.menu.contains(event.target)) this.close();
+            });
+            document.addEventListener('keydown', (event) => {
+                if (event.code === 'Escape') this.close();
+            });
         }
 
         close() {
-            if (!this.menu) return;
-            this.menu.classList.remove('is-open');
-            this.menu.setAttribute('aria-hidden', 'true');
-            this.targetUserId = null;
+            this.menu?.classList.remove('is-open');
+            this.menu?.setAttribute('aria-hidden', 'true');
             this.updateStatus('');
-        }
-
-        handleDocumentClick(event) {
-            if (!this.menu?.classList.contains('is-open')) return;
-            if (this.menu.contains(event.target)) return;
-            this.close();
-        }
-
-        handleKey(event) {
-            if (!this.menu?.classList.contains('is-open')) return;
-            if (event.code === 'Escape') {
-                event.preventDefault();
-                this.close();
-            }
+            this.targetUserId = null;
         }
 
         updateStatus(text) {
-            if (this.statusLabel) {
-                this.statusLabel.textContent = text;
-            }
+            if (this.statusLabel) this.statusLabel.textContent = text;
         }
 
         async start() {
             if (!this.targetUserId) {
-                this.updateStatus('Оберіть гравця.');
+                this.updateStatus('Оберіть ціль.');
                 return;
             }
-            const difficultyRaw = Number(this.difficultyInput?.value || 0);
-            if (Number.isNaN(difficultyRaw)) {
-                this.updateStatus('Вкажіть складність.');
-                return;
-            }
-            const difficulty = Math.min(30, Math.max(5, difficultyRaw));
-            if (this.difficultyInput) {
-                this.difficultyInput.value = `${difficulty}`;
-            }
+            const difficulty = Math.max(5, Math.min(30, Number(this.difficultyInput?.value || 10)));
+            if (this.difficultyInput) this.difficultyInput.value = String(difficulty);
             await this.controller.startSkillCheck(this.targetUserId, difficulty, (text) => this.updateStatus(text));
-            if (this.statusLabel?.textContent?.includes('Очікуємо')) {
-                this.close();
-            }
         }
     }
 
