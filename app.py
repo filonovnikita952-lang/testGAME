@@ -2894,6 +2894,57 @@ def profile():
     return render_template('profile.html', user=user)
 
 
+@app.route('/admin/users', methods=['GET', 'POST'])
+def admin_users_page():
+    user = current_user()
+    if not user:
+        flash('Будь ласка, увійдіть у свій акаунт.', 'warning')
+        return redirect(url_for('log_in'))
+    if not user.is_admin:
+        flash('Доступ лише для адміністратора.', 'danger')
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        target_id = parse_optional_int(request.form.get('user_id'))
+        if not target_id:
+            flash('Не вдалося визначити акаунт для видалення.', 'danger')
+            return redirect(url_for('admin_users_page'))
+
+        target_user = User.query.get(target_id)
+        if not target_user:
+            flash('Користувача не знайдено.', 'warning')
+            return redirect(url_for('admin_users_page'))
+
+        if target_user.id == user.id:
+            flash('Ви не можете видалити власний акаунт.', 'warning')
+            return redirect(url_for('admin_users_page'))
+
+        if target_user.is_admin:
+            flash('Іншого адміністратора не можна видаляти через цю панель.', 'warning')
+            return redirect(url_for('admin_users_page'))
+
+        try:
+            ProfileSkillState.query.filter_by(profile_id=target_user.id).delete()
+            CharacterStats.query.filter_by(user_id=target_user.id).delete()
+            CharacterAttributes.query.filter_by(user_id=target_user.id).delete()
+            CharacterStatFormula.query.filter_by(character_id=target_user.id).delete()
+            CharacterFormula.query.filter_by(user_id=target_user.id).delete()
+            CharacterNote.query.filter_by(user_id=target_user.id).delete()
+            ChatMessage.query.filter_by(user_id=target_user.id).delete()
+            ItemInstance.query.filter_by(owner_id=target_user.id).delete()
+            db.session.delete(target_user)
+            db.session.commit()
+            flash('Акаунт успішно видалено.', 'success')
+        except SQLAlchemyError:
+            db.session.rollback()
+            flash('Не вдалося видалити акаунт. Спробуйте ще раз.', 'danger')
+
+        return redirect(url_for('admin_users_page'))
+
+    users = User.query.order_by(User.id.asc()).all()
+    return render_template('admin_users.html', user=user, users=users)
+
+
 @app.route('/SignUp', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':

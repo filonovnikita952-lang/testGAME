@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+
+{% block title %}Адмін | Користувачі{% endblock %}
+{% block header_title %}Адмін: Користувачі{% endblock %}
+{% block page_class %}page--admin-users{% endblock %}
+
+{% block content %}
+<section class="skills-shell">
+    <header class="skills-header">
+        <div>
+            <p class="skills-eyebrow">Admin Panel</p>
+            <h1>Керування акаунтами</h1>
+            <p class="muted">Тут ви бачите всіх зареєстрованих користувачів та можете видалити непотрібні акаунти.</p>
+        </div>
+    </header>
+
+    <section class="admin-users">
+        <div class="admin-users__table-wrap">
+            <table class="admin-users__table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Нікнейм</th>
+                        <th>Email</th>
+                        <th>Роль</th>
+                        <th>Дія</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for account in users %}
+                    <tr>
+                        <td>{{ account.id }}</td>
+                        <td>{{ account.nickname }}</td>
+                        <td>{{ account.email }}</td>
+                        <td>
+                            {% if account.is_admin %}
+                                Адміністратор
+                            {% else %}
+                                Користувач
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if account.id == user.id %}
+                                <span class="muted">Ваш акаунт</span>
+                            {% elif account.is_admin %}
+                                <span class="muted">Захищено</span>
+                            {% else %}
+                                <form method="post" onsubmit="return confirm('Видалити акаунт {{ account.nickname }}?');">
+                                    <input type="hidden" name="user_id" value="{{ account.id }}">
+                                    <button class="button danger small" type="submit">Видалити</button>
+                                </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</section>
+{% endblock %}
