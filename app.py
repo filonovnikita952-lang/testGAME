@@ -13,15 +13,19 @@ import math
 import difflib
 import shutil
 import sys
+from collections import defaultdict, deque
+from threading import Lock
 import time
 from typing import Optional
 from uuid import uuid4
 
+import requests
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import inspect, text, func
 from sqlalchemy.orm import synonym
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 DEFAULT_DB_DIR = '/home/Sanya1825/DRAsite_data'
@@ -134,6 +138,38 @@ CHARACTER_FORMULA_ORDER = [
     'hp_right_leg',
     'reason',
 ]
+
+
+OTP_SERVICE_TIMEOUT_SECONDS = 5
+PENDING_SIGNUP_TTL_MINUTES = 30
+SIGNUP_REQUEST_IP_LIMIT = 20
+SIGNUP_REQUEST_EMAIL_LIMIT = 5
+SIGNUP_VERIFY_IP_LIMIT = 30
+SIGNUP_VERIFY_EMAIL_LIMIT = 10
+EMAIL_REGEX = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+RATE_LIMIT_WINDOW_SECONDS = 60
+
+
+class InMemoryRateLimiter:
+    def __init__(self, window_seconds: int = RATE_LIMIT_WINDOW_SECONDS):
+        self.window_seconds = window_seconds
+        self._hits: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = Lock()
+
+    def allow(self, key: str, limit: int) -> bool:
+        now = time.time()
+        with self._lock:
+            queue = self._hits[key]
+            cutoff = now - self.window_seconds
+            while queue and queue[0] <= cutoff:
+                queue.popleft()
+            if len(queue) >= limit:
+                return False
+            queue.append(now)
+            return True
+
+
+signup_rate_limiter = InMemoryRateLimiter()
 
 
 @dataclass
@@ -271,7 +307,8 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), nullable=False, unique=True)
     nickname = db.Column(db.String(30), nullable=False, unique=True)
-    password = db.Column(db.String(128), nullable=False)
+    password = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='ACTIVE')
     userImage = db.Column(db.String(255), nullable=True)
     description = db.Column(db.Text, nullable=True)
     character_class = db.Column(db.String(20), nullable=False, default='???')
@@ -281,6 +318,20 @@ class User(db.Model):
 
     owned_lobbies = db.relationship('Lobby', back_populates='admin', cascade='all, delete-orphan')
     lobby_memberships = db.relationship('LobbyMember', back_populates='user', cascade='all, delete-orphan')
+
+
+class PendingSignup(db.Model):
+    __tablename__ = 'pending_signup'
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), nullable=False, unique=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+    nickname = db.Column(db.String(30), nullable=False)
+    is_admin_request = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    ip_address = db.Column(db.String(64), nullable=True)
+    user_agent = db.Column(db.String(255), nullable=True)
 
 
 class Lobby(db.Model):
@@ -678,6 +729,34 @@ def _ensure_user_columns():
         db.session.commit()
 
 
+def _ensure_auth_columns_and_tables():
+    inspector = inspect(db.engine)
+    table_names = inspector.get_table_names()
+
+    if 'userid' in table_names:
+        columns = {column['name'] for column in inspector.get_columns('userid')}
+        if 'status' not in columns:
+            db.session.execute(text("ALTER TABLE userid ADD COLUMN status VARCHAR(20) DEFAULT 'ACTIVE'"))
+            db.session.commit()
+        db.session.execute(text("UPDATE userid SET status = 'ACTIVE' WHERE status IS NULL"))
+        db.session.commit()
+
+    if 'pending_signup' in table_names:
+        columns = {column['name'] for column in inspector.get_columns('pending_signup')}
+        if 'nickname' not in columns:
+            db.session.execute(text("ALTER TABLE pending_signup ADD COLUMN nickname VARCHAR(30)"))
+            db.session.commit()
+        if 'is_admin_request' not in columns:
+            db.session.execute(text("ALTER TABLE pending_signup ADD COLUMN is_admin_request BOOLEAN DEFAULT 0"))
+            db.session.commit()
+
+
+def cleanup_expired_pending_signups() -> None:
+    now = datetime.utcnow()
+    PendingSignup.query.filter(PendingSignup.expires_at <= now).delete(synchronize_session=False)
+    db.session.commit()
+
+
 def _ensure_item_type_columns():
     inspector = inspect(db.engine)
     if 'item_type' in inspector.get_table_names():
@@ -915,6 +994,7 @@ def ensure_attribute_formula() -> AttributeFormula:
 def initialize_database():
     db.create_all()
     _ensure_user_columns()
+    _ensure_auth_columns_and_tables()
     _ensure_item_type_columns()
     _ensure_item_definition_columns()
     _ensure_character_stats_columns()
@@ -950,6 +1030,63 @@ class CurrentUser:
 
 class AuthError(Exception):
     pass
+
+
+def otp_service_url() -> str:
+    return os.environ.get('OTP_SERVICE_URL', 'http://localhost:3000').rstrip('/')
+
+
+def _client_ip() -> str:
+    forwarded_for = request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+    return forwarded_for or request.remote_addr or 'unknown'
+
+
+def _is_valid_email(email: str) -> bool:
+    return bool(EMAIL_REGEX.match(email))
+
+
+def _password_is_valid(password: str) -> bool:
+    return len(password) >= 8
+
+
+def _generic_signup_error(message: str = 'Unable to process signup right now. Please try again.'):
+    return jsonify({'ok': False, 'message': message}), 400
+
+
+def _otp_request(email: str) -> tuple[bool, int]:
+    try:
+        response = requests.post(
+            f"{otp_service_url()}/auth/request-otp",
+            json={'email': email},
+            timeout=OTP_SERVICE_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException:
+        return False, 503
+    return response.ok, response.status_code
+
+
+def _otp_verify(email: str, code: str) -> tuple[bool, int]:
+    try:
+        response = requests.post(
+            f"{otp_service_url()}/auth/verify-otp",
+            json={'email': email, 'code': code},
+            timeout=OTP_SERVICE_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException:
+        return False, 503
+    return response.ok, response.status_code
+
+
+def _enforce_signup_rate_limits(email: str, verify: bool = False) -> Optional[tuple[dict, int]]:
+    ip = _client_ip()
+    ip_limit = SIGNUP_VERIFY_IP_LIMIT if verify else SIGNUP_REQUEST_IP_LIMIT
+    email_limit = SIGNUP_VERIFY_EMAIL_LIMIT if verify else SIGNUP_REQUEST_EMAIL_LIMIT
+    suffix = 'verify' if verify else 'request'
+    if not signup_rate_limiter.allow(f'signup:{suffix}:ip:{ip}', ip_limit):
+        return {'ok': False, 'message': 'Too many attempts, try later.'}, 429
+    if not signup_rate_limiter.allow(f'signup:{suffix}:email:{email}', email_limit):
+        return {'ok': False, 'message': 'Too many attempts, try later.'}, 429
+    return None
 
 
 def normalize_static_path(path: Optional[str]) -> Optional[str]:
@@ -2971,6 +3108,104 @@ def admin_users_page():
     )
 
 
+@app.route('/signup/request', methods=['POST'])
+def signup_request_api():
+    cleanup_expired_pending_signups()
+    payload = request.get_json(silent=True) or {}
+    email = (payload.get('email') or '').strip().lower()
+    nickname = (payload.get('nickname') or '').strip()
+    password = payload.get('password') or ''
+    admin_code = (payload.get('admin_code') or '').strip()
+
+    rate_limited = _enforce_signup_rate_limits(email, verify=False)
+    if rate_limited:
+        body, status = rate_limited
+        return jsonify(body), status
+
+    if not email or not nickname or not password:
+        return jsonify({'ok': False, 'message': 'Invalid signup data.'}), 400
+    if not _is_valid_email(email) or not _password_is_valid(password):
+        return jsonify({'ok': False, 'message': 'Invalid signup data.'}), 400
+
+    if User.query.filter_by(email=email).first() or User.query.filter_by(nickname=nickname).first():
+        return jsonify({'ok': True, 'message': 'If possible, a code was sent.'}), 200
+
+    otp_ok, otp_status = _otp_request(email)
+    if not otp_ok:
+        return jsonify({'ok': False, 'message': 'Unable to send code.'}), 503 if otp_status >= 500 else 400
+
+    pending = PendingSignup.query.filter_by(email=email).first()
+    if pending:
+        db.session.delete(pending)
+        db.session.flush()
+
+    pending = PendingSignup(
+        email=email,
+        nickname=nickname,
+        password_hash=generate_password_hash(password),
+        is_admin_request=admin_code == 'DRA-ADMIN-2024',
+        created_at=datetime.utcnow(),
+        expires_at=datetime.utcnow() + timedelta(minutes=PENDING_SIGNUP_TTL_MINUTES),
+        ip_address=_client_ip(),
+        user_agent=(request.headers.get('User-Agent', '') or '')[:255],
+    )
+    db.session.add(pending)
+    db.session.commit()
+    return jsonify({'ok': True, 'message': 'Code sent.'}), 200
+
+
+@app.route('/signup/verify', methods=['POST'])
+def signup_verify_api():
+    cleanup_expired_pending_signups()
+    payload = request.get_json(silent=True) or {}
+    email = (payload.get('email') or '').strip().lower()
+    code = (payload.get('code') or '').strip()
+
+    rate_limited = _enforce_signup_rate_limits(email, verify=True)
+    if rate_limited:
+        body, status = rate_limited
+        return jsonify(body), status
+
+    if not email or not code or not _is_valid_email(email):
+        return jsonify({'ok': False, 'message': 'Invalid verification data.'}), 400
+
+    pending = PendingSignup.query.filter_by(email=email).first()
+    if not pending or pending.expires_at <= datetime.utcnow():
+        if pending:
+            db.session.delete(pending)
+            db.session.commit()
+        return jsonify({'ok': False, 'message': 'Invalid or expired signup session.'}), 400
+
+    verified, otp_status = _otp_verify(email, code)
+    if not verified:
+        if otp_status in (400, 429):
+            return jsonify({'ok': False, 'message': 'Invalid code or too many attempts.'}), otp_status
+        return jsonify({'ok': False, 'message': 'Unable to verify code.'}), 503
+
+    if User.query.filter_by(email=email).first() or User.query.filter_by(nickname=pending.nickname).first():
+        db.session.delete(pending)
+        db.session.commit()
+        return jsonify({'ok': False, 'message': 'Signup data is no longer available.'}), 400
+
+    new_user = User(
+        email=pending.email,
+        nickname=pending.nickname,
+        password=pending.password_hash,
+        status='ACTIVE',
+        is_admin=pending.is_admin_request,
+    )
+    db.session.add(new_user)
+    db.session.delete(pending)
+    db.session.commit()
+
+    session['user_id'] = new_user.id
+    new_user.is_online = True
+    new_user.last_seen = datetime.utcnow()
+    db.session.commit()
+
+    return jsonify({'ok': True, 'message': 'Signup verified.'}), 200
+
+
 @app.route('/SignUp', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -2982,31 +3217,35 @@ def register():
         if not email or not nickname or not password:
             flash('Заповніть усі поля для реєстрації.', 'danger')
             return redirect(url_for('register'))
-
-        if User.query.filter_by(email=email).first():
-            flash('Цей email вже зареєстрований.', 'danger')
+        if not _is_valid_email(email) or not _password_is_valid(password):
+            flash('Некоректні дані реєстрації.', 'danger')
             return redirect(url_for('register'))
 
-        if User.query.filter_by(nickname=nickname).first():
-            flash('Цей нікнейм вже зайнятий.', 'danger')
+        otp_ok, otp_status = _otp_request(email)
+        if not otp_ok:
+            flash('Не вдалося надіслати код підтвердження. Спробуйте пізніше.', 'danger')
             return redirect(url_for('register'))
 
-        new_user = User(
+        cleanup_expired_pending_signups()
+        existing = PendingSignup.query.filter_by(email=email).first()
+        if existing:
+            db.session.delete(existing)
+            db.session.flush()
+        pending = PendingSignup(
             email=email,
             nickname=nickname,
-            password=password,
-            is_admin=admin_code == 'DRA-ADMIN-2024',
+            password_hash=generate_password_hash(password),
+            is_admin_request=admin_code == 'DRA-ADMIN-2024',
+            created_at=datetime.utcnow(),
+            expires_at=datetime.utcnow() + timedelta(minutes=PENDING_SIGNUP_TTL_MINUTES),
+            ip_address=_client_ip(),
+            user_agent=(request.headers.get('User-Agent', '') or '')[:255],
         )
-        db.session.add(new_user)
-        try:
-            db.session.commit()
-        except IntegrityError:
-            db.session.rollback()
-            flash('Не вдалося створити акаунт. Спробуйте інші дані.', 'danger')
-            return redirect(url_for('register'))
+        db.session.add(pending)
+        db.session.commit()
 
-        flash('Реєстрація успішна! Увійдіть у свій акаунт.', 'success')
-        return redirect(url_for('log_in'))
+        flash('Код підтвердження надіслано. Використайте API /signup/verify для завершення реєстрації.', 'info')
+        return redirect(url_for('register'))
 
     return render_template('sign_up.html', user=current_user())
 
@@ -3018,7 +3257,7 @@ def log_in():
         password = request.form.get('password', '')
 
         user = User.query.filter_by(email=email).first()
-        if user and user.password == password:
+        if user and user.status == 'ACTIVE' and check_password_hash(user.password, password):
             session['user_id'] = user.id
             user.is_online = True
             user.last_seen = datetime.utcnow()
