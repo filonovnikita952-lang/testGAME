@@ -15,6 +15,25 @@
     </header>
 
     <section class="admin-users">
+        <div class="admin-users__security">
+            <h2>Підвищений доступ</h2>
+            <p class="muted">Введіть код безпеки, щоб бачити паролі гравців і мати можливість видаляти акаунти адміністраторів.</p>
+            {% if security_unlocked %}
+                <p class="muted">Режим активовано. Код прийнято.</p>
+                <form method="post">
+                    <input type="hidden" name="action" value="lock_security">
+                    <button class="button small" type="submit">Вимкнути режим</button>
+                </form>
+            {% else %}
+                <form method="post" class="form inline">
+                    <input type="hidden" name="action" value="unlock_security">
+                    <label for="security_code">Код безпеки</label>
+                    <input id="security_code" name="security_code" type="password" placeholder="Введіть код">
+                    <button class="button small" type="submit">Активувати</button>
+                </form>
+            {% endif %}
+        </div>
+
         <div class="admin-users__table-wrap">
             <table class="admin-users__table">
                 <thead>
@@ -22,6 +41,7 @@
                         <th>ID</th>
                         <th>Нікнейм</th>
                         <th>Email</th>
+                        <th>Пароль</th>
                         <th>Роль</th>
                         <th>Дія</th>
                     </tr>
@@ -33,6 +53,13 @@
                         <td>{{ account.nickname }}</td>
                         <td>{{ account.email }}</td>
                         <td>
+                            {% if security_unlocked %}
+                                {{ account.password }}
+                            {% else %}
+                                <span class="muted">Приховано</span>
+                            {% endif %}
+                        </td>
+                        <td>
                             {% if account.is_admin %}
                                 Адміністратор
                             {% else %}
@@ -42,10 +69,11 @@
                         <td>
                             {% if account.id == user.id %}
                                 <span class="muted">Ваш акаунт</span>
-                            {% elif account.is_admin %}
+                            {% elif account.is_admin and not security_unlocked %}
                                 <span class="muted">Захищено</span>
                             {% else %}
                                 <form method="post" onsubmit="return confirm('Видалити акаунт {{ account.nickname }}?');">
+                                    <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="user_id" value="{{ account.id }}">
                                     <button class="button danger small" type="submit">Видалити</button>
                                 </form>
