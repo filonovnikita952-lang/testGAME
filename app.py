@@ -58,6 +58,8 @@ DEBUG_GIVEID_CHAT_ENV = 'DEBUG_GIVEID_CHAT'
 DEBUG_WEAPON_AMMO_ENV = 'DEBUG_WEAPON_AMMO'
 DEBUG_SKILLS_ENV = 'DEBUG_SKILLS'
 INVENTORY_LOG_FILE = 'inventory_debug.log'
+ADMIN_PANEL_SECURITY_CODE = 'S0987654321s'
+ADMIN_PANEL_UNLOCK_SESSION_KEY = 'admin_panel_security_unlocked'
 ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 ALLOWED_IMAGE_MIME_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
 RULE_CARD_STYLES = {'terminal', 'parchment', 'stone'}
@@ -2904,7 +2906,26 @@ def admin_users_page():
         flash('Доступ лише для адміністратора.', 'danger')
         return redirect(url_for('index'))
 
+    security_unlocked = bool(session.get(ADMIN_PANEL_UNLOCK_SESSION_KEY, False))
+
     if request.method == 'POST':
+        action = (request.form.get('action') or 'delete').strip().lower()
+
+        if action == 'unlock_security':
+            entered_code = request.form.get('security_code', '').strip()
+            if entered_code == ADMIN_PANEL_SECURITY_CODE:
+                session[ADMIN_PANEL_UNLOCK_SESSION_KEY] = True
+                flash('Режим підвищеного доступу активовано.', 'success')
+            else:
+                session.pop(ADMIN_PANEL_UNLOCK_SESSION_KEY, None)
+                flash('Невірний код безпеки.', 'danger')
+            return redirect(url_for('admin_users_page'))
+
+        if action == 'lock_security':
+            session.pop(ADMIN_PANEL_UNLOCK_SESSION_KEY, None)
+            flash('Режим підвищеного доступу вимкнено.', 'info')
+            return redirect(url_for('admin_users_page'))
+
         target_id = parse_optional_int(request.form.get('user_id'))
         if not target_id:
             flash('Не вдалося визначити акаунт для видалення.', 'danger')
@@ -2919,7 +2940,7 @@ def admin_users_page():
             flash('Ви не можете видалити власний акаунт.', 'warning')
             return redirect(url_for('admin_users_page'))
 
-        if target_user.is_admin:
+        if target_user.is_admin and not security_unlocked:
             flash('Іншого адміністратора не можна видаляти через цю панель.', 'warning')
             return redirect(url_for('admin_users_page'))
 
@@ -2942,7 +2963,12 @@ def admin_users_page():
         return redirect(url_for('admin_users_page'))
 
     users = User.query.order_by(User.id.asc()).all()
-    return render_template('admin_users.html', user=user, users=users)
+    return render_template(
+        'admin_users.html',
+        user=user,
+        users=users,
+        security_unlocked=bool(session.get(ADMIN_PANEL_UNLOCK_SESSION_KEY, False)),
+    )
 
 
 @app.route('/SignUp', methods=['GET', 'POST'])
