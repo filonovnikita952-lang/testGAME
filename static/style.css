@@ -3466,6 +3466,72 @@ textarea {
     text-align: center;
 }
 
+.attributes-radar {
+    margin-top: 14px;
+    padding: 14px;
+}
+
+.attributes-radar__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.attributes-radar__title {
+    font-weight: 700;
+}
+
+.attributes-radar__tag {
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 2px 8px;
+}
+
+.attributes-radar__svg {
+    width: 100%;
+    max-width: 420px;
+    display: block;
+    margin: 0 auto;
+}
+
+.attributes-radar__ring,
+.attributes-radar__axis {
+    fill: none;
+    stroke: color-mix(in srgb, var(--text-muted, #9aa3b2) 45%, transparent);
+    stroke-width: 1;
+}
+
+.attributes-radar__shape {
+    fill: color-mix(in srgb, var(--danger) 26%, transparent);
+    stroke: var(--danger);
+    stroke-width: 2;
+}
+
+.attributes-radar__dot {
+    fill: var(--danger);
+    stroke: color-mix(in srgb, var(--surface, #111) 65%, transparent);
+    stroke-width: 1.2;
+}
+
+.attributes-radar__label {
+    fill: color-mix(in srgb, var(--text, #fff) 90%, transparent);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+}
+
+.attributes-radar__scale {
+    margin-top: 8px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
 
 .context-menu__field input {
     width: 100%;
