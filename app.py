@@ -70,6 +70,9 @@ ADMIN_PANEL_SECURITY_CODE = 'S0987654321s'
 ADMIN_PANEL_UNLOCK_SESSION_KEY = 'admin_panel_security_unlocked'
 ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 ALLOWED_IMAGE_MIME_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
+AVATAR_UPLOAD_SUBDIR = 'avatars'
+AVATAR_DEFAULT_FILENAMES = {'default.png', 'default_avatar.png'}
+NICKNAME_REGEX = re.compile(r'^[A-Za-z0-9_-]{3,30}$')
 RULE_CARD_STYLES = {'terminal', 'parchment', 'stone'}
 MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024
 MAX_ITEM_IMAGE_BYTES = 5 * 1024 * 1024
@@ -1400,6 +1403,92 @@ def save_upload(file, subdir: str, filename_prefix: str) -> Optional[str]:
     file_path = os.path.join(upload_folder, saved_filename)
     file.save(file_path)
     return os.path.join(UPLOAD_SUBDIR, subdir, saved_filename).replace(os.path.sep, "/")
+
+
+def normalize_user_image_path(path_str: Optional[str]) -> Optional[str]:
+    if not path_str:
+        return None
+    normalized = path_str.strip().replace('\\', '/').lstrip('/')
+    if normalized.startswith('static/'):
+        normalized = normalized[len('static/'):]
+    return normalized or None
+
+
+def is_protected_avatar(path_str: Optional[str]) -> bool:
+    normalized = normalize_user_image_path(path_str)
+    if not normalized:
+        return True
+    if os.path.basename(normalized).lower() in AVATAR_DEFAULT_FILENAMES:
+        return True
+    return not normalized.startswith(f'{UPLOAD_SUBDIR}/{AVATAR_UPLOAD_SUBDIR}/')
+
+
+def avatar_abs_path(path_str: Optional[str]) -> Optional[str]:
+    if is_protected_avatar(path_str):
+        return None
+    normalized = normalize_user_image_path(path_str)
+    if not normalized:
+        return None
+    allowed_dir = os.path.abspath(os.path.join(app.static_folder, UPLOAD_SUBDIR, AVATAR_UPLOAD_SUBDIR))
+    candidate = os.path.abspath(os.path.join(app.static_folder, normalized))
+    if not candidate.startswith(f'{allowed_dir}{os.sep}'):
+        return None
+    return candidate
+
+
+def safe_delete_avatar_if_orphan(path_str: Optional[str], excluding_user_id: Optional[int] = None) -> None:
+    normalized = normalize_user_image_path(path_str)
+    abs_path = avatar_abs_path(normalized)
+    if not normalized or not abs_path:
+        return
+
+    path_variants = {normalized, f'static/{normalized}'}
+    query = User.query.filter(User.userImage.in_(path_variants))
+    if excluding_user_id is not None:
+        query = query.filter(User.id != excluding_user_id)
+        references = query.count()
+        should_delete = references == 0
+    else:
+        references = query.count()
+        should_delete = references <= 1
+
+    if not should_delete:
+        return
+
+    try:
+        if os.path.isfile(abs_path):
+            os.remove(abs_path)
+    except OSError:
+        app.logger.warning('Не вдалося видалити аватар %s', abs_path, exc_info=True)
+
+
+def cleanup_orphan_avatars() -> None:
+    avatars_dir = os.path.abspath(os.path.join(app.static_folder, UPLOAD_SUBDIR, AVATAR_UPLOAD_SUBDIR))
+    os.makedirs(avatars_dir, exist_ok=True)
+    referenced = {
+        normalized
+        for (raw_path,) in db.session.query(User.userImage).filter(User.userImage.isnot(None)).all()
+        if (normalized := normalize_user_image_path(raw_path)) and not is_protected_avatar(normalized)
+    }
+    for file_name in os.listdir(avatars_dir):
+        rel_path = os.path.join(UPLOAD_SUBDIR, AVATAR_UPLOAD_SUBDIR, file_name).replace(os.path.sep, '/')
+        if rel_path in referenced or is_protected_avatar(rel_path):
+            continue
+        abs_path = avatar_abs_path(rel_path)
+        if not abs_path or not os.path.isfile(abs_path):
+            continue
+        try:
+            os.remove(abs_path)
+        except OSError:
+            app.logger.warning('Не вдалося очистити сирітський аватар %s', abs_path, exc_info=True)
+
+
+def normalize_nickname(raw_nickname: str) -> str:
+    return (raw_nickname or '').strip()
+
+
+with app.app_context():
+    cleanup_orphan_avatars()
 
 
 def validate_avatar_upload(file) -> Optional[str]:
@@ -3339,26 +3428,72 @@ def profile():
 
     if request.method == 'POST':
         user.description = request.form.get('description', '').strip() or None
-        avatar_path = None
-        upload_error = None
-        if 'avatar' in request.files:
-            avatar_file = request.files['avatar']
-            error = validate_avatar_upload(avatar_file)
-            if error:
-                upload_error = error
-                flash(error, 'danger')
-            else:
-                avatar_path = save_upload(avatar_file, 'avatars', f'user{user.id}')
-        if avatar_path:
-            user.userImage = avatar_path
         db.session.commit()
-        if upload_error:
-            flash('Профіль оновлено, але аватар не змінено.', 'warning')
-        else:
-            flash('Профіль оновлено.', 'success')
+        flash('Профіль оновлено.', 'success')
         return redirect(url_for('profile'))
 
     return render_template('profile.html', user=user)
+
+
+@app.route('/profile/nickname', methods=['POST'])
+def update_profile_nickname():
+    user = require_user()
+    normalized_nickname = normalize_nickname(request.form.get('nickname', ''))
+
+    if not normalized_nickname:
+        flash('Нікнейм не може бути порожнім.', 'danger')
+        return redirect(url_for('profile'))
+    if not NICKNAME_REGEX.fullmatch(normalized_nickname):
+        flash('Нікнейм має бути 3-30 символів: літери, цифри, _ або -.', 'danger')
+        return redirect(url_for('profile'))
+    if user.nickname == normalized_nickname:
+        flash('No changes', 'info')
+        return redirect(url_for('profile'))
+
+    existing_user = User.query.filter(
+        func.lower(User.nickname) == normalized_nickname.lower(),
+        User.id != user.id,
+    ).first()
+    if existing_user:
+        flash('Цей нікнейм вже зайнятий.', 'danger')
+        return redirect(url_for('profile'))
+
+    user.nickname = normalized_nickname
+    try:
+        db.session.commit()
+        flash('Нікнейм успішно оновлено.', 'success')
+    except IntegrityError:
+        db.session.rollback()
+        flash('Цей нікнейм вже зайнятий. Спробуйте інший.', 'danger')
+    return redirect(url_for('profile'))
+
+
+@app.route('/profile/avatar', methods=['POST'])
+def update_profile_avatar():
+    user = require_user()
+    avatar_file = request.files.get('avatar')
+    error = validate_avatar_upload(avatar_file)
+    if error:
+        flash(error, 'danger')
+        return redirect(url_for('profile'))
+
+    avatar_path = save_upload(avatar_file, AVATAR_UPLOAD_SUBDIR, f'user{user.id}')
+    if not avatar_path:
+        flash('Не вдалося зберегти аватар.', 'danger')
+        return redirect(url_for('profile'))
+
+    old_avatar = normalize_user_image_path(user.userImage)
+    user.userImage = avatar_path
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        flash('Не вдалося оновити аватар. Спробуйте ще раз.', 'danger')
+        return redirect(url_for('profile'))
+
+    safe_delete_avatar_if_orphan(old_avatar, excluding_user_id=user.id)
+    flash('Аватар успішно оновлено.', 'success')
+    return redirect(url_for('profile'))
 
 
 @app.route('/admin/users', methods=['GET', 'POST'])
@@ -3410,6 +3545,7 @@ def admin_users_page():
             return redirect(url_for('admin_users_page'))
 
         try:
+            safe_delete_avatar_if_orphan(target_user.userImage, excluding_user_id=target_user.id)
             ProfileSkillState.query.filter_by(profile_id=target_user.id).delete()
             CharacterStats.query.filter_by(user_id=target_user.id).delete()
             CharacterAttributes.query.filter_by(user_id=target_user.id).delete()
