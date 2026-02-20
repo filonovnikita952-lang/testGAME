@@ -358,6 +358,27 @@
                                                             <span class="health-row__max" data-health-max="hp_torso">0</span>
                                                         </div>
                                                     </li>
+
+                                                    <li class="health-row" data-health-row="hp_belly">
+                                                        <span class="health-row__label">Живіт</span>
+                                                        <div class="health-row__bar">
+                                                            <div class="health-bar">
+                                                                <span class="health-bar__fill" data-health-fill="hp_belly"></span>
+                                                                <span class="health-bar__over" data-health-over="hp_belly"></span>
+                                                            </div>
+                                                        </div>
+                                                        <div class="health-row__values">
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                class="health-row__input"
+                                                                data-health-input="hp_belly"
+                                                                aria-label="Живіт"
+                                                            >
+                                                            <span class="health-row__separator">/</span>
+                                                            <span class="health-row__max" data-health-max="hp_belly">0</span>
+                                                        </div>
+                                                    </li>
                                                     <li class="health-row" data-health-row="hp_left_arm">
                                                         <span class="health-row__label">Ліва рука</span>
                                                         <div class="health-row__bar">
@@ -509,37 +530,45 @@
                                                         <div class="formula-row" data-formula-row data-formula-key="hp_head">
                                                             <div class="formula-row__label">HP Head</div>
                                                             <div class="formula-row__value" data-formula-result>—</div>
-                                                            <input type="text" placeholder="e.g. MaxHP * 0.2" data-formula-input>
+                                                            <input type="text" placeholder="e.g. MaxHP * 0.5" data-formula-input>
                                                             <div class="formula-row__error" data-formula-error></div>
                                                         </div>
                                                         <div class="formula-row" data-formula-row data-formula-key="hp_torso">
                                                             <div class="formula-row__label">HP Torso</div>
                                                             <div class="formula-row__value" data-formula-result>—</div>
-                                                            <input type="text" placeholder="e.g. MaxHP * 0.4" data-formula-input>
+                                                            <input type="text" placeholder="e.g. MaxHP" data-formula-input>
                                                             <div class="formula-row__error" data-formula-error></div>
                                                         </div>
+
+                                                        <div class="formula-row" data-formula-row data-formula-key="hp_belly">
+                                                            <div class="formula-row__label">HP Belly</div>
+                                                            <div class="formula-row__value" data-formula-result>—</div>
+                                                            <input type="text" placeholder="e.g. MaxHP" data-formula-input>
+                                                            <div class="formula-row__error" data-formula-error></div>
+                                                        </div>
+
                                                         <div class="formula-row" data-formula-row data-formula-key="hp_left_arm">
                                                             <div class="formula-row__label">HP Left Arm</div>
                                                             <div class="formula-row__value" data-formula-result>—</div>
-                                                            <input type="text" placeholder="e.g. MaxHP * 0.2" data-formula-input>
+                                                            <input type="text" placeholder="e.g. MaxHP * 0.5" data-formula-input>
                                                             <div class="formula-row__error" data-formula-error></div>
                                                         </div>
                                                         <div class="formula-row" data-formula-row data-formula-key="hp_right_arm">
                                                             <div class="formula-row__label">HP Right Arm</div>
                                                             <div class="formula-row__value" data-formula-result>—</div>
-                                                            <input type="text" placeholder="e.g. MaxHP * 0.2" data-formula-input>
+                                                            <input type="text" placeholder="e.g. MaxHP * 0.5" data-formula-input>
                                                             <div class="formula-row__error" data-formula-error></div>
                                                         </div>
                                                         <div class="formula-row" data-formula-row data-formula-key="hp_left_leg">
                                                             <div class="formula-row__label">HP Left Leg</div>
                                                             <div class="formula-row__value" data-formula-result>—</div>
-                                                            <input type="text" placeholder="e.g. MaxHP * 0.2" data-formula-input>
+                                                            <input type="text" placeholder="e.g. MaxHP * 0.5" data-formula-input>
                                                             <div class="formula-row__error" data-formula-error></div>
                                                         </div>
                                                         <div class="formula-row" data-formula-row data-formula-key="hp_right_leg">
                                                             <div class="formula-row__label">HP Right Leg</div>
                                                             <div class="formula-row__value" data-formula-result>—</div>
-                                                            <input type="text" placeholder="e.g. MaxHP * 0.2" data-formula-input>
+                                                            <input type="text" placeholder="e.g. MaxHP * 0.5" data-formula-input>
                                                             <div class="formula-row__error" data-formula-error></div>
                                                         </div>
                                                         <div class="formula-row" data-formula-row data-formula-key="reason">
@@ -762,6 +791,28 @@
                                                                             <div>
                                                                                 <label for="item_issue_amount_{{ membership.lobby.id }}">Кількість</label>
                                                                                 <input type="number" id="item_issue_amount_{{ membership.lobby.id }}" min="1" value="1">
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <div class="form inline">
+                                                                            <div>
+                                                                                <label for="item_armor_class_part_{{ membership.lobby.id }}">Armor Class Part</label>
+                                                                                <select id="item_armor_class_part_{{ membership.lobby.id }}">
+                                                                                    <option value="">None</option>
+                                                                                    <option value="head">Head</option>
+                                                                                    <option value="shirt">Shirt</option>
+                                                                                    <option value="pants">Pants</option>
+                                                                                    <option value="armor">Armor</option>
+                                                                                    <option value="boots">Boots</option>
+                                                                                </select>
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="item_armor_class_min_{{ membership.lobby.id }}">Armor Class minN</label>
+                                                                                <input type="number" id="item_armor_class_min_{{ membership.lobby.id }}" min="0" value="0">
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="item_armor_class_max_{{ membership.lobby.id }}">Armor Class maxN</label>
+                                                                                <input type="number" id="item_armor_class_max_{{ membership.lobby.id }}" min="0" value="0">
                                                                             </div>
                                                                         </div>
                                                                         <div class="form inline admin-form-section" data-cloth-fields>
@@ -1002,6 +1053,28 @@
                                                                             <div>
                                                                                 <label for="setting_template_max_amount_{{ membership.lobby.id }}">Stack max</label>
                                                                                 <input type="number" id="setting_template_max_amount_{{ membership.lobby.id }}" min="1" value="1" data-template-max-amount>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <div class="form inline">
+                                                                            <div>
+                                                                                <label for="setting_template_armor_class_part_{{ membership.lobby.id }}">Armor Class Part</label>
+                                                                                <select id="setting_template_armor_class_part_{{ membership.lobby.id }}" data-template-armor-class-part>
+                                                                                    <option value="">None</option>
+                                                                                    <option value="head">Head</option>
+                                                                                    <option value="shirt">Shirt</option>
+                                                                                    <option value="pants">Pants</option>
+                                                                                    <option value="armor">Armor</option>
+                                                                                    <option value="boots">Boots</option>
+                                                                                </select>
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="setting_template_armor_class_min_{{ membership.lobby.id }}">Armor Class minN</label>
+                                                                                <input type="number" id="setting_template_armor_class_min_{{ membership.lobby.id }}" min="0" value="0" data-template-armor-class-min>
+                                                                            </div>
+                                                                            <div>
+                                                                                <label for="setting_template_armor_class_max_{{ membership.lobby.id }}">Armor Class maxN</label>
+                                                                                <input type="number" id="setting_template_armor_class_max_{{ membership.lobby.id }}" min="0" value="0" data-template-armor-class-max>
                                                                             </div>
                                                                         </div>
                                                                         <div class="form inline admin-form-section" data-cloth-fields>
