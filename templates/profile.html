@@ -19,6 +19,7 @@
     </div>
     <div class="profile__info">
         <h2>{{ user.nickname }}</h2>
+        <p class="muted">Поточний нікнейм: <strong>{{ user.nickname }}</strong></p>
         <a class="button ghost" href="{{ url_for('log_out') }}">Вийти</a>
         <p class="muted">{{ user.email }}</p>
         <div class="theme-switcher">
@@ -29,12 +30,32 @@
                 <button type="button" class="theme-button" data-theme-value="dark" aria-pressed="false" title="Темна тема">🌑</button>
             </div>
         </div>
-        <form action="{{ url_for('profile') }}" method="post" enctype="multipart/form-data" class="form">
+
+        <form action="{{ url_for('update_profile_nickname') }}" method="post" class="form">
+            <label for="nickname">Новий нікнейм</label>
+            <input
+                type="text"
+                id="nickname"
+                name="nickname"
+                minlength="3"
+                maxlength="30"
+                pattern="[A-Za-z0-9_-]{3,30}"
+                value="{{ user.nickname }}"
+                required
+            >
+            <button type="submit" class="button">Save nickname</button>
+        </form>
+
+        <form action="{{ url_for('update_profile_avatar') }}" method="post" enctype="multipart/form-data" class="form">
             <label for="avatar">Оновити аватар</label>
-            <input type="file" id="avatar" name="avatar" accept="image/*">
+            <input type="file" id="avatar" name="avatar" accept="image/*" required>
+            <button type="submit" class="button">Завантажити аватар</button>
+        </form>
+
+        <form action="{{ url_for('profile') }}" method="post" class="form">
             <label for="description">Опис акаунту</label>
             <textarea id="description" name="description" rows="4" placeholder="Короткий опис про себе...">{{ user.description or '' }}</textarea>
-            <button type="submit" class="button">Зберегти</button>
+            <button type="submit" class="button">Зберегти опис</button>
         </form>
     </div>
 </section>
