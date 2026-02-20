@@ -115,6 +115,7 @@ CHARACTER_STAT_FORMULA_KEYS = {
     'max_hp': 'Max HP',
     'hp_head': 'HP Head',
     'hp_torso': 'HP Torso',
+    'hp_belly': 'HP Belly',
     'hp_left_arm': 'HP Left Arm',
     'hp_right_arm': 'HP Right Arm',
     'hp_left_leg': 'HP Left Leg',
@@ -127,6 +128,7 @@ CHARACTER_FORMULA_FIELD_MAP = {
     'max_hp': 'hp_max',
     'hp_head': 'hp_head',
     'hp_torso': 'hp_torso',
+    'hp_belly': 'hp_belly',
     'hp_left_arm': 'hp_left_arm',
     'hp_right_arm': 'hp_right_arm',
     'hp_left_leg': 'hp_left_leg',
@@ -139,6 +141,7 @@ CHARACTER_FORMULA_ORDER = [
     'armor_class',
     'hp_head',
     'hp_torso',
+    'hp_belly',
     'hp_left_arm',
     'hp_right_arm',
     'hp_left_leg',
@@ -450,6 +453,9 @@ class ItemDefinition(db.Model):
     fast_w = db.Column(db.Integer, nullable=True)
     fast_h = db.Column(db.Integer, nullable=True)
     ammo_type = db.Column(db.String(120), nullable=True)
+    armor_class_part = db.Column(db.String(20), nullable=True)
+    armor_class_min = db.Column(db.Integer, nullable=True)
+    armor_class_max = db.Column(db.Integer, nullable=True)
     type_id = db.Column(db.Integer, db.ForeignKey('item_type.id'), nullable=False)
 
     item_type = db.relationship('ItemType', back_populates='definitions')
@@ -502,6 +508,7 @@ class CharacterStats(db.Model):
     hungry = db.Column(db.Float, nullable=True)
     hp_head = db.Column(db.Float, nullable=True)
     hp_torso = db.Column(db.Float, nullable=True)
+    hp_belly = db.Column(db.Float, nullable=True)
     hp_left_arm = db.Column(db.Float, nullable=True)
     hp_right_arm = db.Column(db.Float, nullable=True)
     hp_left_leg = db.Column(db.Float, nullable=True)
@@ -911,6 +918,18 @@ def _ensure_item_definition_columns():
             db.session.execute(text('ALTER TABLE item_definition ADD COLUMN ammo_type TEXT'))
             print('[DB MIGRATION] Added item_definition.ammo_type', file=sys.stderr)
             db.session.commit()
+        if 'armor_class_part' not in columns:
+            db.session.execute(text('ALTER TABLE item_definition ADD COLUMN armor_class_part TEXT'))
+            print('[DB MIGRATION] Added item_definition.armor_class_part', file=sys.stderr)
+            db.session.commit()
+        if 'armor_class_min' not in columns:
+            db.session.execute(text('ALTER TABLE item_definition ADD COLUMN armor_class_min INTEGER'))
+            print('[DB MIGRATION] Added item_definition.armor_class_min', file=sys.stderr)
+            db.session.commit()
+        if 'armor_class_max' not in columns:
+            db.session.execute(text('ALTER TABLE item_definition ADD COLUMN armor_class_max INTEGER'))
+            print('[DB MIGRATION] Added item_definition.armor_class_max', file=sys.stderr)
+            db.session.commit()
         if 'grade' not in columns:
             db.session.execute(text('ALTER TABLE item_definition ADD COLUMN grade INTEGER'))
             print('[DB MIGRATION] Added item_definition.grade', file=sys.stderr)
@@ -978,6 +997,9 @@ def _ensure_character_stats_columns():
             db.session.commit()
         if 'hp_torso' not in columns:
             db.session.execute(text('ALTER TABLE character_stats ADD COLUMN hp_torso REAL'))
+            db.session.commit()
+        if 'hp_belly' not in columns:
+            db.session.execute(text('ALTER TABLE character_stats ADD COLUMN hp_belly REAL'))
             db.session.commit()
         if 'hp_left_arm' not in columns:
             db.session.execute(text('ALTER TABLE character_stats ADD COLUMN hp_left_arm REAL'))
@@ -1833,6 +1855,11 @@ def serialize_item_definition(definition: ItemDefinition) -> dict:
         'fast_w': definition.fast_w,
         'fast_h': definition.fast_h,
         'ammo_type': definition.ammo_type,
+        'armor_class': {
+            'part': definition.armor_class_part,
+            'min': definition.armor_class_min,
+            'max': definition.armor_class_max,
+        },
     }
 
 
@@ -2209,6 +2236,8 @@ def ensure_character_stats(user_id: int) -> CharacterStats:
         stats.hp_head = 0
     if stats.hp_torso is None:
         stats.hp_torso = 0
+    if stats.hp_belly is None:
+        stats.hp_belly = 0
     if stats.hp_left_arm is None:
         stats.hp_left_arm = 0
     if stats.hp_right_arm is None:
@@ -2288,15 +2317,31 @@ STAT_FORMULA_VARIABLE_REGISTRY = {
     'armor_class': lambda ctx: ctx.stats.armor_class,
     'hungry': lambda ctx: ctx.stats.hungry,
     'ArmorBaseDef': lambda ctx: ctx.equipment.get('ArmorBaseDef', 0),
+    'ArmorHead': lambda ctx: ctx.equipment.get('ArmorHead', 0),
+    'ArmorTorso': lambda ctx: ctx.equipment.get('ArmorTorso', 0),
+    'ArmorBelly': lambda ctx: ctx.equipment.get('ArmorBelly', 0),
+    'ArmorLeftArm': lambda ctx: ctx.equipment.get('ArmorLeftArm', 0),
+    'ArmorRightArm': lambda ctx: ctx.equipment.get('ArmorRightArm', 0),
+    'ArmorLeftLeg': lambda ctx: ctx.equipment.get('ArmorLeftLeg', 0),
+    'ArmorRightLeg': lambda ctx: ctx.equipment.get('ArmorRightLeg', 0),
     'HPHead': lambda ctx: ctx.stats.hp_head,
     'HPTorso': lambda ctx: ctx.stats.hp_torso,
+    'HPBelly': lambda ctx: ctx.stats.hp_belly,
     'HPLeftArm': lambda ctx: ctx.stats.hp_left_arm,
     'HPRightArm': lambda ctx: ctx.stats.hp_right_arm,
     'HPLeftLeg': lambda ctx: ctx.stats.hp_left_leg,
     'HPRightLeg': lambda ctx: ctx.stats.hp_right_leg,
     'Reason': lambda ctx: ctx.stats.reason,
+    'armor_head': lambda ctx: ctx.equipment.get('ArmorHead', 0),
+    'armor_torso': lambda ctx: ctx.equipment.get('ArmorTorso', 0),
+    'armor_belly': lambda ctx: ctx.equipment.get('ArmorBelly', 0),
+    'armor_left_arm': lambda ctx: ctx.equipment.get('ArmorLeftArm', 0),
+    'armor_right_arm': lambda ctx: ctx.equipment.get('ArmorRightArm', 0),
+    'armor_left_leg': lambda ctx: ctx.equipment.get('ArmorLeftLeg', 0),
+    'armor_right_leg': lambda ctx: ctx.equipment.get('ArmorRightLeg', 0),
     'hp_head': lambda ctx: ctx.stats.hp_head,
     'hp_torso': lambda ctx: ctx.stats.hp_torso,
+    'hp_belly': lambda ctx: ctx.stats.hp_belly,
     'hp_left_arm': lambda ctx: ctx.stats.hp_left_arm,
     'hp_right_arm': lambda ctx: ctx.stats.hp_right_arm,
     'hp_left_leg': lambda ctx: ctx.stats.hp_left_leg,
@@ -2319,13 +2364,58 @@ def _build_equipment_variables(character_id: int) -> dict[str, float]:
         'equip_pants',
         'equip_boots',
     }
+
+    def armor_value(instance: ItemInstance) -> float:
+        definition = instance.definition
+        if not definition:
+            return 0
+        if definition.armor_class_max is not None:
+            return float(max(definition.armor_class_max, 0))
+        if definition.armor_class_min is not None:
+            return float(max(definition.armor_class_min, 0))
+        return 0
+
     armor_base_def = sum(
         (instance.definition.max_durability or 0)
         for instance in equipped_instances
         if instance.definition and instance.container_i in armor_containers
     )
+
+    armor_head = 0.0
+    armor_torso = 0.0
+    armor_belly = 0.0
+    armor_left_arm = 0.0
+    armor_right_arm = 0.0
+    armor_left_leg = 0.0
+    armor_right_leg = 0.0
+
+    for instance in equipped_instances:
+        definition = instance.definition
+        if not definition:
+            continue
+        part = (definition.armor_class_part or '').strip().lower()
+        value = armor_value(instance)
+        if value <= 0:
+            continue
+        if part == 'head':
+            armor_head += value
+        elif part == 'shirt':
+            armor_torso += value
+        elif part == 'armor':
+            armor_belly += value
+        elif part in {'pants', 'boots'}:
+            armor_left_leg += value
+            armor_right_leg += value
+
     return {
         'ArmorBaseDef': armor_base_def,
+        'ArmorHead': armor_head,
+        'ArmorTorso': armor_torso,
+        'ArmorBelly': armor_belly,
+        'ArmorLeftArm': armor_left_arm,
+        'ArmorRightArm': armor_right_arm,
+        'ArmorLeftLeg': armor_left_leg,
+        'ArmorRightLeg': armor_right_leg,
     }
 
 
@@ -3084,6 +3174,11 @@ def build_instance_payload(
         'rotated': normalize_rotation_value(instance.rotated),
         'version': instance.version,
         'ammo_type': definition.ammo_type,
+        'armor_class': {
+            'part': definition.armor_class_part,
+            'min': definition.armor_class_min,
+            'max': definition.armor_class_max,
+        },
     }
 
 
@@ -3266,6 +3361,7 @@ def build_inventory_payload(
             'hungry': stats.hungry,
             'hp_head': stats.hp_head,
             'hp_torso': stats.hp_torso,
+            'hp_belly': stats.hp_belly,
             'hp_left_arm': stats.hp_left_arm,
             'hp_right_arm': stats.hp_right_arm,
             'hp_left_leg': stats.hp_left_leg,
@@ -5877,6 +5973,7 @@ def update_character_stats():
             'hungry': stats.hungry,
             'hp_head': stats.hp_head,
             'hp_torso': stats.hp_torso,
+            'hp_belly': stats.hp_belly,
             'hp_left_arm': stats.hp_left_arm,
             'hp_right_arm': stats.hp_right_arm,
             'hp_left_leg': stats.hp_left_leg,
@@ -6224,6 +6321,7 @@ def update_character_profile(lobby_id: int, user_id: int):
     health_fields = {
         'hp_head',
         'hp_torso',
+        'hp_belly',
         'hp_left_arm',
         'hp_right_arm',
         'hp_left_leg',
@@ -6275,6 +6373,7 @@ def update_character_profile(lobby_id: int, user_id: int):
             'hungry': stats.hungry,
             'hp_head': stats.hp_head,
             'hp_torso': stats.hp_torso,
+            'hp_belly': stats.hp_belly,
             'hp_left_arm': stats.hp_left_arm,
             'hp_right_arm': stats.hp_right_arm,
             'hp_left_leg': stats.hp_left_leg,
@@ -6336,6 +6435,7 @@ def update_character_attributes():
             'hungry': stats.hungry,
             'hp_head': stats.hp_head,
             'hp_torso': stats.hp_torso,
+            'hp_belly': stats.hp_belly,
             'hp_left_arm': stats.hp_left_arm,
             'hp_right_arm': stats.hp_right_arm,
             'hp_left_leg': stats.hp_left_leg,
@@ -6557,6 +6657,9 @@ def create_item_template():
     fast_w = parse_int(data.get('fast_w'), 0, minimum=0)
     fast_h = parse_int(data.get('fast_h'), 0, minimum=0)
     ammo_type_raw = (data.get('ammo_type') or '').strip()
+    armor_class_part = (data.get('armor_class_part') or '').strip()
+    armor_class_min = parse_int(data.get('armor_class_min'), 0, minimum=0)
+    armor_class_max = parse_int(data.get('armor_class_max'), 0, minimum=0)
     issue_to = parse_int(data.get('issue_to'), 0)
     issue_amount = parse_int(data.get('issue_amount'), 1, minimum=1)
     durability_current = data.get('durability_current')
@@ -6575,6 +6678,9 @@ def create_item_template():
         if max_durability_value is None or max_durability_value < 1:
             return jsonify({'error': 'invalid_max_durability'}), 400
     ammo_type = ammo_type_raw or None
+    armor_class_part_value = armor_class_part if armor_class_part in {'head', 'shirt', 'pants', 'armor', 'boots'} else None
+    if armor_class_part_value and armor_class_max < armor_class_min:
+        armor_class_max = armor_class_min
     if type_name not in {'weapon', 'ammo'}:
         ammo_type = None
     if type_name == 'ammo' and not ammo_type:
@@ -6633,6 +6739,9 @@ def create_item_template():
         fast_w=fast_w if type_name == 'belt' and fast_w > 0 else None,
         fast_h=fast_h if type_name == 'belt' and fast_h > 0 else None,
         ammo_type=ammo_type,
+        armor_class_part=armor_class_part_value,
+        armor_class_min=armor_class_min if armor_class_part_value else None,
+        armor_class_max=armor_class_max if armor_class_part_value else None,
         item_type=item_type,
     )
     db.session.add(definition)
@@ -6741,6 +6850,11 @@ def search_item_templates():
             'type': definition.item_type.name if definition.item_type else '',
             'quality': definition.quality,
             'max_durability': definition.max_durability,
+            'armor_class': {
+                'part': definition.armor_class_part,
+                'min': definition.armor_class_min,
+                'max': definition.armor_class_max,
+            },
         })
     return jsonify({'ok': True, 'results': payload})
 
@@ -6799,6 +6913,9 @@ def update_item_template():
     fast_w = parse_int(data.get('fast_w'), 0, minimum=0)
     fast_h = parse_int(data.get('fast_h'), 0, minimum=0)
     ammo_type_raw = (data.get('ammo_type') or '').strip()
+    armor_class_part = (data.get('armor_class_part') or '').strip()
+    armor_class_min = parse_int(data.get('armor_class_min'), definition.armor_class_min or 0, minimum=0)
+    armor_class_max = parse_int(data.get('armor_class_max'), definition.armor_class_max or 0, minimum=0)
 
     if not name:
         return jsonify({'error': 'missing_name'}), 400
@@ -6812,6 +6929,9 @@ def update_item_template():
         if max_durability_value is None or max_durability_value < 1:
             return jsonify({'error': 'invalid_max_durability'}), 400
     ammo_type = ammo_type_raw or None
+    armor_class_part_value = armor_class_part if armor_class_part in {'head', 'shirt', 'pants', 'armor', 'boots'} else None
+    if armor_class_part_value and armor_class_max < armor_class_min:
+        armor_class_max = armor_class_min
     if type_name not in {'weapon', 'ammo'}:
         ammo_type = None
     if type_name == 'ammo' and not ammo_type:
@@ -6859,6 +6979,9 @@ def update_item_template():
     definition.fast_w = fast_w if type_name == 'belt' and fast_w > 0 else None
     definition.fast_h = fast_h if type_name == 'belt' and fast_h > 0 else None
     definition.ammo_type = ammo_type
+    definition.armor_class_part = armor_class_part_value
+    definition.armor_class_min = armor_class_min if armor_class_part_value else None
+    definition.armor_class_max = armor_class_max if armor_class_part_value else None
     definition.item_type = item_type
 
     old_id = template_id

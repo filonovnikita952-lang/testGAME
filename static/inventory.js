@@ -51,6 +51,7 @@
         max_hp: 'hp_max',
         hp_head: 'hp_head',
         hp_torso: 'hp_torso',
+        hp_belly: 'hp_belly',
         hp_left_arm: 'hp_left_arm',
         hp_right_arm: 'hp_right_arm',
         hp_left_leg: 'hp_left_leg',
@@ -59,11 +60,12 @@
     };
     const healthStatConfig = {
         hp_head: { multiplier: 0.3 },
-        hp_torso: { multiplier: 0.5 },
-        hp_left_arm: { multiplier: 0.2 },
-        hp_right_arm: { multiplier: 0.2 },
-        hp_left_leg: { multiplier: 0.2 },
-        hp_right_leg: { multiplier: 0.2 },
+        hp_torso: { multiplier: 1 },
+        hp_belly: { multiplier: 1 },
+        hp_left_arm: { multiplier: 0.5 },
+        hp_right_arm: { multiplier: 0.5 },
+        hp_left_leg: { multiplier: 0.5 },
+        hp_right_leg: { multiplier: 0.5 },
         blood: { multiplier: 2 },
         reason: { max: 100 },
     };
@@ -2257,6 +2259,7 @@
             const currentValues = {
                 hp_head: this.stats?.hp_head ?? 0,
                 hp_torso: this.stats?.hp_torso ?? 0,
+                hp_belly: this.stats?.hp_belly ?? 0,
                 hp_left_arm: this.stats?.hp_left_arm ?? 0,
                 hp_right_arm: this.stats?.hp_right_arm ?? 0,
                 hp_left_leg: this.stats?.hp_left_leg ?? 0,
@@ -3127,6 +3130,9 @@
             const max_durability_input = form.querySelector('input[id^="item_durability_"]');
             const typeSelect = form.querySelector('select[id^="item_type_"]');
             const ammoTypeInput = form.querySelector('input[id^="item_ammo_type_"]');
+            const armorClassPartInput = form.querySelector('select[id^="item_armor_class_part_"]');
+            const armorClassMinInput = form.querySelector('input[id^="item_armor_class_min_"]');
+            const armorClassMaxInput = form.querySelector('input[id^="item_armor_class_max_"]');
             const clothToggle = form.querySelector('input[id^="item_is_cloth_"]');
             const issueSelfToggle = form.querySelector('[data-issue-self]');
             const refreshRandom = wireRandomDurability({
@@ -3172,6 +3178,9 @@
                 const fastWidth = Number.parseInt(form.querySelector('input[id^="item_fast_w_"]')?.value || '0', 10);
                 const fastHeight = Number.parseInt(form.querySelector('input[id^="item_fast_h_"]')?.value || '0', 10);
                 const ammoType = ammoTypeInput?.value?.trim() || '';
+                const armorClassPart = armorClassPartInput?.value || '';
+                const armorClassMin = Number.parseInt(armorClassMinInput?.value || '0', 10);
+                const armorClassMax = Number.parseInt(armorClassMaxInput?.value || '0', 10);
                 const targetSelect = form.querySelector('select[id^="item_target_"]');
                 const target = targetSelect?.value;
                 const imageInput = form.querySelector('input[type="file"]');
@@ -3217,6 +3226,9 @@
                 payload.append('fast_w', isBelt && !Number.isNaN(fastWidth) ? fastWidth : 0);
                 payload.append('fast_h', isBelt && !Number.isNaN(fastHeight) ? fastHeight : 0);
                 payload.append('ammo_type', ammoType);
+                payload.append('armor_class_part', armorClassPart);
+                payload.append('armor_class_min', Number.isNaN(armorClassMin) ? 0 : armorClassMin);
+                payload.append('armor_class_max', Number.isNaN(armorClassMax) ? 0 : armorClassMax);
                 const issueTo = issueSelfToggle?.checked ? root.dataset.currentUserId : (target || '');
                 payload.append('issue_to', issueTo || '');
                 if (imageInput?.files?.length) {
@@ -3565,6 +3577,9 @@
             const fastWInput = form.querySelector('[data-template-fast-w]');
             const fastHInput = form.querySelector('[data-template-fast-h]');
             const ammoTypeInput = form.querySelector('[data-template-ammo-type]');
+            const armorClassPartInput = form.querySelector('[data-template-armor-class-part]');
+            const armorClassMinInput = form.querySelector('[data-template-armor-class-min]');
+            const armorClassMaxInput = form.querySelector('[data-template-armor-class-max]');
             const saveButton = form.querySelector('[data-template-save]');
             const statusLine = form.querySelector('[data-template-status]');
             let searchTimer = null;
@@ -3597,6 +3612,9 @@
                 if (fastWInput) fastWInput.value = `${template.fast_w || 0}`;
                 if (fastHInput) fastHInput.value = `${template.fast_h || 0}`;
                 if (ammoTypeInput) ammoTypeInput.value = template.ammo_type || '';
+                if (armorClassPartInput) armorClassPartInput.value = template.armor_class?.part || '';
+                if (armorClassMinInput) armorClassMinInput.value = `${template.armor_class?.min ?? 0}`;
+                if (armorClassMaxInput) armorClassMaxInput.value = `${template.armor_class?.max ?? 0}`;
                 updateClothBeltVisibility(form);
                 updateAmmoVisibility(form);
                 updateWeaponDurabilityRequirement(form);
@@ -3751,6 +3769,9 @@
                     fast_w: isBelt ? fastWValue : 0,
                     fast_h: isBelt ? fastHValue : 0,
                     ammo_type: ammoTypeInput?.value?.trim() || '',
+                    armor_class_part: armorClassPartInput?.value || '',
+                    armor_class_min: parseNumber(armorClassMinInput?.value || '0', 0),
+                    armor_class_max: parseNumber(armorClassMaxInput?.value || '0', 0),
                 };
                 if (payload.type === 'weapon' && (!Number.isFinite(payload.max_durability) || payload.max_durability < 1)) {
                     if (statusLine) statusLine.textContent = 'Weapon max durability must be at least 1.';
