@@ -73,6 +73,11 @@ ALLOWED_IMAGE_MIME_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
 AVATAR_UPLOAD_SUBDIR = 'avatars'
 AVATAR_DEFAULT_FILENAMES = {'default.png', 'default_avatar.png'}
 NICKNAME_REGEX = re.compile(r'^[A-Za-z0-9_-]{3,30}$')
+NICKNAME_MAX_LENGTH = 30
+PROFILE_DESCRIPTION_MAX_LENGTH = 1000
+CHAT_MESSAGE_MAX_LENGTH = 1000
+GENERIC_TEXT_MAX_LENGTH = 9999
+GENERIC_NUMERIC_MAX = 9999
 RULE_CARD_STYLES = {'terminal', 'parchment', 'stone'}
 MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024
 MAX_ITEM_IMAGE_BYTES = 5 * 1024 * 1024
@@ -1506,7 +1511,7 @@ def cleanup_orphan_avatars() -> None:
 
 
 def normalize_nickname(raw_nickname: str) -> str:
-    return (raw_nickname or '').strip()
+    return limit_text(raw_nickname, NICKNAME_MAX_LENGTH)
 
 
 with app.app_context():
@@ -1587,23 +1592,46 @@ def require_user() -> User:
     return user
 
 
-def parse_int(value: Optional[str], default: int, minimum: int = 0) -> int:
+def parse_int(
+    value: Optional[str],
+    default: int,
+    minimum: int = 0,
+    maximum: Optional[int] = None,
+) -> int:
     try:
         parsed = int(value) if value is not None else default
     except (TypeError, ValueError):
         return default
-    return max(parsed, minimum)
+    bounded = max(parsed, minimum)
+    if maximum is not None:
+        bounded = min(bounded, maximum)
+    return bounded
 
 
-def parse_optional_int(value: Optional[object]) -> Optional[int]:
+def parse_optional_int(
+    value: Optional[object],
+    *,
+    minimum: Optional[int] = None,
+    maximum: Optional[int] = None,
+) -> Optional[int]:
     if value is None or value == '':
         return None
     if isinstance(value, bool):
         raise ValueError('invalid')
     try:
-        return int(value)
+        parsed = int(value)
     except (TypeError, ValueError):
         raise ValueError('invalid')
+    if minimum is not None:
+        parsed = max(parsed, minimum)
+    if maximum is not None:
+        parsed = min(parsed, maximum)
+    return parsed
+
+
+def limit_text(value: Optional[object], max_length: int) -> str:
+    text_value = str(value or '').strip()
+    return text_value[:max_length]
 
 
 def parse_bool(value: Optional[object], default: bool = False) -> bool:
@@ -3523,7 +3551,8 @@ def profile():
     user = require_user()
 
     if request.method == 'POST':
-        user.description = request.form.get('description', '').strip() or None
+        description = limit_text(request.form.get('description'), PROFILE_DESCRIPTION_MAX_LENGTH)
+        user.description = description or None
         db.session.commit()
         flash('Профіль оновлено.', 'success')
         return redirect(url_for('profile'))
@@ -3673,7 +3702,7 @@ def signup_request_api():
     cleanup_expired_pending_signups()
     payload = request.get_json(silent=True) or {}
     email = (payload.get('email') or '').strip().lower()
-    nickname = (payload.get('nickname') or '').strip()
+    nickname = limit_text(payload.get('nickname'), NICKNAME_MAX_LENGTH)
     password = payload.get('password') or ''
     admin_code = (payload.get('admin_code') or '').strip()
 
@@ -3746,7 +3775,7 @@ def signup_verify_api():
 def register():
     if request.method == 'POST':
         email = request.form.get('email', '').strip().lower()
-        nickname = request.form.get('nickname', '').strip()
+        nickname = limit_text(request.form.get('nickname'), NICKNAME_MAX_LENGTH)
         password = request.form.get('password', '')
         admin_code = request.form.get('admin_code', '').strip()
 
@@ -3928,7 +3957,7 @@ def lobby_page():
             if not user.is_admin:
                 flash('Лише адміністратор може створювати лобі.', 'danger')
             else:
-                name = request.form.get('name', 'Нове лобі').strip() or 'Нове лобі'
+                name = limit_text(request.form.get('name', 'Нове лобі'), 80) or 'Нове лобі'
                 access_key = secrets.token_hex(3).upper()
                 lobby = Lobby(name=name, access_key=access_key, admin=user)
                 db.session.add(lobby)
@@ -4213,7 +4242,7 @@ def admin_skill_category_create():
     if not user.is_admin:
         return jsonify({'error': 'forbidden'}), 403
     payload = request.get_json(silent=True) or {}
-    name = (payload.get('name') or '').strip()
+    name = limit_text(payload.get('name'), 120)
     if not name:
         return jsonify({'error': 'invalid_name'}), 400
     next_order = db.session.query(func.max(SkillCategory.sort_order)).scalar()
@@ -4290,7 +4319,7 @@ def admin_skill_subclass_create():
     category = SkillCategory.query.get(category_id)
     if not category:
         return jsonify({'error': 'invalid_category'}), 400
-    name = (payload.get('name') or '').strip()
+    name = limit_text(payload.get('name'), 120)
     if not name:
         return jsonify({'error': 'invalid_name'}), 400
     next_order = (
@@ -4385,7 +4414,7 @@ def admin_skill_branch_create():
     ).all()
     if len(existing) >= max_branches:
         return jsonify({'error': 'branch_limit'}), 400
-    name = (payload.get('name') or '').strip()
+    name = limit_text(payload.get('name'), 120)
     if not name:
         return jsonify({'error': 'invalid_name'}), 400
     try:
@@ -4513,7 +4542,7 @@ def admin_skill_definition_create():
         return jsonify({'error': 'invalid_level'}), 400
     if SkillDefinition.query.filter_by(branch_id=branch_id, level_key=level_key).first():
         return jsonify({'error': 'duplicate_level'}), 400
-    name = (payload.get('name') or '').strip()
+    name = limit_text(payload.get('name'), 120)
     if not name:
         return jsonify({'error': 'invalid_name'}), 400
     ability_type = (payload.get('ability_type') or 'Passive').strip()
@@ -4523,25 +4552,25 @@ def admin_skill_definition_create():
     if distance_type not in {'SELF', 'INT_METERS'}:
         return jsonify({'error': 'invalid_distance_type'}), 400
     try:
-        cost_int = parse_optional_int(payload.get('cost_int'))
+        cost_int = parse_optional_int(payload.get('cost_int'), minimum=0, maximum=GENERIC_NUMERIC_MAX)
     except ValueError:
         return jsonify({'error': 'invalid_cost'}), 400
     try:
-        distance_int = parse_optional_int(payload.get('distance_int'))
+        distance_int = parse_optional_int(payload.get('distance_int'), minimum=0, maximum=GENERIC_NUMERIC_MAX)
     except ValueError:
         return jsonify({'error': 'invalid_distance'}), 400
     try:
-        cast_time_seconds = parse_optional_int(payload.get('cast_time_seconds'))
+        cast_time_seconds = parse_optional_int(payload.get('cast_time_seconds'), minimum=0, maximum=GENERIC_NUMERIC_MAX)
     except ValueError:
         return jsonify({'error': 'invalid_cast_time'}), 400
     try:
-        duration_seconds = parse_optional_int(payload.get('duration_seconds'))
+        duration_seconds = parse_optional_int(payload.get('duration_seconds'), minimum=0, maximum=GENERIC_NUMERIC_MAX)
     except ValueError:
         return jsonify({'error': 'invalid_duration'}), 400
     components = payload.get('components')
     if components is not None:
         components = str(components).strip() or None
-    description = str(payload.get('description') or '')
+    description = limit_text(payload.get('description'), GENERIC_TEXT_MAX_LENGTH)
     is_enabled = parse_bool(payload.get('is_enabled'), default=True)
     skill = SkillDefinition(
         branch_id=branch_id,
@@ -4589,13 +4618,13 @@ def admin_skill_definition_update(skill_id: int):
             return jsonify({'error': 'duplicate_level'}), 400
         skill.level_key = level_key
     if 'name' in payload:
-        name = str(payload.get('name') or '').strip()
+        name = limit_text(payload.get('name'), 120)
         if not name:
             return jsonify({'error': 'invalid_name'}), 400
         skill.name = name
     if 'cost_int' in payload:
         try:
-            skill.cost_int = parse_optional_int(payload.get('cost_int'))
+            skill.cost_int = parse_optional_int(payload.get('cost_int'), minimum=0, maximum=GENERIC_NUMERIC_MAX)
         except ValueError:
             return jsonify({'error': 'invalid_cost'}), 400
     if 'ability_type' in payload:
@@ -4610,7 +4639,7 @@ def admin_skill_definition_update(skill_id: int):
         skill.distance_type = distance_type
     if 'distance_int' in payload:
         try:
-            skill.distance_int = parse_optional_int(payload.get('distance_int'))
+            skill.distance_int = parse_optional_int(payload.get('distance_int'), minimum=0, maximum=GENERIC_NUMERIC_MAX)
         except ValueError:
             return jsonify({'error': 'invalid_distance'}), 400
     if 'components' in payload:
@@ -4618,16 +4647,16 @@ def admin_skill_definition_update(skill_id: int):
         skill.components = str(components).strip() if components not in (None, '') else None
     if 'cast_time_seconds' in payload:
         try:
-            skill.cast_time_seconds = parse_optional_int(payload.get('cast_time_seconds'))
+            skill.cast_time_seconds = parse_optional_int(payload.get('cast_time_seconds'), minimum=0, maximum=GENERIC_NUMERIC_MAX)
         except ValueError:
             return jsonify({'error': 'invalid_cast_time'}), 400
     if 'duration_seconds' in payload:
         try:
-            skill.duration_seconds = parse_optional_int(payload.get('duration_seconds'))
+            skill.duration_seconds = parse_optional_int(payload.get('duration_seconds'), minimum=0, maximum=GENERIC_NUMERIC_MAX)
         except ValueError:
             return jsonify({'error': 'invalid_duration'}), 400
     if 'description' in payload:
-        skill.description = str(payload.get('description') or '')
+        skill.description = limit_text(payload.get('description'), GENERIC_TEXT_MAX_LENGTH)
     if 'is_enabled' in payload:
         skill.is_enabled = parse_bool(payload.get('is_enabled'), default=True)
     if 'requirements' in payload:
@@ -4670,9 +4699,9 @@ def rules_api_create():
         category_id = parse_optional_int(payload.get('category_id'))
     except ValueError:
         return jsonify({'error': 'invalid_category'}), 400
-    title = (payload.get('title') or '').strip()
-    short_desc = (payload.get('short_desc') or '').strip()
-    body = (payload.get('body') or '').strip()
+    title = limit_text(payload.get('title'), 120)
+    short_desc = limit_text(payload.get('short_desc'), 255)
+    body = limit_text(payload.get('body'), GENERIC_TEXT_MAX_LENGTH)
     style = (payload.get('style') or '').strip().lower()
     if not title or not short_desc or not body:
         return jsonify({'error': 'missing_fields'}), 400
@@ -4710,17 +4739,17 @@ def rules_api_update(card_id: int):
     payload = request.get_json(silent=True) or {}
     updates: dict[str, str] = {}
     if 'title' in payload:
-        title = (payload.get('title') or '').strip()
+        title = limit_text(payload.get('title'), 120)
         if not title:
             return jsonify({'error': 'invalid_title'}), 400
         updates['title'] = title
     if 'short_desc' in payload:
-        short_desc = (payload.get('short_desc') or '').strip()
+        short_desc = limit_text(payload.get('short_desc'), 255)
         if not short_desc:
             return jsonify({'error': 'invalid_short_desc'}), 400
         updates['short_desc'] = short_desc
     if 'body' in payload:
-        body = (payload.get('body') or '').strip()
+        body = limit_text(payload.get('body'), GENERIC_TEXT_MAX_LENGTH)
         if not body:
             return jsonify({'error': 'invalid_body'}), 400
         updates['body'] = body
@@ -4793,7 +4822,7 @@ def rules_category_create():
     if not user.is_admin:
         return jsonify({'error': 'forbidden'}), 403
     payload = request.get_json(silent=True) or {}
-    name = (payload.get('name') or '').strip()
+    name = limit_text(payload.get('name'), 120)
     if not name:
         return jsonify({'error': 'invalid_name'}), 400
     if RuleCategory.query.filter(func.lower(RuleCategory.name) == name.lower()).first():
@@ -4929,7 +4958,7 @@ def lobby_chat_api(lobby_id: int):
 
     if request.method == 'POST':
         data = request.get_json(silent=True) or {}
-        message_text = (data.get('message') or '').strip()
+        message_text = limit_text(data.get('message'), CHAT_MESSAGE_MAX_LENGTH)
         if not message_text:
             log_debug('Chat send failed: empty message from user %s in lobby %s', user.id, lobby_id)
             return jsonify({'error': 'empty_message'}), 400
@@ -5943,13 +5972,13 @@ def update_character_stats():
     hp_max, mana_max = compute_max_stats(stats.strength or 10)
     stats.hp_max = hp_max
     stats.mana_max = mana_max
-    hp_current = parse_int(data.get('hp_current'), stats.hp_current or hp_max, minimum=0)
-    mana_current = parse_int(data.get('mana_current'), stats.mana_current or mana_max, minimum=0)
+    hp_current = parse_int(data.get('hp_current'), stats.hp_current or hp_max, minimum=0, maximum=GENERIC_NUMERIC_MAX)
+    mana_current = parse_int(data.get('mana_current'), stats.mana_current or mana_max, minimum=0, maximum=GENERIC_NUMERIC_MAX)
     attributes = ensure_character_attributes(target_user_id)
     derived_stats = compute_character_derived_stats(target_user, stats, attributes)
-    ki_current = parse_int(data.get('ki_current'), stats.ki_current or derived_stats['ki_max'], minimum=0)
-    armor_class = parse_int(data.get('armor_class'), stats.armor_class or 0, minimum=0)
-    hungry = parse_int(data.get('hungry'), stats.hungry or 0, minimum=0)
+    ki_current = parse_int(data.get('ki_current'), stats.ki_current or derived_stats['ki_max'], minimum=0, maximum=GENERIC_NUMERIC_MAX)
+    armor_class = parse_int(data.get('armor_class'), stats.armor_class or 0, minimum=0, maximum=GENERIC_NUMERIC_MAX)
+    hungry = parse_int(data.get('hungry'), stats.hungry or 0, minimum=0, maximum=100)
     stats.hp_current = min(hp_current, hp_max)
     stats.mana_current = min(mana_current, mana_max)
     stats.ki_current = max(ki_current, 0)
@@ -6636,34 +6665,34 @@ def create_item_template():
     lobby_id = parse_int(data.get('lobby_id'), 0)
     if not is_master(user, lobby_id):
         return jsonify({'error': 'forbidden'}), 403
-    name = (data.get('name') or '').strip()
-    description = (data.get('description') or '').strip() or 'Опис не додано.'
+    name = limit_text(data.get('name'), 120)
+    description = limit_text(data.get('description'), GENERIC_TEXT_MAX_LENGTH) or 'Опис не додано.'
     type_name = (data.get('type') or 'other').strip().lower()
     quality = (data.get('quality') or 'common').strip().lower()
     grade = parse_grade_value(data.get('grade'))
-    width = parse_int(data.get('width'), 1, minimum=1)
-    height = parse_int(data.get('height'), 1, minimum=1)
+    width = parse_int(data.get('width'), 1, minimum=1, maximum=GENERIC_NUMERIC_MAX)
+    height = parse_int(data.get('height'), 1, minimum=1, maximum=GENERIC_NUMERIC_MAX)
     weight = float(data.get('weight') or 0)
     max_durability_input = data.get('max_durability')
     try:
-        max_durability_value = parse_optional_int(max_durability_input)
+        max_durability_value = parse_optional_int(max_durability_input, minimum=0, maximum=GENERIC_NUMERIC_MAX)
     except ValueError:
         return jsonify({'error': 'invalid_max_durability'}), 400
-    max_durability = parse_int(max_durability_input, 1, minimum=0)
-    max_amount = parse_int(data.get('max_amount'), 1, minimum=1)
+    max_durability = parse_int(max_durability_input, 1, minimum=0, maximum=GENERIC_NUMERIC_MAX)
+    max_amount = parse_int(data.get('max_amount'), 1, minimum=1, maximum=GENERIC_NUMERIC_MAX)
     is_cloth = str(data.get('is_cloth') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
-    bag_width = parse_int(data.get('bag_width'), 0, minimum=0)
-    bag_height = parse_int(data.get('bag_height'), 0, minimum=0)
-    fast_w = parse_int(data.get('fast_w'), 0, minimum=0)
-    fast_h = parse_int(data.get('fast_h'), 0, minimum=0)
+    bag_width = parse_int(data.get('bag_width'), 0, minimum=0, maximum=GENERIC_NUMERIC_MAX)
+    bag_height = parse_int(data.get('bag_height'), 0, minimum=0, maximum=GENERIC_NUMERIC_MAX)
+    fast_w = parse_int(data.get('fast_w'), 0, minimum=0, maximum=GENERIC_NUMERIC_MAX)
+    fast_h = parse_int(data.get('fast_h'), 0, minimum=0, maximum=GENERIC_NUMERIC_MAX)
     ammo_type_raw = (data.get('ammo_type') or '').strip()
     armor_class_part = (data.get('armor_class_part') or '').strip()
-    armor_class_min = parse_int(data.get('armor_class_min'), 0, minimum=0)
-    armor_class_max = parse_int(data.get('armor_class_max'), 0, minimum=0)
+    armor_class_min = parse_int(data.get('armor_class_min'), 0, minimum=0, maximum=GENERIC_NUMERIC_MAX)
+    armor_class_max = parse_int(data.get('armor_class_max'), 0, minimum=0, maximum=GENERIC_NUMERIC_MAX)
     issue_to = parse_int(data.get('issue_to'), 0)
-    issue_amount = parse_int(data.get('issue_amount'), 1, minimum=1)
+    issue_amount = parse_int(data.get('issue_amount'), 1, minimum=1, maximum=GENERIC_NUMERIC_MAX)
     durability_current = data.get('durability_current')
-    durability_current_value = parse_int(durability_current, 0) if durability_current is not None else None
+    durability_current_value = parse_int(durability_current, 0, maximum=GENERIC_NUMERIC_MAX) if durability_current is not None else None
     random_durability = str(data.get('random_durability') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
 
     if not name:
@@ -6887,35 +6916,36 @@ def update_item_template():
     definition = ItemDefinition.query.get(template_id)
     if not definition:
         return jsonify({'error': 'not_found'}), 404
-    new_id = parse_int(data.get('new_id'), template_id)
-    name = (data.get('name') or '').strip()
-    description = (data.get('description') or '').strip() or 'Опис не додано.'
+    new_id = parse_int(data.get('new_id'), template_id, maximum=GENERIC_NUMERIC_MAX)
+    name = limit_text(data.get('name'), 120)
+    description = limit_text(data.get('description'), GENERIC_TEXT_MAX_LENGTH) or 'Опис не додано.'
     type_name = (data.get('type') or '').strip().lower() or 'other'
     quality = (data.get('quality') or 'common').strip().lower()
     grade = parse_grade_value(data.get('grade'))
-    width = parse_int(data.get('width'), definition.w or 1, minimum=1)
-    height = parse_int(data.get('height'), definition.h or 1, minimum=1)
+    width = parse_int(data.get('width'), definition.w or 1, minimum=1, maximum=GENERIC_NUMERIC_MAX)
+    height = parse_int(data.get('height'), definition.h or 1, minimum=1, maximum=GENERIC_NUMERIC_MAX)
     weight = float(data.get('weight') or 0)
     max_durability_input = data.get('max_durability')
     try:
-        max_durability_value = parse_optional_int(max_durability_input)
+        max_durability_value = parse_optional_int(max_durability_input, minimum=0, maximum=GENERIC_NUMERIC_MAX)
     except ValueError:
         return jsonify({'error': 'invalid_max_durability'}), 400
     max_durability = parse_int(
         max_durability_input,
         definition.max_durability or 1,
         minimum=0,
+        maximum=GENERIC_NUMERIC_MAX,
     )
-    max_amount = parse_int(data.get('max_amount'), normalized_max_amount(definition), minimum=1)
+    max_amount = parse_int(data.get('max_amount'), normalized_max_amount(definition), minimum=1, maximum=GENERIC_NUMERIC_MAX)
     is_cloth = str(data.get('is_cloth') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
-    bag_width = parse_int(data.get('bag_width'), 0, minimum=0)
-    bag_height = parse_int(data.get('bag_height'), 0, minimum=0)
-    fast_w = parse_int(data.get('fast_w'), 0, minimum=0)
-    fast_h = parse_int(data.get('fast_h'), 0, minimum=0)
+    bag_width = parse_int(data.get('bag_width'), 0, minimum=0, maximum=GENERIC_NUMERIC_MAX)
+    bag_height = parse_int(data.get('bag_height'), 0, minimum=0, maximum=GENERIC_NUMERIC_MAX)
+    fast_w = parse_int(data.get('fast_w'), 0, minimum=0, maximum=GENERIC_NUMERIC_MAX)
+    fast_h = parse_int(data.get('fast_h'), 0, minimum=0, maximum=GENERIC_NUMERIC_MAX)
     ammo_type_raw = (data.get('ammo_type') or '').strip()
     armor_class_part = (data.get('armor_class_part') or '').strip()
-    armor_class_min = parse_int(data.get('armor_class_min'), definition.armor_class_min or 0, minimum=0)
-    armor_class_max = parse_int(data.get('armor_class_max'), definition.armor_class_max or 0, minimum=0)
+    armor_class_min = parse_int(data.get('armor_class_min'), definition.armor_class_min or 0, minimum=0, maximum=GENERIC_NUMERIC_MAX)
+    armor_class_max = parse_int(data.get('armor_class_max'), definition.armor_class_max or 0, minimum=0, maximum=GENERIC_NUMERIC_MAX)
 
     if not name:
         return jsonify({'error': 'missing_name'}), 400
