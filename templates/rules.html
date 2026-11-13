@@ -25,8 +25,9 @@
     </div>
 </section>
 
+<button type="button" class="button ghost rules-categories-toggle" id="rules-categories-toggle" aria-expanded="false" aria-controls="rules-categories">☰ Категорії <span id="rules-selected-category"></span></button>
 <section class="rules-layout">
-    <aside class="rules-categories">
+    <aside class="rules-categories" id="rules-categories" aria-label="Категорії правил">
         <div class="rules-panel__header">
             <h3>Categories</h3>
         </div>
@@ -42,7 +43,7 @@
             </div>
         </form>
         {% endif %}
-        <div class="rules-category-list" id="rules-category-list" role="listbox"></div>
+        <div class="rules-category-list" id="rules-category-list"></div>
     </aside>
     <div class="rules-cards-panel">
         <div class="rules-panel__header">
@@ -91,5 +92,5 @@
     window.RULES_DATA = {{ rules_payload | tojson }};
     window.RULES_IS_ADMIN = {{ 'true' if is_admin else 'false' }};
 </script>
-<script src="{{ url_for('static', filename='rules.js') }}" defer></script>
+<script src="{{ url_for('static', filename='rules.js', v='mobile-20261113') }}" defer></script>
 {% endblock %}

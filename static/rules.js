@@ -18,6 +18,20 @@
         return;
     }
 
+    const categoriesToggle = document.getElementById('rules-categories-toggle');
+    const categoriesPanel = document.getElementById('rules-categories');
+    const mobileCategories = matchMedia('(max-width: 767px)');
+    const setCategoriesOpen = (open, restoreFocus = false) => {
+        categoriesPanel.classList.toggle('is-open', open);
+        categoriesToggle.setAttribute('aria-expanded', String(open));
+        if (restoreFocus) categoriesToggle.focus({ preventScroll: true });
+    };
+    categoriesToggle.addEventListener('click', () => setCategoriesOpen(categoriesToggle.getAttribute('aria-expanded') !== 'true'));
+    categoriesPanel.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && mobileCategories.matches) setCategoriesOpen(false, true);
+    });
+    mobileCategories.addEventListener('change', () => setCategoriesOpen(false));
+
     const state = {
         categories: Array.isArray(rawData.categories)
             ? rawData.categories.map((category) => ({
@@ -217,6 +231,9 @@
 
     const setSelectedCategory = (categoryId) => {
         state.selectedCategoryId = categoryId;
+        const selected = getCategoryById(categoryId);
+        document.getElementById('rules-selected-category').textContent = selected ? `— ${selected.name}` : '';
+        if (mobileCategories.matches && categoriesPanel.classList.contains('is-open')) setCategoriesOpen(false, true);
         if (categoryTitleEl) {
             const category = getCategoryById(categoryId);
             categoryTitleEl.textContent = category ? category.name : 'Cards';
@@ -274,8 +291,10 @@
             item.dataset.categoryId = category.id;
             const title = document.createElement('div');
             title.className = 'rules-category__title';
-            const name = document.createElement('span');
-            name.className = 'rules-category__name';
+            const name = document.createElement('button');
+            name.type = 'button';
+            name.className = 'rules-category__name rules-category__select';
+            if (Number(category.id) === Number(state.selectedCategoryId)) name.setAttribute('aria-current', 'true');
             name.textContent = category.name;
             const meta = document.createElement('span');
             meta.className = 'rules-category__meta';
@@ -879,6 +898,7 @@
 
     if (categoryAddButton && categoryForm && categoryCancel) {
         categoryAddButton.addEventListener('click', () => {
+            if (mobileCategories.matches) setCategoriesOpen(true);
             categoryForm.classList.remove('is-hidden');
             categoryForm.querySelector('input[name="name"]')?.focus();
         });
