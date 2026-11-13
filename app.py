@@ -32,6 +32,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 from PIL import Image, UnidentifiedImageError
+from database_options import engine_options
 import warnings
 
 DEFAULT_DB_DIR = os.environ.get('DRA_DATA_DIR', os.path.join(os.path.dirname(__file__), 'instance'))
@@ -58,7 +59,7 @@ app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = build_database_uri()
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 3 * 1024 * 1024
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_size': 2, 'max_overflow': 0}
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = engine_options(app.config['SQLALCHEMY_DATABASE_URI'])
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 3600
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'supersecretkey')
 

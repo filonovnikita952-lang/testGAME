@@ -51,3 +51,5 @@ Browser inventory verification used a seeded one-item lobby: rotation returned
 unsaved notes draft; the retry button recovered successfully. Large inventories,
 all game rules, concurrency, email delivery, and every populated modal were not
 exhaustively tested. No before/after transfer or request-count benchmark was run.
+
+For PythonAnywhere (Python 3.10, managed WSGI, SQLite pool compatibility), follow [the dedicated deployment guide](PYTHONANYWHERE_POOL_FIX.md).

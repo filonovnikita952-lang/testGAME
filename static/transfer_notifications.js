@@ -22,13 +22,14 @@ const renderNotifications = (transfers) => {
 };
 
 let transfersPending = false;
+const transferRefresh = window.createPollRefresh(15000);
 const fetchTransfers = async () => {
     if (!currentUserId || document.hidden || transfersPending) return;
     transfersPending = true;
     try {
-        const response = await fetch('/api/transfers/pending');
-        if (!response.ok) return;
-        renderNotifications(await response.json());
+        const transfers = await transferRefresh('/api/transfers/pending');
+        if (transfers === undefined) return;
+        renderNotifications(transfers);
     } catch (error) {
         console.debug('Transfer refresh failed', error);
     } finally { transfersPending = false; }

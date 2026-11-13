@@ -135,9 +135,9 @@
         async refresh() {
             if (!this.lobbyId || !this.messages) return;
             try {
-                const response = await fetch(`/api/lobby/${this.lobbyId}/chat?after_id=${this.latestId}`);
-                if (!response.ok) return;
-                const data = await response.json().catch(() => ({}));
+                this.chatRefresh ??= window.createPollRefresh(Math.max(5000, this.pollInterval));
+                const data = await this.chatRefresh(`/api/lobby/${this.lobbyId}/chat?after_id=${this.latestId}`);
+                if (data === undefined) return;
                 const newMessages = Array.isArray(data.messages) ? data.messages : [];
                 if (!newMessages.length) return;
                 if (this.latestId === 0) {
@@ -360,9 +360,9 @@
         async refreshStatus() {
             if (!this.lobbyId) return;
             try {
-                const response = await fetch(`/api/lobby/${this.lobbyId}/skill-check/status`);
-                if (!response.ok) return;
-                const data = await response.json().catch(() => ({}));
+                this.statusRefresh ??= window.createPollRefresh(5000);
+                const data = await this.statusRefresh(`/api/lobby/${this.lobbyId}/skill-check/status`);
+                if (data === undefined) return;
                 this.renderStatus(data?.check || null);
             } catch (error) {
                 console.debug('Skill check status failed', error);

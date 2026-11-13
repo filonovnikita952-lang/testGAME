@@ -1,0 +1,7 @@
+# Compatibility reproduction only, not the production installation target.
+Flask==2.2.5
+Flask-SQLAlchemy==2.5.1
+SQLAlchemy==1.4.54
+Werkzeug==2.2.3
+Pillow==11.3.0
+pytest==9.2.0
