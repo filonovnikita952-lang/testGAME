@@ -528,9 +528,9 @@
             if (!this.lobbyId || document.hidden || this.shopRefreshing) return;
             this.shopRefreshing = true;
             try {
-                const response = await fetch(`/api/lobby/${this.lobbyId}/shop/status`);
-                if (!response.ok) return;
-                const payload = await response.json().catch(() => ({}));
+                this.shopRefresh ??= window.createPollRefresh(this.shopPollInterval);
+                const payload = await this.shopRefresh(`/api/lobby/${this.lobbyId}/shop/status`);
+                if (payload === undefined) return;
                 this.handleShopStatus(payload || {});
             } catch (error) {
                 console.debug('[Shop] Status refresh failed', error);
