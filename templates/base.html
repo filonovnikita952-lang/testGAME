@@ -21,11 +21,12 @@
     </script>
     <link rel="icon" type="image/png" href="/static/images/logo35.png">
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='responsive.css', v='mobile-20261113') }}">
+    <script src="{{ url_for('static', filename='navigation.js', v='mobile-20261113') }}" defer></script>
     <title>{% block title %}DRA | Digital RPG Assistant{% endblock %}</title>
 </head>
 <body>
 <header class="header">
-    <input type="checkbox" id="header-toggle" class="header__toggle" aria-label="Показати або сховати меню">
     <div class="brand">
         <span class="logo" aria-label="DRA">DRA</span>
         <div>
@@ -33,11 +34,8 @@
             <h1 class="brand__title">{% block header_title %}DRA Control Hub{% endblock %}</h1>
         </div>
     </div>
-    <label for="header-toggle" class="header__toggle-button">
-        <span class="toggle-text toggle-text--open">Згорнути</span>
-        <span class="toggle-text toggle-text--closed">Меню</span>
-    </label>
-    <nav class="navigation">
+    <button type="button" class="header__menu-button" aria-expanded="false" aria-controls="site-navigation">Меню</button>
+    <nav class="navigation" id="site-navigation" aria-label="Головна навігація">
         <a href="{{ url_for('index') }}">Головна</a>
         <a href="{{ url_for('lobby_page') }}">Лобі</a>
         <a href="{{ url_for('news') }}">Новини</a>

@@ -50,3 +50,5 @@ curl -X POST http://localhost:5000/LogIn \
 ## Lightweight deployment
 
 See [512 MB deployment and validation notes](docs/LOW_MEMORY_DEPLOYMENT.md) and the [image cleanup review](docs/IMAGE_CLEANUP_REVIEW.md).
+
+See [mobile layout verification, screenshots and PythonAnywhere deployment](docs/MOBILE_LAYOUT.md).

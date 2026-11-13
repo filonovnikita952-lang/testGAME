@@ -1130,7 +1130,11 @@
                                                     {% endif %}
                                                 </div>
                                             </div>
+                                            <label class="inventory-item-picker">Оберіть предмет для деталей та дій
+                                                <select data-touch-item-picker aria-label="Предмет інвентаря"><option value="">Оберіть предмет</option></select>
+                                            </label>
                                             <div class="tetris-grid" data-container-id="inv_main" aria-label="Рюкзак"></div>
+                                            <a class="button ghost" href="#item-detail-body-{{ membership.lobby.id }}">Деталі та переміщення предмета ↓</a>
                                         </div>
                                         <div class="inventory-subgrids">
                                             <div class="inventory-grid-panel dra-card">
@@ -1168,6 +1172,9 @@
                                                 </div>
                                             </div>
                                             <div class="item-detail__actions is-hidden" data-item-detail-actions>
+                                                <button class="button ghost" type="button" data-detail-action="equip">Спорядити</button>
+                                                <button class="button ghost" type="button" data-detail-action="transfer">Передати</button>
+                                                <button class="button ghost" type="button" data-detail-action="drop">Викинути</button>
                                                 <button class="button ghost" type="button" data-detail-action="rotate">Rotate (R)</button>
                                                 <button class="button ghost" type="button" data-detail-action="use">Use</button>
                                                 <div class="item-detail__field" data-detail-split>
@@ -1181,6 +1188,16 @@
                                                     <button class="button ghost" type="button" data-detail-action="set-durability">Set</button>
                                                 </div>
                                             </div>
+                                            <form class="touch-move is-hidden" data-touch-move>
+                                                <strong>Перемістити без перетягування</strong>
+                                                <label>Контейнер<select name="container" required></select></label>
+                                                <div class="touch-move__coordinates">
+                                                    <label>Стовпець X<input name="x" type="number" inputmode="numeric" min="1" required></label>
+                                                    <label>Рядок Y<input name="y" type="number" inputmode="numeric" min="1" required></label>
+                                                </div>
+                                                <button type="submit" class="button">Перемістити</button>
+                                                <span class="touch-move-status" role="status" aria-live="polite"></span>
+                                            </form>
                                         </div>
                                     </div>
                                 </div>
@@ -1293,7 +1310,7 @@
                         </div>
 
                         <div class="transfer-modal" id="transfer-modal" aria-hidden="true">
-                            <div class="transfer-modal__content">
+                            <div class="transfer-modal__content" role="dialog" aria-modal="true" aria-label="Передати предмет">
                                 <h3>Передати предмет</h3>
                                 <p class="muted" data-transfer-item-name id="transfer-item-name">—</p>
                                 <label for="transfer-amount" class="muted">Кількість</label>
@@ -1303,7 +1320,7 @@
                             </div>
                         </div>
                         <div class="shop-overlay" data-shop-overlay data-lobby-id="{{ membership.lobby.id }}" aria-hidden="true">
-                            <div class="shop-modal">
+                            <div class="shop-modal" role="dialog" aria-modal="true" aria-label="Крамниця">
                                 <div class="shop-header">
                                     <div>
                                         <h3 class="shop-title">Shop</h3>
@@ -1391,6 +1408,6 @@
     window.LOBBY_INVENTORIES = {{ inventory_payloads | tojson }};
     window.LOBBY_TRANSFER_PLAYERS = {{ transfer_players | tojson }};
 </script>
-<script src="{{ url_for('static', filename='inventory.js') }}" defer></script>
+<script src="{{ url_for('static', filename='inventory.js', v='mobile-20261113') }}" defer></script>
 <script src="{{ url_for('static', filename='lobby.js') }}" defer></script>
 {% endblock %}

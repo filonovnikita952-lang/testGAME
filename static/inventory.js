@@ -231,6 +231,30 @@
                 if (error) this.formulaErrors.set(statKey, error);
             });
 
+            this.itemPicker = this.root.querySelector('[data-touch-item-picker]');
+            this.itemPicker?.addEventListener('change', () => {
+                this.detailItemId = this.itemPicker.value;
+                this.updateDetailsPanel(this.getItemById(this.detailItemId));
+            });
+            this.moveForm = this.root.querySelector('[data-touch-move]');
+            this.moveForm?.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const button = this.moveForm.querySelector('button');
+                if (button.disabled) return;
+                const item = this.getItemById(this.detailItemId);
+                if (!item || !this.permissions.can_edit) return;
+                const container = this.moveForm.elements.container.value;
+                const position = { x: Number(this.moveForm.elements.x.value), y: Number(this.moveForm.elements.y.value) };
+                const status = this.moveForm.querySelector('[role="status"]');
+                button.disabled = true;
+                status.textContent = 'Переміщення…';
+                try {
+                    const moved = await this.submitMove(item, container, position);
+                    status.textContent = moved ? 'Предмет переміщено.' : 'Не вдалося перемістити. Перевірте місце та спробуйте ще раз.';
+                } catch (error) {
+                    status.textContent = 'Помилка мережі. Спробуйте ще раз.';
+                } finally { button.disabled = false; }
+            });
             this.bindEvents();
             this.initAttributesRadar();
             this.loadInitialState();
@@ -264,6 +288,10 @@
             }
 
             document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && this.contextMenu?.classList.contains('is-open')) {
+                    this.closeContextMenu();
+                    return;
+                }
                 if (event.target?.closest('input, textarea, select')) return;
                 if (event.key === 'Escape' && this.dragState?.item) {
                     this.cancelDrag();
@@ -571,7 +599,9 @@
 
         openShopOverlay() {
             if (!this.shopActive || !this.shopOverlay) return;
+            this.shopReturnFocus = document.activeElement;
             this.shopOverlay.classList.add('is-open');
+            this.shopClose?.focus();
             this.shopOverlay.setAttribute('aria-hidden', 'false');
             this.renderShopGrid();
         }
@@ -579,6 +609,7 @@
         closeShopOverlay() {
             if (!this.shopOverlay) return;
             this.shopOverlay.classList.remove('is-open');
+            this.shopReturnFocus?.focus({ preventScroll: true });
             this.shopOverlay.setAttribute('aria-hidden', 'true');
             this.shopDetailItemId = null;
             this.updateShopDetails(null);
@@ -657,6 +688,9 @@
                     element.classList.add('is-broken');
                 }
                 element.dataset.itemId = item.id;
+                element.tabIndex = 0;
+                element.setAttribute('role', 'button');
+                element.setAttribute('aria-label', `${item.name}: деталі та переміщення`);
                 element.style.left = `${metrics.paddingX + (item.pos_x - 1) * (metrics.width + metrics.gapX)}px`;
                 element.style.top = `${metrics.paddingY + (item.pos_y - 1) * (metrics.height + metrics.gapY)}px`;
                 element.style.width = `${size.w * metrics.width + metrics.gapX * (size.w - 1) - 4}px`;
@@ -685,10 +719,10 @@
         }
 
         updateShopDetails(item) {
-            if (!this.shopDetailImage || !this.shopDetailName || !this.shopDetailDescription) return;
+            if (!this.shopDetailName || !this.shopDetailDescription) return;
             if (!item) {
-                this.shopDetailImage.src = '/static/images/default_avatar.png';
-                this.shopDetailImage.alt = 'Item';
+
+
                 this.shopDetailName.textContent = 'Оберіть предмет';
                 this.shopDetailDescription.textContent = '';
                 if (this.shopDetailQty) {
@@ -701,9 +735,8 @@
                 }
                 return;
             }
-            const imageUrl = this.resolveImageUrl(item.image_path);
-            this.shopDetailImage.src = imageUrl || '/static/images/default_avatar.png';
-            this.shopDetailImage.alt = item.name || 'Item';
+
+
             this.shopDetailName.textContent = item.name || 'Item';
             this.shopDetailDescription.textContent = item.description || '';
             if (this.shopDetailQty) {
@@ -929,6 +962,11 @@
         }
 
         renderItems() {
+            if (this.itemPicker) {
+                this.itemPicker.replaceChildren(new Option('Оберіть предмет', ''));
+                this.items.forEach((item) => this.itemPicker.append(new Option(`${item.name} ×${item.amount}`, item.id)));
+                this.itemPicker.value = this.detailItemId || '';
+            }
             this.gridElements.forEach((grid) => {
                 grid.querySelectorAll('.inventory-item, .inventory-ghost').forEach((node) => node.remove());
             });
@@ -947,6 +985,9 @@
                     element.classList.add('is-broken');
                 }
                 element.dataset.itemId = item.id;
+                element.tabIndex = 0;
+                element.setAttribute('role', 'button');
+                element.setAttribute('aria-label', `${item.name}: деталі та переміщення`);
                 const size = this.getItemSize(item);
                 const metrics = this.cellSize(grid, container);
                 element.style.left = `${metrics.paddingX + (item.pos_x - 1) * (metrics.width + metrics.gapX)}px`;
@@ -969,6 +1010,9 @@
                     event.stopPropagation();
                     this.detailItemId = item.id;
                     this.updateDetailsPanel(item);
+                });
+                element.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); element.click(); }
                 });
                 grid.appendChild(element);
             });
@@ -994,6 +1038,7 @@
         }
 
         startDrag(event, item) {
+            if (event.pointerType === 'touch' || event.pointerType === 'pen') return;
             event.preventDefault();
             if (this.dragState) {
                 this.cancelDrag();
@@ -1240,6 +1285,15 @@
                 case 'rotate':
                     this.rotateItem(item);
                     break;
+                case 'equip':
+                    this.equipItem(item);
+                    break;
+                case 'drop':
+                    this.dropItem(item);
+                    break;
+                case 'transfer':
+                    this.openTransferModal(item);
+                    break;
                 case 'use':
                     this.useItem(item);
                     break;
@@ -1249,7 +1303,7 @@
                         if (Number.isNaN(amount)) return;
                         this.splitItem(item, {
                             amount,
-                            attachDrag: true,
+                            attachDrag: !matchMedia('(pointer: coarse)').matches,
                             triggerButton,
                             source: 'detail',
                         });
@@ -1451,6 +1505,9 @@
             this.contextMenu.style.left = `${event.clientX + 12}px`;
             this.contextMenu.style.top = `${event.clientY + 12}px`;
             this.contextMenu.classList.add('is-open');
+            const menuRect = this.contextMenu.getBoundingClientRect();
+            this.contextMenu.style.left = `${Math.max(8, Math.min(event.clientX + 12, innerWidth - menuRect.width - 8))}px`;
+            this.contextMenu.style.top = `${Math.max(8, Math.min(event.clientY + 12, innerHeight - menuRect.height - 8))}px`;
             this.detailItemId = item.id;
             this.updateDetailsPanel(item);
         }
@@ -1669,7 +1726,10 @@
 
         openTransferModal(item) {
             if (!this.transferModal || !this.transferPlayers) return;
+            this.transferReturnFocus = document.activeElement;
             this.transferModal.classList.add('is-open');
+            this.transferModal.setAttribute('aria-hidden', 'false');
+            this.transferClose?.focus();
             this.transferPlayers.innerHTML = '';
             this.transferItemData = item;
             if (this.transferItemName) {
@@ -1701,6 +1761,8 @@
         closeTransferModal() {
             if (!this.transferModal) return;
             this.transferModal.classList.remove('is-open');
+            this.transferModal.setAttribute('aria-hidden', 'true');
+            this.transferReturnFocus?.focus({ preventScroll: true });
             this.transferItemData = null;
         }
 
@@ -1844,10 +1906,39 @@
         }
 
         updateDetailsPanel(item) {
-            if (!this.detailImage || !this.detailName || !this.detailDescription) return;
+            if (this.moveForm) {
+                this.moveForm.classList.toggle('is-hidden', !item || !this.permissions.can_edit);
+                if (item) {
+                    const sameItem = String(this.moveForm.dataset.itemId) === String(item.id);
+                    const draft = sameItem ? {
+                        container: this.moveForm.elements.container.value,
+                        x: this.moveForm.elements.x.value,
+                        y: this.moveForm.elements.y.value,
+                    } : null;
+                    if (!sameItem) this.moveForm.querySelector('[role="status"]').textContent = '';
+                    this.moveForm.dataset.itemId = item.id;
+                    const select = this.moveForm.elements.container;
+                    select.replaceChildren();
+                    this.containers.forEach((container) => {
+                        if (this.isContainerAllowed(item, container.id)) {
+                            const option = document.createElement('option');
+                            option.value = container.id;
+                            option.textContent = `${container.label || container.name || container.id} (${container.w} × ${container.h})`;
+                            select.append(option);
+                        }
+                    });
+                    select.value = draft?.container || item.container_id;
+                    if (!select.value) select.value = item.container_id;
+                    this.moveForm.elements.x.value = draft?.x ?? item.pos_x ?? 1;
+                    this.moveForm.elements.y.value = draft?.y ?? item.pos_y ?? 1;
+                }
+            }
+            if (this.itemPicker) this.itemPicker.value = item?.id || '';
+            if (!this.detailName || !this.detailDescription) return;
             if (!item) {
-                this.detailImage.src = '/static/images/default_avatar.png';
-                this.detailImage.alt = 'Item';
+                if (this.moveForm) delete this.moveForm.dataset.itemId;
+
+
                 this.detailName.textContent = 'Оберіть предмет';
                 this.detailDescription.textContent = '';
                 if (this.detailAmmo) {
@@ -1859,9 +1950,8 @@
                 }
                 return;
             }
-            const imageUrl = this.resolveImageUrl(item.image_path);
-            this.detailImage.src = imageUrl || '/static/images/default_avatar.png';
-            this.detailImage.alt = item.name || 'Item';
+
+
             this.detailName.textContent = item.name || 'Item';
             this.detailDescription.textContent = item.description || '';
             if (this.detailAmmo) {
@@ -1877,6 +1967,7 @@
             }
             if (this.detailActions) {
                 this.detailActions.classList.toggle('is-hidden', !this.permissions.can_edit);
+                this.detailActions.querySelector('[data-detail-action="equip"]')?.classList.toggle('is-hidden', !equipTargetMap[item.type]);
                 const useButton = this.detailActions.querySelector('[data-detail-action="use"]');
                 useButton?.classList.toggle(
                     'is-hidden',
