@@ -104,9 +104,9 @@ def test_signup_verify_flow_one_time_code_for_html(client):
     with app_module.app.app_context():
         user = app_module.User.query.filter_by(email='carol@example.com').first()
         assert user is not None
-        reused = client.post('/signup/verify', json={'email': 'carol@example.com', 'code': '123456'})
-        assert reused.status_code == 400
-        assert reused.get_json()['message'] == app_module.GENERIC_SIGNUP_VERIFY_ERROR
+    reused = client.post('/signup/verify', json={'email': 'carol@example.com', 'code': '123456'})
+    assert reused.status_code == 400
+    assert reused.get_json()['message'] == app_module.GENERIC_SIGNUP_VERIFY_ERROR
 
 
 def test_re_request_invalidates_old_otp(client):

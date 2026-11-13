@@ -42,14 +42,7 @@
                 <span class="chip">Артефакти</span>
             </div>
         </div>
-        <div class="banner-container" id="banner">
-            <button class="arrow left" type="button">&#10094;</button>
-            <button class="arrow right" type="button">&#10095;</button>
-
-            <img src="/static/banners/banner1.jpg" class="banner active" alt="DRA banner 1">
-            <img src="/static/banners/banner2.jpg" class="banner" alt="DRA banner 2">
-            <img src="/static/banners/banner3.jpg" class="banner" alt="DRA banner 3">
-        </div>
+        <aside class="card hero-summary"><h2>DRA</h2><p>Ваша кампанія. Ваші персонажі. Ваші пригоди.</p><a class="button" href="{{ url_for('lobby_page') }}">Відкрити лобі</a></aside>
     </div>
 </section>
 
@@ -71,29 +64,5 @@
     </article>
 </section>
 
-<script>
-    const banners = document.querySelectorAll('.banner');
-    const leftArrow = document.querySelector('.arrow.left');
-    const rightArrow = document.querySelector('.arrow.right');
-    let current = 0;
 
-    function showBanner(index) {
-        if (!banners.length) return;
-        banners[current].classList.remove('active');
-        current = (index + banners.length) % banners.length;
-        banners[current].classList.add('active');
-    }
-
-    if (banners.length > 1) {
-        leftArrow?.addEventListener('click', () => {
-            showBanner(current - 1);
-        });
-
-        rightArrow?.addEventListener('click', () => {
-            showBanner(current + 1);
-        });
-
-        setInterval(() => showBanner(current + 1), 16000);
-    }
-</script>
 {% endblock %}

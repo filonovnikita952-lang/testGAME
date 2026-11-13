@@ -21,12 +21,17 @@ const renderNotifications = (transfers) => {
     });
 };
 
+let transfersPending = false;
 const fetchTransfers = async () => {
-    if (!currentUserId) return;
-    const response = await fetch('/api/transfers/pending');
-    if (!response.ok) return;
-    const transfers = await response.json();
-    renderNotifications(transfers);
+    if (!currentUserId || document.hidden || transfersPending) return;
+    transfersPending = true;
+    try {
+        const response = await fetch('/api/transfers/pending');
+        if (!response.ok) return;
+        renderNotifications(await response.json());
+    } catch (error) {
+        console.debug('Transfer refresh failed', error);
+    } finally { transfersPending = false; }
 };
 
 const handleAction = async (event) => {
@@ -34,6 +39,9 @@ const handleAction = async (event) => {
     if (!button) return;
     const action = button.dataset.action;
     const transferId = button.dataset.id;
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
     const response = await fetch(`/api/transfers/${transferId}/${action}`, { method: 'POST' });
     if (response.ok) {
         await fetchTransfers();
@@ -41,10 +49,13 @@ const handleAction = async (event) => {
     } else {
         await response.json().catch(() => ({}));
     }
+    } catch (error) {
+        console.debug('Transfer failed', error);
+    } finally { button.disabled = false; }
 };
 
 if (notificationContainer && currentUserId) {
     notificationContainer.addEventListener('click', handleAction);
     fetchTransfers();
-    setInterval(fetchTransfers, 5000);
+    setInterval(fetchTransfers, 15000);
 }
