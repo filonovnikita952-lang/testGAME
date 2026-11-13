@@ -46,3 +46,7 @@ Login attempt before verification should fail (no active account exists yet):
 curl -X POST http://localhost:5000/LogIn \
   -d 'email=newuser@example.com&password=Password123'
 ```
+
+## Lightweight deployment
+
+See [512 MB deployment and validation notes](docs/LOW_MEMORY_DEPLOYMENT.md) and the [image cleanup review](docs/IMAGE_CLEANUP_REVIEW.md).

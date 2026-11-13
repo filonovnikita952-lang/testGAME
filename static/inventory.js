@@ -210,7 +210,7 @@
             this.shopDetailDescription = this.shopOverlay?.querySelector('[data-shop-detail-description]');
             this.shopDetailQty = this.shopOverlay?.querySelector('[data-shop-detail-qty]');
             this.shopDetailDurability = this.shopOverlay?.querySelector('[data-shop-detail-durability]');
-            this.shopPollInterval = 3000;
+            this.shopPollInterval = 10000;
             this.shopPollTimer = null;
             this.shopActive = false;
             this.shopContainer = null;
@@ -525,7 +525,8 @@
         }
 
         async refreshShopStatus() {
-            if (!this.lobbyId) return;
+            if (!this.lobbyId || document.hidden || this.shopRefreshing) return;
+            this.shopRefreshing = true;
             try {
                 const response = await fetch(`/api/lobby/${this.lobbyId}/shop/status`);
                 if (!response.ok) return;
@@ -533,7 +534,7 @@
                 this.handleShopStatus(payload || {});
             } catch (error) {
                 console.debug('[Shop] Status refresh failed', error);
-            }
+            } finally { this.shopRefreshing = false; }
         }
 
         handleShopStatus(payload) {
@@ -729,20 +730,50 @@
         async refreshInventory(playerId) {
             const targetId = playerId || this.selectedPlayerId;
             if (!targetId) return;
+            // Supersede older reads; a mutation-triggered refresh must see newer state.
+            this.inventoryRequest?.abort();
+            const controller = new AbortController();
+            this.inventoryRequest = controller;
+            if (!this.refreshNotice) {
+                this.refreshNotice = document.createElement('div');
+                this.refreshNotice.className = 'inventory-refresh-status';
+                this.refreshNotice.setAttribute('role', 'status');
+                this.refreshNotice.setAttribute('aria-live', 'polite');
+                this.refreshNotice.tabIndex = -1;
+                document.body.append(this.refreshNotice);
+            }
+            this.refreshNotice.textContent = 'Оновлення інвентаря…';
             const endpoint = this.lobbyId
                 ? `/api/lobby/${this.lobbyId}/inventory/${targetId}`
                 : `/api/inventory/${targetId}`;
+            const timeout = setTimeout(() => controller.abort('timeout'), 15000);
             try {
-                const response = await fetch(endpoint);
-                if (!response.ok) {
-                    throw new Error('Не вдалося завантажити інвентар.');
-                }
+                const response = await fetch(endpoint, { signal: controller.signal });
+                if (!response.ok) throw new Error('Не вдалося завантажити інвентар.');
                 const payload = await response.json();
+                if (this.inventoryRequest !== controller) return;
+                const x = window.scrollX, y = window.scrollY;
+                const active = document.activeElement;
+                const value = active && 'value' in active ? active.value : null;
+                const start = active?.selectionStart, end = active?.selectionEnd;
                 this.applyInventory(payload);
-            } catch (error) {
-                if (DEBUG_INVENTORY) {
-                    console.debug(error.message || 'Не вдалося завантажити інвентар.');
+                if (value !== null && active.isConnected) {
+                    active.value = value;
+                    active.focus({ preventScroll: true });
+                    if (typeof start === 'number') active.setSelectionRange(start, end);
                 }
+                window.scrollTo(x, y);
+                this.refreshNotice.textContent = '';
+            } catch (error) {
+                if (this.inventoryRequest !== controller) return;
+                this.refreshNotice.textContent = 'Не вдалося оновити інвентар. ';
+                const retry = document.createElement('button');
+                retry.type = 'button';
+                retry.textContent = 'Повторити';
+                retry.onclick = () => this.refreshInventory(targetId);
+                this.refreshNotice.append(retry);
+            } finally {
+                clearTimeout(timeout);
             }
         }
 
@@ -780,8 +811,11 @@
             this.updateStatsUI();
             this.updateClassUI(payload.user);
             this.updateAttributesUI();
-            this.loadFormulas();
-            this.loadNotes();
+            if (this.loadedProfileId !== this.selectedPlayerId) {
+                this.loadedProfileId = this.selectedPlayerId;
+                this.loadFormulas();
+                this.loadNotes();
+            }
             this.updateWeightDisplay(payload.weight);
             this.root.classList.toggle('is-readonly', !this.permissions.can_edit);
             if (this.inventoryActions) {
@@ -3183,7 +3217,7 @@
                 const armorClassMax = Number.parseInt(armorClassMaxInput?.value || '0', 10);
                 const targetSelect = form.querySelector('select[id^="item_target_"]');
                 const target = targetSelect?.value;
-                const imageInput = form.querySelector('input[type="file"]');
+
 
                 if (!name) {
                     return;
@@ -3231,9 +3265,7 @@
                 payload.append('armor_class_max', Number.isNaN(armorClassMax) ? 0 : armorClassMax);
                 const issueTo = issueSelfToggle?.checked ? root.dataset.currentUserId : (target || '');
                 payload.append('issue_to', issueTo || '');
-                if (imageInput?.files?.length) {
-                    payload.append('image', imageInput.files[0]);
-                }
+
 
                 const response = await fetch('/api/master/item_template/create', {
                     method: 'POST',
@@ -3813,28 +3845,6 @@
             });
         });
 
-        root.querySelectorAll('[data-master-image-update]').forEach((form) => {
-            const button = form.querySelector('button');
-            button?.addEventListener('click', async () => {
-                const templateId = Number.parseInt(
-                    form.querySelector('input[id^="image_template_"]')?.value || '0',
-                    10,
-                );
-                const imageInput = form.querySelector('input[type="file"]');
-                if (!templateId || !imageInput?.files?.length) return;
-                const payload = new FormData();
-                payload.append('lobby_id', lobbyId);
-                payload.append('image', imageInput.files[0]);
-                const response = await fetch(`/api/master/item_template/${templateId}/image`, {
-                    method: 'POST',
-                    body: payload,
-                });
-                if (response.ok) {
-                    form.reset();
-                    return;
-                }
-                await response.json().catch(() => ({}));
-            });
-        });
+
     });
 })();

@@ -47,9 +47,13 @@
         </form>
 
         <form action="{{ url_for('update_profile_avatar') }}" method="post" enctype="multipart/form-data" class="form">
-            <label for="avatar">Оновити аватар</label>
-            <input type="file" id="avatar" name="avatar" accept="image/*" required>
+            <label for="avatar">Оновити аватар (JPG, PNG, WebP; до 2 MB, 4 мегапікселів)</label>
+            <input type="file" id="avatar" name="avatar" accept="image/jpeg,image/png,image/webp" required>
             <button type="submit" class="button">Завантажити аватар</button>
+        </form>
+
+        <form action="{{ url_for('remove_profile_avatar') }}" method="post">
+            <button type="submit" class="button ghost">Видалити аватар</button>
         </form>
 
         <form action="{{ url_for('profile') }}" method="post" class="form">

@@ -839,8 +839,7 @@
                                                                                 <input type="number" id="item_fast_h_{{ membership.lobby.id }}" min="0" value="0">
                                                                             </div>
                                                                         </div>
-                                                                        <label for="item_image_{{ membership.lobby.id }}">Фото предмета</label>
-                                                                        <input type="file" id="item_image_{{ membership.lobby.id }}" accept="image/*">
+
                                                                         <label for="item_target_{{ membership.lobby.id }}">Передати (опційно)</label>
                                                                         <select id="item_target_{{ membership.lobby.id }}">
                                                                             <option value="">Не видавати</option>
@@ -872,12 +871,8 @@
                                                                         <input type="text" data-template-name readonly>
                                                                         <label>Опис</label>
                                                                         <textarea rows="3" data-template-description readonly></textarea>
-                                                                        <label>Зображення</label>
-                                                                        <div class="issue-template-image">
-                                                                            <img data-template-image-preview alt="Template preview" style="max-width: 160px; display: none;">
-                                                                            <div data-template-image-empty>Немає зображення</div>
-                                                                            <input type="text" data-template-image readonly>
-                                                                        </div>
+
+
                                                                         <label>Тип</label>
                                                                         <select data-template-type disabled>
                                                                             <option value="weapon">Weapon</option>
@@ -1104,14 +1099,7 @@
                                                                         <button type="button" class="button" data-template-save>Зберегти</button>
                                                                         <p class="muted" data-template-status></p>
                                                                     </form>
-                                                                    <form class="form" data-master-image-update>
-                                                                        <h4>Оновити фото</h4>
-                                                                        <label for="image_template_{{ membership.lobby.id }}">Template ID</label>
-                                                                        <input type="number" id="image_template_{{ membership.lobby.id }}" min="1" placeholder="ID шаблону">
-                                                                        <label for="item_image_update_{{ membership.lobby.id }}">Фото предмета</label>
-                                                                        <input type="file" id="item_image_update_{{ membership.lobby.id }}" accept="image/*">
-                                                                        <button type="button" class="button ghost">Оновити</button>
-                                                                    </form>
+
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -1170,7 +1158,7 @@
                                         </div>
                                         <div class="panel-body" id="item-detail-body" data-panel-body>
                                             <div class="item-detail">
-                                                <img src="/static/images/default_avatar.png" alt="Item" class="item-detail__image" data-item-detail-image>
+
                                                 <div class="item-detail__content">
                                                     <strong class="item-detail__name" data-item-detail-name>Оберіть предмет</strong>
                                                     <p class="muted item-detail__description" data-item-detail-description></p>
@@ -1335,7 +1323,7 @@
                                             <span class="panel-title">Деталі предмета</span>
                                         </div>
                                         <div class="item-detail">
-                                            <img src="/static/images/default_avatar.png" alt="Item" class="item-detail__image" data-shop-detail-image>
+
                                             <div class="item-detail__content">
                                                 <strong class="item-detail__name" data-shop-detail-name>Оберіть предмет</strong>
                                                 <p class="muted item-detail__description" data-shop-detail-description></p>
@@ -1352,7 +1340,7 @@
                         <div class="map-overlay" id="map-overlay" aria-hidden="true">
                             <div class="map-overlay__content">
                                 <button class="button ghost map-overlay__close" type="button" data-map-close>Закрити</button>
-                                <img src="" alt="Map" class="map-overlay__image" data-map-image>
+
                             </div>
                         </div>
                         <div class="skill-check-menu" data-skill-check-menu data-lobby-id="{{ membership.lobby.id }}" aria-hidden="true">

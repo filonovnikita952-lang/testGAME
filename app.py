@@ -26,13 +26,15 @@ from uuid import uuid4
 
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import inspect, text, func
-from sqlalchemy.orm import synonym
+from sqlalchemy import inspect, text, func, Index
+from sqlalchemy.orm import synonym, selectinload, joinedload, load_only
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
+from PIL import Image, UnidentifiedImageError
+import warnings
 
-DEFAULT_DB_DIR = '/home/Sanya1825/DRAsite_data'
+DEFAULT_DB_DIR = os.environ.get('DRA_DATA_DIR', os.path.join(os.path.dirname(__file__), 'instance'))
 DEFAULT_DB_PATH = os.path.join(DEFAULT_DB_DIR, 'databaseDRA.db')
 
 
@@ -55,6 +57,9 @@ def active_database_path() -> str:
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = build_database_uri()
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['MAX_CONTENT_LENGTH'] = 3 * 1024 * 1024
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_size': 2, 'max_overflow': 0}
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 3600
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'supersecretkey')
 
 UPLOAD_SUBDIR = 'uploads'
@@ -80,7 +85,6 @@ GENERIC_TEXT_MAX_LENGTH = 9999
 GENERIC_NUMERIC_MAX = 9999
 RULE_CARD_STYLES = {'terminal', 'parchment', 'stone'}
 MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024
-MAX_ITEM_IMAGE_BYTES = 5 * 1024 * 1024
 MAIN_GRID_WIDTH = 5
 MAIN_GRID_HEIGHT = 3
 BACKPACK_GRID_WIDTH = 8
@@ -190,6 +194,13 @@ class InMemoryRateLimiter:
     def allow(self, key: str, limit: int) -> bool:
         now = time.time()
         with self._lock:
+            cutoff = now - self.window_seconds
+            if len(self._hits) >= 4096:
+                for old_key in list(self._hits):
+                    if not self._hits[old_key] or self._hits[old_key][-1] <= cutoff:
+                        del self._hits[old_key]
+                if key not in self._hits and len(self._hits) >= 4096:
+                    return False
             queue = self._hits[key]
             cutoff = now - self.window_seconds
             while queue and queue[0] <= cutoff:
@@ -469,6 +480,7 @@ class ItemDefinition(db.Model):
 
 class ItemInstance(db.Model):
     __tablename__ = 'item_instance'
+    __table_args__ = (Index('ix_item_instance_lookup', 'owner_id', 'lobby_id'),)
 
     id = db.Column(db.Integer, primary_key=True)
     lobby_id = db.Column(db.Integer, db.ForeignKey('lobby.id'), nullable=True)
@@ -595,6 +607,7 @@ class AttributeFormula(db.Model):
 
 class ChatMessage(db.Model):
     __tablename__ = 'chat_message'
+    __table_args__ = (Index('ix_chat_message_lookup', 'lobby_id', 'id'),)
 
     id = db.Column(db.Integer, primary_key=True)
     lobby_id = db.Column(db.Integer, db.ForeignKey('lobby.id'), nullable=False)
@@ -1114,6 +1127,9 @@ def ensure_attribute_formula() -> AttributeFormula:
 
 def initialize_database():
     db.create_all()
+    for table in (ItemInstance.__table__, ChatMessage.__table__):
+        for index in table.indexes:
+            index.create(db.engine, checkfirst=True)
     _ensure_user_columns()
     _ensure_auth_columns_and_tables()
     _ensure_signup_otp_schema()
@@ -1419,17 +1435,26 @@ def inject_helpers():
 
 
 def save_upload(file, subdir: str, filename_prefix: str) -> Optional[str]:
-    if not file or not file.filename:
+    if subdir != AVATAR_UPLOAD_SUBDIR or not file or not file.filename:
         return None
-    filename = secure_filename(file.filename)
-    if not filename:
+    folder = os.path.join(app.static_folder, UPLOAD_SUBDIR, AVATAR_UPLOAD_SUBDIR)
+    os.makedirs(folder, exist_ok=True)
+    name = f'{filename_prefix}_{uuid4().hex}.webp'
+    destination = os.path.join(folder, name)
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', Image.DecompressionBombWarning)
+            file.stream.seek(0)
+            with Image.open(file.stream) as image:
+                if image.width * image.height > 4_000_000 or image.format not in {'JPEG', 'PNG', 'WEBP'}:
+                    return None
+                image.thumbnail((256, 256))
+                image.convert('RGB').save(destination, 'WEBP', quality=80, method=2)
+    except (OSError, ValueError, UnidentifiedImageError, Image.DecompressionBombError, Image.DecompressionBombWarning):
+        if os.path.isfile(destination):
+            os.remove(destination)
         return None
-    upload_folder = os.path.join(app.static_folder, UPLOAD_SUBDIR, subdir)
-    os.makedirs(upload_folder, exist_ok=True)
-    saved_filename = f"{filename_prefix}_{filename}"
-    file_path = os.path.join(upload_folder, saved_filename)
-    file.save(file_path)
-    return os.path.join(UPLOAD_SUBDIR, subdir, saved_filename).replace(os.path.sep, "/")
+    return f'{UPLOAD_SUBDIR}/{AVATAR_UPLOAD_SUBDIR}/{name}'
 
 
 def normalize_user_image_path(path_str: Optional[str]) -> Optional[str]:
@@ -1457,7 +1482,7 @@ def avatar_abs_path(path_str: Optional[str]) -> Optional[str]:
     if not normalized:
         return None
     allowed_dir = os.path.abspath(os.path.join(app.static_folder, UPLOAD_SUBDIR, AVATAR_UPLOAD_SUBDIR))
-    candidate = os.path.abspath(os.path.join(app.static_folder, normalized))
+    candidate = os.path.realpath(os.path.join(app.static_folder, normalized))
     if not candidate.startswith(f'{allowed_dir}{os.sep}'):
         return None
     return candidate
@@ -1470,16 +1495,11 @@ def safe_delete_avatar_if_orphan(path_str: Optional[str], excluding_user_id: Opt
         return
 
     path_variants = {normalized, f'static/{normalized}'}
-    query = User.query.filter(User.userImage.in_(path_variants))
-    if excluding_user_id is not None:
-        query = query.filter(User.id != excluding_user_id)
-        references = query.count()
-        should_delete = references == 0
-    else:
-        references = query.count()
-        should_delete = references <= 1
-
-    if not should_delete:
+    normalized_column = func.ltrim(func.replace(func.trim(User.userImage), '\\', '/'), '/')
+    query = User.query.filter(normalized_column.in_(path_variants))
+    # Call only after commit (or rollback of a new upload). Never ignore live references.
+    item_path = func.ltrim(func.replace(func.trim(ItemDefinition.image_path), '\\', '/'), '/')
+    if query.first() is not None or ItemDefinition.query.filter(item_path.in_(path_variants)).first() is not None:
         return
 
     try:
@@ -1489,33 +1509,8 @@ def safe_delete_avatar_if_orphan(path_str: Optional[str], excluding_user_id: Opt
         app.logger.warning('Не вдалося видалити аватар %s', abs_path, exc_info=True)
 
 
-def cleanup_orphan_avatars() -> None:
-    avatars_dir = os.path.abspath(os.path.join(app.static_folder, UPLOAD_SUBDIR, AVATAR_UPLOAD_SUBDIR))
-    os.makedirs(avatars_dir, exist_ok=True)
-    referenced = {
-        normalized
-        for (raw_path,) in db.session.query(User.userImage).filter(User.userImage.isnot(None)).all()
-        if (normalized := normalize_user_image_path(raw_path)) and not is_protected_avatar(normalized)
-    }
-    for file_name in os.listdir(avatars_dir):
-        rel_path = os.path.join(UPLOAD_SUBDIR, AVATAR_UPLOAD_SUBDIR, file_name).replace(os.path.sep, '/')
-        if rel_path in referenced or is_protected_avatar(rel_path):
-            continue
-        abs_path = avatar_abs_path(rel_path)
-        if not abs_path or not os.path.isfile(abs_path):
-            continue
-        try:
-            os.remove(abs_path)
-        except OSError:
-            app.logger.warning('Не вдалося очистити сирітський аватар %s', abs_path, exc_info=True)
-
-
 def normalize_nickname(raw_nickname: str) -> str:
     return limit_text(raw_nickname, NICKNAME_MAX_LENGTH)
-
-
-with app.app_context():
-    cleanup_orphan_avatars()
 
 
 def validate_avatar_upload(file) -> Optional[str]:
@@ -1539,27 +1534,6 @@ def validate_avatar_upload(file) -> Optional[str]:
     return None
 
 
-def validate_item_image_upload(file) -> Optional[str]:
-    if not file or not file.filename:
-        return None
-    filename = secure_filename(file.filename)
-    if not filename:
-        return 'Некоректна назва файлу.'
-    _, ext = os.path.splitext(filename)
-    ext = ext.lower()
-    if ext not in ALLOWED_IMAGE_EXTENSIONS:
-        return 'Дозволені лише файли JPG, PNG або WEBP.'
-    mimetype = (file.mimetype or '').lower()
-    if mimetype and mimetype not in ALLOWED_IMAGE_MIME_TYPES:
-        return 'Невірний тип файлу. Завантажте JPG, PNG або WEBP.'
-    file.stream.seek(0, os.SEEK_END)
-    size = file.stream.tell()
-    file.stream.seek(0)
-    if size > MAX_ITEM_IMAGE_BYTES:
-        return 'Файл завеликий.'
-    return None
-
-
 def current_user() -> Optional[User]:
     user_id = session.get('user_id')
     if not user_id:
@@ -1576,7 +1550,7 @@ def is_user_online(user: User | None) -> bool:
 @app.before_request
 def update_last_seen():
     user = current_user()
-    if user:
+    if user and (not user.last_seen or datetime.utcnow() - user.last_seen >= timedelta(seconds=15)):
         user.last_seen = datetime.utcnow()
         user.is_online = True
         db.session.commit()
@@ -1711,22 +1685,24 @@ def serialize_skill_definition(skill: SkillDefinition) -> dict[str, object]:
 
 def build_skill_tree_payload() -> dict[str, object]:
     categories = SkillCategory.query.order_by(SkillCategory.sort_order.asc(), SkillCategory.id.asc()).all()
+    subclasses_by_category = defaultdict(list)
+    for row in SkillSubclass.query.order_by(SkillSubclass.sort_order, SkillSubclass.id):
+        subclasses_by_category[row.category_id].append(row)
+    branches_by_subclass = defaultdict(list)
+    for row in SkillBranch.query.order_by(SkillBranch.sort_order, SkillBranch.branch_index, SkillBranch.id):
+        branches_by_subclass[row.subclass_id].append(row)
+    skills_by_branch = defaultdict(list)
+    for row in SkillDefinition.query.options(selectinload(SkillDefinition.requirements)):
+        skills_by_branch[row.branch_id].append(row)
     payload_categories: list[dict[str, object]] = []
     for category in categories:
         subclasses_payload: list[dict[str, object]] = []
-        subclasses = SkillSubclass.query.filter_by(category_id=category.id).order_by(
-            SkillSubclass.sort_order.asc(),
-            SkillSubclass.id.asc(),
-        ).all()
+        subclasses = subclasses_by_category[category.id]
         for subclass in subclasses:
             branches_payload: list[dict[str, object]] = []
-            branches = SkillBranch.query.filter_by(subclass_id=subclass.id).order_by(
-                SkillBranch.sort_order.asc(),
-                SkillBranch.branch_index.asc(),
-                SkillBranch.id.asc(),
-            ).all()
+            branches = branches_by_subclass[subclass.id]
             for branch in branches:
-                skills = SkillDefinition.query.filter_by(branch_id=branch.id).all()
+                skills = skills_by_branch[branch.id]
                 skills_by_level = {skill.level_key: skill for skill in skills}
                 ordered_nodes: list[dict[str, object]] = []
                 for level_key in SKILL_LEVEL_ORDER:
@@ -1867,7 +1843,7 @@ def serialize_item_definition(definition: ItemDefinition) -> dict:
         'id': definition.id,
         'name': definition.name,
         'description': definition.description,
-        'image': definition.image_path,
+        'image': None,
         'type': definition.item_type.name if definition.item_type else '',
         'quality': definition.quality,
         'grade': definition.grade,
@@ -3185,7 +3161,7 @@ def build_instance_payload(
         'grade_label': grade_label(definition.grade),
         'description': definition.description,
         'custom_description': visible_custom_description,
-        'image_path': definition.image_path,
+        'image_path': None,
         'is_cloth': bool(definition.is_cloth),
         'size': {'w': definition.w, 'h': definition.h},
         'rotatable': True,
@@ -3225,7 +3201,7 @@ def build_inventory_payload(
         }
     membership = get_membership(user, lobby_id)
     viewer = viewer or user
-    instances = ItemInstance.query.filter_by(owner_id=user.id).all()
+    instances = ItemInstance.query.options(joinedload(ItemInstance.definition).joinedload(ItemDefinition.item_type)).filter_by(owner_id=user.id).all()
     dirty_instances = False
     for instance in instances:
         container_id = instance.container_i or 'inv_main'
@@ -3611,13 +3587,29 @@ def update_profile_avatar():
     user.userImage = avatar_path
     try:
         db.session.commit()
-    except IntegrityError:
+    except SQLAlchemyError:
         db.session.rollback()
+        safe_delete_avatar_if_orphan(avatar_path)
         flash('Не вдалося оновити аватар. Спробуйте ще раз.', 'danger')
         return redirect(url_for('profile'))
 
     safe_delete_avatar_if_orphan(old_avatar, excluding_user_id=user.id)
     flash('Аватар успішно оновлено.', 'success')
+    return redirect(url_for('profile'))
+
+
+@app.route('/profile/avatar/remove', methods=['POST'])
+def remove_profile_avatar():
+    user = require_user()
+    old_avatar = user.userImage
+    user.userImage = None
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash('Не вдалося видалити аватар.', 'danger')
+        return redirect(url_for('profile'))
+    safe_delete_avatar_if_orphan(old_avatar)
     return redirect(url_for('profile'))
 
 
@@ -3670,7 +3662,7 @@ def admin_users_page():
             return redirect(url_for('admin_users_page'))
 
         try:
-            safe_delete_avatar_if_orphan(target_user.userImage, excluding_user_id=target_user.id)
+            old_avatar = target_user.userImage
             ProfileSkillState.query.filter_by(profile_id=target_user.id).delete()
             CharacterStats.query.filter_by(user_id=target_user.id).delete()
             CharacterAttributes.query.filter_by(user_id=target_user.id).delete()
@@ -3681,6 +3673,7 @@ def admin_users_page():
             ItemInstance.query.filter_by(owner_id=target_user.id).delete()
             db.session.delete(target_user)
             db.session.commit()
+            safe_delete_avatar_if_orphan(old_avatar)
             flash('Акаунт успішно видалено.', 'success')
         except SQLAlchemyError:
             db.session.rollback()
@@ -3688,11 +3681,13 @@ def admin_users_page():
 
         return redirect(url_for('admin_users_page'))
 
-    users = User.query.order_by(User.id.asc()).all()
+    page = parse_int(request.args.get('page'), 1, minimum=1)
+    users = User.query.order_by(User.id.asc()).paginate(page=page, per_page=40, error_out=False)
     return render_template(
         'admin_users.html',
         user=user,
-        users=users,
+        users=users.items,
+        pagination=users,
         security_unlocked=bool(session.get(ADMIN_PANEL_UNLOCK_SESSION_KEY, False)),
     )
 
@@ -5873,7 +5868,7 @@ def use_inventory_item():
         create_chat_message(lobby_id, user.id, f'{user.nickname} used {item_display_name(instance)}', is_system=True)
     return jsonify({
         'ok': True,
-        'map_image': instance.definition.image_path,
+        'map_image': None,
         'weight': build_weight_payload(user.id, log_context='use_map'),
     })
 
@@ -6716,19 +6711,6 @@ def create_item_template():
         return jsonify({'error': 'missing_ammo_type'}), 400
 
     image_path = None
-    if 'image' in request.files:
-        image_file = request.files['image']
-        error = validate_item_image_upload(image_file)
-        if error:
-            if inventory_logger.handlers:
-                inventory_logger.error('Item image upload failed: %s', error)
-            return jsonify({'error': 'invalid_image'}), 400
-        image_path = save_upload(image_file, 'items', f'item_{secrets.token_hex(4)}')
-        if not image_path:
-            if inventory_logger.handlers:
-                inventory_logger.error('Item image upload failed: save error')
-            return jsonify({'error': 'invalid_image'}), 400
-
     item_type = get_or_create_item_type(type_name)
     if type_name == 'weapon':
         item_type.stackable = False
@@ -6846,7 +6828,7 @@ def search_item_templates():
             query_id = int(query)
         except ValueError:
             query_id = None
-    definitions = ItemDefinition.query.all()
+    definitions = ItemDefinition.query.options(load_only(ItemDefinition.id, ItemDefinition.name)).order_by(ItemDefinition.id).yield_per(100)
     scored = []
     for definition in definitions:
         name = definition.name or ''
@@ -6869,6 +6851,8 @@ def search_item_templates():
         if not matched:
             continue
         scored.append((score, name_lower, definition))
+        scored.sort(key=lambda entry: (-entry[0], entry[1]))
+        del scored[5:]
     scored.sort(key=lambda entry: (-entry[0], entry[1]))
     results = [definition for _score, _name, definition in scored[:5]]
     payload = []
@@ -7217,25 +7201,10 @@ def update_item_template_image(template_id: int):
     definition = ItemDefinition.query.get(template_id)
     if not definition:
         return jsonify({'error': 'not_found'}), 404
-    image_file = request.files.get('image')
-    if not image_file or not image_file.filename:
-        return jsonify({'error': 'invalid_image'}), 400
-    error = validate_item_image_upload(image_file)
-    if error:
-        if inventory_logger.handlers:
-            inventory_logger.error('Item image update failed: %s', error)
-        return jsonify({'error': 'invalid_image'}), 400
-    image_path = save_upload(image_file, 'items', f'item_{secrets.token_hex(4)}')
-    if not image_path:
-        if inventory_logger.handlers:
-            inventory_logger.error('Item image update failed: save error')
-        return jsonify({'error': 'invalid_image'}), 400
-    definition.image_path = image_path
-    db.session.commit()
-    return jsonify({'status': 'ok'})
+    return jsonify({'error': 'content_images_disabled'}), 410
 
 
 if __name__ == '__main__':
     with app.app_context():
         cleanup_starter_kit()
-    app.run(debug=True)
+    app.run(debug=False, use_reloader=False)

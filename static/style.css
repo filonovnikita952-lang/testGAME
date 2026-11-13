@@ -4484,3 +4484,25 @@ body.skill-check-lock {
 .admin-users__table tbody tr:hover {
     background: rgba(255, 255, 255, 0.04);
 }
+
+/* Lightweight responsive defaults shared by every page. */
+*, *::before, *::after { box-sizing: border-box; }
+img { max-width: 100%; }
+main, section, article, .card, .grid > *, form { min-width: 0; }
+input, select, textarea { max-width: 100%; font: inherit; }
+button, .button { min-height: 44px; }
+:focus-visible { outline: 3px solid #64caff; outline-offset: 3px; }
+p, h1, h2, h3, a, td, th { overflow-wrap: anywhere; }
+.avatar { aspect-ratio: 1; object-fit: cover; }
+.hero-summary { display: grid; align-content: center; gap: 1rem; }
+.inventory-refresh-status:not(:empty) { position: fixed; bottom: 1rem; right: 1rem; z-index: 9999; max-width: calc(100vw - 2rem); padding: .75rem; background: #172334; color: #fff; border: 1px solid #64caff; border-radius: .5rem; }
+@media (max-width: 767px) {
+    .grid { grid-template-columns: minmax(0, 1fr); }
+    form, .form { max-width: 100%; }
+    table { display: block; max-width: 100%; overflow-x: auto; }
+    nav, header { flex-wrap: wrap; }
+    [role="dialog"], .modal, .overlay__content { max-width: calc(100vw - 1rem); max-height: 90dvh; overflow: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

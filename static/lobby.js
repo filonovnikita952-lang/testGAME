@@ -129,7 +129,7 @@
         }
 
         startPolling() {
-            this.pollTimer = window.setInterval(() => this.refresh(), this.pollInterval);
+            this.pollTimer = window.setInterval(() => { if (!document.hidden) this.refresh(); }, Math.max(5000, this.pollInterval));
         }
 
         async refresh() {
@@ -329,7 +329,7 @@
             this.bind();
             this.menu = new SkillCheckMenu(this);
             this.refreshStatus();
-            this.pollTimer = window.setInterval(() => this.refreshStatus(), 1500);
+            this.pollTimer = window.setInterval(() => { if (!document.hidden) this.refreshStatus(); }, 5000);
         }
 
         bind() {
