@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="skills-shell" id="skill-import" data-csrf="{{ csrf }}">
+<h1>Імпорт здібностей</h1>
+<p>JSON рекомендовано. До 1 MB та 500 записів. Base = BR, рівні 0–7. Ключ: клас + підклас + номер гілки + рівень. Оновлення зберігає ID. Вимоги — текстові, без автоматичного тлумачення механік.</p>
+<div class="form inline">{% for kind in ['json','csv','docx'] %}<a class="button ghost" href="{{ url_for('skills_import_template',kind=kind) }}">Шаблон {{ kind }}</a>{% endfor %}</div>
+<form id="import-upload" class="form"><label>Файл<input name="file" type="file" accept=".json,.csv,.docx" required></label><label>Режим<select name="mode"><option value="add">Додати нові</option><option value="update">Оновити наявні</option><option value="upsert">Додати та оновити</option></select></label><button class="button">Попередній перегляд</button></form>
+<p role="status" id="import-status"></p>
+<div id="import-preview" hidden><h2>Попередній перегляд</h2><p id="import-counts"></p><div style="overflow:auto"><table><thead><tr><th>Вибір</th><th>Клас</th><th>Підклас</th><th>Гілка</th><th>Рівень</th><th>Назва</th><th>Статус / зауваження</th></tr></thead><tbody id="import-rows"></tbody></table></div><details><summary>Виправити дані вручну</summary><label>JSON<textarea id="import-edit" rows="14" style="width:100%"></textarea></label><button type="button" id="import-recheck" class="button">Перевірити виправлення</button></details><button type="button" id="import-confirm" class="button">Підтвердити імпорт обраних записів</button></div>
+<h2>Експорт та відновлення</h2><form class="form" action="{{ url_for('skills_import_export') }}"><label>Клас (порожньо — усі)<input name="class"></label><label>Підклас<input name="subclass"></label><button class="button">Експортувати JSON</button></form><p>Перед підтвердженням зберігається повна резервна копія здібностей. Посилання з’явиться у звіті. Для відновлення наявних записів завантажте копію в режимі «Оновити наявні». Нові записи при цьому не видаляються.</p>
+</section><script src="{{ url_for('static',filename='skill_import.js') }}" defer></script>
+{% endblock %}

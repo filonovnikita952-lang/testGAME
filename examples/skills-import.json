@@ -1,0 +1,36 @@
+[
+  {
+    "class": "Психік",
+    "subclass": "Менталіст",
+    "branch": 0,
+    "level": "Base",
+    "name": "Основа ментальних здібностей",
+    "cost_int": 1,
+    "ability_type": "Active",
+    "distance_type": "INT_METERS",
+    "distance_int": 12,
+    "components": "Зоровий",
+    "cast_time_seconds": 3,
+    "duration_seconds": 6,
+    "description": "Текст здібності.",
+    "requirements": [],
+    "is_enabled": true
+  },
+  {
+    "class": "Психік",
+    "subclass": "Менталіст",
+    "branch": 0,
+    "level": "0",
+    "name": "Сенсорна похибка",
+    "cost_int": 1,
+    "ability_type": "Active",
+    "distance_type": "INT_METERS",
+    "distance_int": 12,
+    "components": "Зоровий",
+    "cast_time_seconds": 3,
+    "duration_seconds": 6,
+    "description": "Текст здібності.",
+    "requirements": [],
+    "is_enabled": true
+  }
+]

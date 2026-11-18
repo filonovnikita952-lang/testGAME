@@ -7205,6 +7205,10 @@ def update_item_template_image(template_id: int):
     return jsonify({'error': 'content_images_disabled'}), 410
 
 
+from skill_import import register as register_skill_import
+register_skill_import(app, globals())
+
+
 if __name__ == '__main__':
     with app.app_context():
         cleanup_starter_kit()
