@@ -33,6 +33,12 @@ function skillRequirementsText(skill) {
         .join('\n');
 }
 
+function escapedSkillTree(value) {
+    if (typeof value === 'string') return value.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    if (Array.isArray(value)) return value.map(escapedSkillTree);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,escapedSkillTree(v)]));
+    return value;
+}
 function renderAdminTree() {
     if (!adminContent) {
         return;
@@ -41,7 +47,7 @@ function renderAdminTree() {
         adminContent.innerHTML = '<p class="muted">Немає даних.</p>';
         return;
     }
-    const categoriesHtml = adminTree.categories.map((category) => {
+    const categoriesHtml = escapedSkillTree(adminTree).categories.map((category) => {
         const categoryId = String(category.id);
         const isCategoryExpanded = expandedCategories.has(categoryId);
         const subclassesHtml = category.subclasses.map((subclass) => {
